@@ -43,6 +43,11 @@ template <> struct PrimitiveDistType<Edge3, Edge3> {
     static constexpr std::string_view NAME = "EDGE_EDGE";
 };
 
+template <> struct PrimitiveDistType<Edge2, Edge2> {
+    using type = EdgeEdgeDistanceType;
+    static constexpr std::string_view NAME = "EDGE_EDGE";
+};
+
 template <typename PrimitiveA, typename PrimitiveB, typename T>
 class PrimitiveDistanceTemplate {
     static_assert(
