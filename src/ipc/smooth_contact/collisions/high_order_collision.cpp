@@ -1,4 +1,4 @@
-#include "ho_smooth_collision.hpp"
+#include "high_order_collision.hpp"
 
 #include <ipc/config.hpp>
 #include <math.h>
@@ -45,6 +45,7 @@ Eigen::VectorXd SmoothCollision::dof(Eigen::ConstRef<Eigen::MatrixXd> X) const
     return x;
 }
 
+// gives just the dofs needed for distance computations
 template <typename PrimitiveA, typename PrimitiveB>
 auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::get_core_indices() const
     -> Vector<int, N_CORE_DOFS>
