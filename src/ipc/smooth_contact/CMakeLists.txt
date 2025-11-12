@@ -6,6 +6,8 @@ set(SOURCES
   smooth_collisions.hpp
   smooth_collisions_builder.cpp
   smooth_collisions_builder.hpp
+  high_order_collisions_builder.cpp
+  high_order_collisions_builder.hpp
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "Source Files" FILES ${SOURCES})
