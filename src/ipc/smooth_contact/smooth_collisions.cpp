@@ -1,6 +1,7 @@
 #include "smooth_collisions.hpp"
 
 #include "smooth_collisions_builder.hpp"
+#include "high_order_collisions_builder.hpp"
 
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_edge.hpp>
@@ -165,18 +166,18 @@ void SmoothCollisions::build(
     };
 
     if (mesh.dim() == 2) {
-        auto storage = create_thread_storage<SmoothCollisionsBuilder<2>>(
-            SmoothCollisionsBuilder<2>());
+        auto storage = create_thread_storage<HighOrderCollisionsBuilder<2>>(
+            HighOrderCollisionsBuilder<2>());
         maybe_parallel_for(
             candidates.ev_candidates.size(),
             [&](int start, int end, int thread_id) {
-                SmoothCollisionsBuilder<2>& local_storage =
+                HighOrderCollisionsBuilder<2>& local_storage =
                     get_local_thread_storage(storage, thread_id);
                 local_storage.add_edge_vertex_collisions(
                     mesh, vertices, candidates.ev_candidates, params, vert_dhat,
                     edge_dhat, start, end);
             });
-        SmoothCollisionsBuilder<2>::merge(storage, *this);
+        HighOrderCollisionsBuilder<2>::merge(storage, *this);
     } else {
         auto storage = create_thread_storage<SmoothCollisionsBuilder<3>>(
             SmoothCollisionsBuilder<3>());

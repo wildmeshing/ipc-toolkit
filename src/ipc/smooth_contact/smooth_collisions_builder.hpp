@@ -45,10 +45,6 @@ public:
         std::pair<index_t, index_t>,
         std::shared_ptr<SmoothCollisionTemplate<Edge2, Point2>>>
         vert_edge_2_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<SmoothCollisionTemplate<Edge2, Edge2>>>
-        edge_edge_2_to_id;
 };
 
 template <> class SmoothCollisionsBuilder<3> {

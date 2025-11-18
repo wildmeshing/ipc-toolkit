@@ -57,15 +57,14 @@ void HighOrderCollisionsBuilder<2>::add_edge_vertex_collisions(
 		const double distance_sqr = point_edge_distance(
 			vertices.row(vi), vertices.row(mesh.edges()(ei, 0)),
 			vertices.row(mesh.edges()(ei, 1)), pe_dtype);
+        assert (distance_sqr >= 0);
 		if (distance_sqr >= dhat * dhat) continue;
 
 		for (int ej : adj) {
-			const auto ee_dtype = EdgeEdgeDistanceType::AUTO; // TODO compute this
-			add_collision<2, HighOrderCollisionTemplate<Edge2, Edge2>>(
-				std::make_shared<HighOrderCollisionTemplate<Edge2, Edge2>>(
+			add_collision<2, HighOrderCollision>(
+				std::make_shared<HighOrderCollision>(
 					std::min<index_t>(ei, ej), std::max<index_t>(ei, ej),
-					ee_dtype, mesh, params,
-					dhat, vertices),
+					mesh, params, dhat, vertices),
 				edge_edge_2_to_id, collisions);
 		}
     }
@@ -79,12 +78,8 @@ void HighOrderCollisionsBuilder<2>::merge(
 {
     unordered_map<
         std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Point2, Point2>>>
-        vert_vert_2_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge2, Point2>>>
-        vert_edge_2_to_id;
+        std::shared_ptr<HighOrderCollision>>
+        edge_edge_2_to_id;
 
     // size up the hash items
     size_t total = 0;
@@ -96,24 +91,17 @@ void HighOrderCollisionsBuilder<2>::merge(
 
     // merge
     for (const auto& builder : local_storage) {
-        vert_vert_2_to_id.insert(
-            builder.vert_vert_2_to_id.begin(), builder.vert_vert_2_to_id.end());
-        vert_edge_2_to_id.insert(
-            builder.vert_edge_2_to_id.begin(), builder.vert_edge_2_to_id.end());
+        edge_edge_2_to_id.insert(
+            builder.edge_edge_2_to_id.begin(), builder.edge_edge_2_to_id.end());
     }
-    int edge_vert_count = vert_edge_2_to_id.size();
-    int vert_vert_count = vert_vert_2_to_id.size();
+    int edge_edge_count = edge_edge_2_to_id.size();
 
-    for (const auto& [key, val] : vert_vert_2_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
-    for (const auto& [key, val] : vert_edge_2_to_id) {
+    for (const auto& [key, val] : edge_edge_2_to_id) {
         merged_collisions.collisions.push_back(val);
     }
 
     logger().trace(
-        "edge-vert pairs {}, vert-vert pairs {}", edge_vert_count,
-        vert_vert_count);
+        "edge-edge pairs {}", edge_edge_count);
 }
 
 } // namespace ipc

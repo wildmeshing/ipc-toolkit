@@ -3,54 +3,28 @@
 
 namespace ipc {
 
-/// @brief Templated class for various types of contact pairs
-template <typename PrimitiveA, typename PrimitiveB>
-class HighOrderCollisionTemplate : public SmoothCollision {
+/// @brief Edge-edge collision in 2d
+class HighOrderCollision : public SmoothCollision {
 public:
     using Super = SmoothCollision;
-    /// @brief Distance type of the contact pair
-    using DTYPE = typename PrimitiveDistType<PrimitiveA, PrimitiveB>::type;
-    /// @brief Number of points needed to compute the distance between two primitives
-    static constexpr int N_CORE_POINTS =
-        PrimitiveA::N_CORE_POINTS + PrimitiveB::N_CORE_POINTS;
-    static constexpr int DIM = PrimitiveA::DIM;
-    static constexpr int N_CORE_DOFS_A = PrimitiveA::N_CORE_POINTS * DIM;
-    static constexpr int N_CORE_DOFS_B = PrimitiveB::N_CORE_POINTS * DIM;
-    static constexpr int N_CORE_DOFS = N_CORE_POINTS * DIM;
-    static constexpr int ELEMENT_SIZE = Super::ELEMENT_SIZE;
 
-    HighOrderCollisionTemplate(
+    HighOrderCollision(
         index_t primitive0,
         index_t primitive1,
-        DTYPE dtype,
         const CollisionMesh& mesh,
         const SmoothContactParameters& params,
         const double dhat,
-        const Eigen::MatrixXd& V);
+        const Eigen::MatrixXd& V
+    );
 
-    virtual ~HighOrderCollisionTemplate() = default;
+    virtual ~HighOrderCollision() = default;
 
-    std::string name() const override;
+    std::string name() const override { return "edge-edge"; }
 
-    int n_dofs() const override
-    {
-        return primitive_a->n_dofs() + primitive_b->n_dofs();
-    }
-    CollisionType type() const override;
+    int n_dofs() const override { return num_vertices() * 2; }
+    CollisionType type() const override { return CollisionType::EDGE_EDGE; }
 
-    Vector<int, N_CORE_DOFS> get_core_indices() const;
-    std::array<index_t, N_CORE_DOFS> core_vertex_ids() const;
-
-    int num_vertices() const override
-    {
-        return primitive_a->n_vertices() + primitive_b->n_vertices();
-    }
-
-    template <typename T>
-    Vector<T, N_CORE_DOFS> core_dof(const Eigen::MatrixX<T>& X) const
-    {
-        return this->dof(X)(get_core_indices());
-    }
+    int num_vertices() const override { return 4; }
 
     // ---- non distance type potential ----
 
@@ -81,12 +55,6 @@ public:
     // ---- distance ----
 
     /// @brief Compute the minimum squared distance between two primitives
-    double
-    compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
-private:
-    /// @brief The first primitive in the contact pair
-    std::unique_ptr<PrimitiveA> primitive_a;
-    /// @brief The second primitive in the contact pair
-    std::unique_ptr<PrimitiveB> primitive_b;
+    double compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override {return 0;};
 };
 } // namespace ipc

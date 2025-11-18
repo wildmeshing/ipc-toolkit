@@ -52,15 +52,7 @@ public:
     // Store the indices to pairs to avoid duplicates.
     unordered_map<
         std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Point2, Point2>>>
-        vert_vert_2_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge2, Point2>>>
-        vert_edge_2_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge2, Edge2>>>
+        std::shared_ptr<HighOrderCollision>>
         edge_edge_2_to_id;
 };
 
