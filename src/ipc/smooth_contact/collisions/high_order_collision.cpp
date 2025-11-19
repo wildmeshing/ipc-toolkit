@@ -33,89 +33,93 @@ HighOrderCollision::HighOrderCollision(
 
 constexpr size_t QSIZE = 7;
 constexpr double QUADPOINTS[QSIZE] = {0.0, 0.08488805186071646, 0.2655756032646428, 0.5, 0.7344243967353572, 0.9151119481392833, 1.0};
-constexpr double QUADWEIGHTS[QSIZE] {0.04761905, 0.27682605, 0.43174538, 0.48761905, 0.43174538, 0.27682605, 0.04761905};
-std::pair<Eigen::MatrixX2d, double> sampleEE2Aligned(
-    Eigen::ConstRef<Vector<double, -1, 8>> positions
+constexpr double QUADWEIGHTS[QSIZE] = {0.04761905, 0.27682605, 0.43174538, 0.48761905, 0.43174538, 0.27682605, 0.04761905};
+
+template <typename T>
+std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, Eigen::Vector2<T>, T> sampleEE2Aligned(
+    Eigen::ConstRef<Vector<T, -1, 8>> positions
 ){
 	// we align A with the x axis and sample B
-	const auto A = positions.head<4>();
-	const Eigen::Vector2d A0 = A.head<2>();
-	const Eigen::Vector2d A1 = A.tail<2>();
-	const Eigen::Vector2d AV = A1 - A0;
+	const Vector<T, 4> A = positions.template head<4>();
+	const Eigen::Vector2<T> A0 = A.template head<2>();
+	const Eigen::Vector2<T> A1 = A.template tail<2>();
+	const Eigen::Vector2<T> AV = A1 - A0;
 	// new reference frame
-	const double L = AV.norm();
-	const Eigen::Vector2d Anorm = AV / L;
-	const Eigen::Vector2d Aorth(-Anorm.y(),Anorm.x());
-	Eigen::Matrix2d rot;
+	const T L = AV.norm();
+	const Eigen::Vector2<T> Anorm = AV / L;
+	const Eigen::Vector2<T> Aorth(-Anorm.y(),Anorm.x());
+	Eigen::Matrix<T, 2, 2> rot;
 	rot.col(0) = Anorm;
 	rot.col(1) = Aorth;
-	const auto B = positions.tail<4>();
-	const Eigen::Vector2d B0 = B.head<2>() - A0;
-	const Eigen::Vector2d B1 = B.tail<2>() - A0;
-	const Eigen::Vector2d B0r = rot*B0;
-	const Eigen::Vector2d B1r = rot*B1;
-	Eigen::Matrix<double, Eigen::Dynamic, 2> M(QSIZE, 2);
-	for (size_t i; i<QSIZE; ++i) {
-		double t = QUADPOINTS[i];
-		const Eigen::Vector2d P = (1-t)*B0r + t*B1r;
+	const Vector<T, 4> B = positions.template tail<4>();
+	const Eigen::Vector2<T> B0 = B.template head<2>() - A0;
+	const Eigen::Vector2<T> B1 = B.template tail<2>() - A0;
+	const Eigen::Vector2<T> B0r = rot.transpose()*B0; // Rotate B0 to the new frame
+	const Eigen::Vector2<T> B1r = rot.transpose()*B1; // Rotate B1 to the new frame
+	Eigen::Matrix<T, Eigen::Dynamic, 2> M(QSIZE, 2);
+	for (size_t i = 0; i<QSIZE; ++i) {
+		const double t = QUADPOINTS[i];
+		const Eigen::Vector2<T> P = (1-t)*B0r + t*B1r;
 		M.row(i) = P.transpose();
 	}
-	return {M, L};
+	const Eigen::Vector2<T> Br_vec = B1r - B0r;
+	Eigen::Vector2<T> Br_normal(-Br_vec.y(), Br_vec.x());
+	Br_normal.normalize();
+	return {M, Br_normal, L};
 }
 
-double potentialVE2(Eigen::Vector2d xy, double L) {
-	const double x = xy.x();
-	const double y = xy.y();
-	const double iy = 1/y;
-	return (std::atan(x*iy) * std::atan((L-x)*iy))*iy;
+template <typename T>
+T delta_alpha(const T& z, const double alpha) {
+	const T a2 = 2. / alpha;
+    return a2 * Math<T>::cubic_spline(a2 * z);
 }
-Eigen::Vector2d gradientVE2(Eigen::Vector2d xy, double L) {
-	const double x = xy.x();
-	const double y = xy.y();
-	const double x0 = x*x;
-	const double x1 = L - x;
-	const double x2 = x1*x1;
-	const double x3 = y*y;
-	const double x4 = x0 + x3;
-	const double x5 = x2 + x3;
-	const double x6 = 1/(x4*x5);
-	const double x7 = 1/y;
-	return {
-		x6*(-x0 + x2),
-		x6*(-x*x5*y - x1*x4*y - x4*x5*(std::atan(x*x7) + std::atan(x1*x7)))/x3
-	};
+
+template <typename T>
+T h_eps(const T& z, const double eps) {
+    return 3 * Math<T>::cubic_spline(2*z/eps) / 2;
 }
-Eigen::Matrix2d hessianVE2(Eigen::Vector2d xy, double L) {
-	const double x = xy.x();
-	const double y = xy.y();
-	const double x0 = y*y;
-	const double x1 = x*x + x0;
-	const double x2 = x1*x1;
-	const double x3 = 1/x2;
-	const double x4 = 2*x3;
-	const double x5 = L - x;
-	const double x6 = x5*x5;
-	const double x7 = x0 + x6;
-	const double x8 = x7*x7;
-	const double x9 = 1/x8;
-	const double x10 = 2*x9;
-	const double x11 = x4*y;
-	const double x12 = y*y*y;
-	const double x13 = x6*y;
-	const double x14 = 2/(x7*x7*x7);
-	const double x15 = 1/y;
-	const double x16 = x8*y;
-	const double x17 = x2*y;
-	const double x18 = x14*x15*x5;
-	const double x19 = x17*x5;
-	Eigen::Matrix2d res {{
-		-L*x10 - x*x4 + 2*x*x9,
-		-x11 - x13*x14 - x18*x18*x18*x18 + 2/(x12 + x13),
-		},{
-		x10*y - x11,
-		x10*x3*(-x*x*x*x16 + 2*x*x1*x16 - x19*x19*x19 + 2*x17*x5*x7 + x2*x8*(std::atan(x*x15) + std::atan(x15*x5)))/x12
-	}};
-	return res;
+
+template <typename T>
+T potentialVE2(
+	const Eigen::Vector2<T>& q, const Eigen::Vector2<T>& n,
+	const T& L, const SmoothContactParameters& params
+) {
+	const double alpha = params.alpha_t;
+	const double eps = params.dhat;
+	if (n.y()>0) return 0;
+	const T &q0 = q.x();
+	const T &q1 = q.y();
+	const double phi = std::asin(alpha);
+	constexpr double HPI = 1.5707963267948966;
+	const T theta = acos(-n.x());
+	// range limited by the segment length
+	const T psi_min_segment = atan(fmin(-q0/q1,(L-q0)/q1));
+	const T psi_max_segment = atan(fmax(-q0/q1,(L-q0)/q1));
+	// range limited by the normal angle
+	const T psi_min_angle = fmax(-phi,-phi-theta-HPI);
+	const T psi_max_angle = fmin(phi,phi-theta-HPI);
+	// range limited by the distance
+	const T psi_min_dist = -acos(q1/eps);
+	const T psi_max_dist = acos(q1/eps);
+	// final range
+	const T psi_min = fmax(fmax(psi_min_segment, psi_min_angle), psi_min_dist);
+	const T psi_max = fmin(fmin(psi_max_segment, psi_max_angle), psi_max_dist);
+	if (psi_min>=psi_max) return 0;
+	T potential = 0;
+	for (size_t qp=0; qp<QSIZE; ++qp) {
+		const T psi = psi_min + (psi_max-psi_min)*QUADPOINTS[qp];
+		const T theta1 = HPI + theta + psi;
+		const T cosPsi = cos(psi);
+		const T q1DcosPsi = q1/cosPsi;
+		const T J = q1DcosPsi / (L*cosPsi);
+		potential += cosPsi*cosPsi*J*
+			h_eps(q1DcosPsi, eps)*
+			delta_alpha(abs(sin(theta1)), alpha)*
+			Math<T>::smooth_heaviside(cos(theta1), alpha)*
+			delta_alpha(abs(sin(psi)), alpha)*
+			Math<T>::smooth_heaviside(cosPsi, alpha);
+	}
+	return potential/(q1*q1);
 }
 
 double HighOrderCollision::operator()(
@@ -123,12 +127,13 @@ double HighOrderCollision::operator()(
     const SmoothContactParameters& params) const
 {
 	Eigen::MatrixX2d qp;
+	Eigen::Vector2d normal;
 	double L;
-	std::tie(qp, L) = sampleEE2Aligned(positions);
+	std::tie(qp, normal, L) = sampleEE2Aligned<double>(positions);
 	double acc = 0;
 	for (size_t q=0; q<QSIZE; ++q) {
-		const auto &p = qp.row(q);
-		acc += QUADWEIGHTS[q] * potentialVE2(p, L);
+		const Eigen::Vector2d p = qp.row(q);
+		acc += QUADWEIGHTS[q] * potentialVE2<double>(p, normal, L, params);
 	}
 	return acc;
 }
@@ -138,16 +143,17 @@ auto HighOrderCollision::gradient(
     const SmoothContactParameters& params) const
     -> Vector<double, -1, ELEMENT_SIZE>
 {
-	Eigen::MatrixX2d qp;
-	double L;
-	std::tie(qp, L) = sampleEE2Aligned(positions);
-	Eigen::Vector2d acc;
-	acc.setZero();
+	using T = ADGrad<8>;
+	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
+	Eigen::Vector2<T> normal;
+	T L;
+	std::tie(qp, normal, L) = sampleEE2Aligned<T>(positions.template cast<T>());
+	T acc = 0;
 	for (size_t q=0; q<QSIZE; ++q) {
-		const auto &p = qp.row(q);
-		acc += QUADWEIGHTS[q] * gradientVE2(p, L);
+		const Eigen::Vector2<T> p = qp.row(q);
+		acc += QUADWEIGHTS[q] * potentialVE2<T>(p, normal, L, params);
 	}
-	return acc;
+	return acc.grad;
 }
 
 auto HighOrderCollision::hessian(
@@ -155,16 +161,17 @@ auto HighOrderCollision::hessian(
     const SmoothContactParameters& params) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
-	Eigen::MatrixX2d qp;
-	double L;
-	std::tie(qp, L) = sampleEE2Aligned(positions);
-	Eigen::Matrix2d acc;
-	acc.setZero();
+	using T = ADHessian<8>;
+	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
+	Eigen::Vector2<T> normal;
+	T L;
+	std::tie(qp, normal, L) = sampleEE2Aligned<T>(positions.template cast<T>());
+	T acc = 0;
 	for (size_t q=0; q<QSIZE; ++q) {
-		const auto &p = qp.row(q);
-		acc += QUADWEIGHTS[q] * hessianVE2(p, L);
+		const Eigen::Vector2<T> p = qp.row(q);
+		acc += QUADWEIGHTS[q] * potentialVE2<T>(p, normal, L, params);
 	}
-	return acc;
+	return acc.Hess;
 }
 
 } // namespace ipc
