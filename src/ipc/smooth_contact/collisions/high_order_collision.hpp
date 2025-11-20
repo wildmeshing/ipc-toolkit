@@ -7,6 +7,7 @@ namespace ipc {
 class HighOrderCollision : public SmoothCollision {
 public:
     using Super = SmoothCollision;
+    static constexpr int N_CORE_DOFS = 8;
 
     HighOrderCollision(
         index_t primitive0,

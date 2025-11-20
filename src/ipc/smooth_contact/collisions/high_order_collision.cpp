@@ -135,7 +135,9 @@ double HighOrderCollision::operator()(
 		const Eigen::Vector2d p = qp.row(q);
 		acc += QUADWEIGHTS[q] * potentialVE2<double>(p, normal, L, params);
 	}
-	return acc;
+    logger().debug("HighOrderCollision::operator() -> {}", acc);
+
+    return acc;
 }
 
 auto HighOrderCollision::gradient(
@@ -143,17 +145,21 @@ auto HighOrderCollision::gradient(
     const SmoothContactParameters& params) const
     -> Vector<double, -1, ELEMENT_SIZE>
 {
-	using T = ADGrad<8>;
+	ScalarBase::setVariableCount(N_CORE_DOFS);
+	using T = ADGrad<N_CORE_DOFS>;
+	Vector<T, N_CORE_DOFS> positions_ad = slice_positions<T, N_CORE_DOFS, 1>(positions);
 	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
 	Eigen::Vector2<T> normal;
 	T L;
-	std::tie(qp, normal, L) = sampleEE2Aligned<T>(positions.template cast<T>());
-	T acc = 0;
+	std::tie(qp, normal, L) = sampleEE2Aligned<T>(positions_ad);
+	T acc(0.0);
 	for (size_t q=0; q<QSIZE; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);
 		acc += QUADWEIGHTS[q] * potentialVE2<T>(p, normal, L, params);
 	}
-	return acc.grad;
+    const auto grad = acc.grad;
+    logger().debug("HighOrderCollision::gradient -> norm={}", grad.norm());
+	return grad;
 }
 
 auto HighOrderCollision::hessian(
@@ -161,17 +167,21 @@ auto HighOrderCollision::hessian(
     const SmoothContactParameters& params) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
-	using T = ADHessian<8>;
+	ScalarBase::setVariableCount(N_CORE_DOFS);
+	using T = ADHessian<N_CORE_DOFS>;
+	Vector<T, N_CORE_DOFS> positions_ad = slice_positions<T, N_CORE_DOFS, 1>(positions);
 	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
 	Eigen::Vector2<T> normal;
 	T L;
-	std::tie(qp, normal, L) = sampleEE2Aligned<T>(positions.template cast<T>());
-	T acc = 0;
+	std::tie(qp, normal, L) = sampleEE2Aligned<T>(positions_ad);
+	T acc(0.0);
 	for (size_t q=0; q<QSIZE; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);
 		acc += QUADWEIGHTS[q] * potentialVE2<T>(p, normal, L, params);
 	}
-	return acc.Hess;
+    const auto hess = acc.Hess;
+    logger().debug("HighOrderCollision::hessian -> norm={}", hess.norm());
+	return hess;
 }
 
 } // namespace ipc
