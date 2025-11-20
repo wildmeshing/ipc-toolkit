@@ -31,16 +31,204 @@ HighOrderCollision::HighOrderCollision(
     }*/
 }
 
-constexpr size_t QSIZE = 7;
-constexpr double QUADPOINTS[QSIZE] = {0.0, 0.08488805186071646, 0.2655756032646428, 0.5, 0.7344243967353572, 0.9151119481392833, 1.0};
-constexpr double QUADWEIGHTS[QSIZE] = {0.04761905, 0.27682605, 0.43174538, 0.48761905, 0.43174538, 0.27682605, 0.04761905};
+
+namespace {
+	constexpr double PI = 3.141592653589793238462643383279502884;
+	constexpr int QORD = 3;
+
+	template <typename T>
+	T cubic_bspline(T v) {
+		T abs_v = ipc::Math<T>::abs(v);
+		if (abs_v < 1.0) {
+			return (2.0 / 3.0) - abs_v * abs_v + 0.5 * abs_v * abs_v * abs_v;
+		} else if (abs_v < 2.0) {
+			T t = 2.0 - abs_v;
+			return (1.0 / 6.0) * t * t * t;
+		}
+		return 0.0;
+	}
+
+	template <typename T>
+	T H_kernel(T z) {
+		if (z < -3.0) {
+			return 0.0;
+		} else if (z < -2.0) {
+			T t = 3.0 + z;
+			return (1.0 / 6.0) * t * t * t;
+		} else if (z < -1.0) {
+			return (1.0 / 6.0) * (3.0 - 9.0 * z - 9.0 * z * z - 2.0 * z * z * z);
+		} else if (z < 0.0) {
+			return 1.0 + (z * z * z) / 6.0;
+		}
+		return 1.0;
+	}
+
+	template <typename T>
+	T norm2(T x, T y) { return sqrt(x * x + y * y); }
+
+	template <typename T>
+	T cross2(T ax, T ay, T bx, T by) { return ax * by - ay * bx; }
+
+	template <typename T>
+	T dot2(T ax, T ay, T bx, T by) { return ax * bx + ay * by; }
+
+	template <typename T>
+	T directional_factor(T dx, T dy, T nx, T ny, double alpha) {
+		T denom = norm2(dx, dy);
+		if (denom == 0.0) {
+			return 0.0;
+		}
+		T phi_m = ipc::Math<T>::abs(cross2(dx, dy, nx, ny)) / denom;
+		T phi_e = -dot2(dx, dy, nx, ny) / denom;
+		T s = (2.0 / alpha) * phi_m;
+		T t = phi_e / alpha;
+		T b_val = cubic_bspline(s);
+		T h_val = H_kernel(t);
+		return (2.0 / alpha) * b_val * h_val;
+	}
+
+	template <typename T>
+	T integrand_value(T x_param,
+						T point_x,
+						T point_y,
+						T normal_x,
+						T normal_y,
+						double alpha,
+						double epsilon,
+						double power) {
+		T f0x = x_param;
+		T f0y(0.0);
+		T dx = point_x - f0x;
+		T dy = point_y - f0y;
+		T distance = norm2(dx, dy);
+		if (distance == 0.0) {
+			return 0.0;
+		}
+
+		T tangent0_x(1.0);
+		T tangent0_y(0.0);
+		T normal0_x(0.0);
+		T normal0_y(1.0);
+
+		T g_xy = directional_factor(dx, dy, normal_x, normal_y, alpha);
+		T g_yx = directional_factor(-dx, -dy, normal0_x, normal0_y, alpha);
+		T gamma = g_xy * g_yx;
+		if (gamma == 0.0) {
+			return 0.0;
+		}
+
+		T weight = 1.5 * cubic_bspline((2.0 / epsilon) * distance);
+		T numerator = gamma * weight;
+		return numerator / pow(distance, power);
+	}
+
+	template <typename T>
+	bool compute_window(T q0,
+						T q1,
+						double alpha,
+						double theta,
+						T& psi_lower,
+						T& psi_upper) {
+		if (q1 <= 0.0) {
+			return false;
+		}
+
+		double phi = std::asin(std::min(0.999999, std::max(0.0, alpha)));
+		T lower_geom = std::max(0., -theta - (PI / 2.0)) - phi;
+		T upper_geom = std::min(0., -theta - (PI / 2.0)) + phi;
+		if (lower_geom >= upper_geom) {
+			return false;
+		}
+
+		T lower_x = atan((q0 - 1.0) / q1);
+		T upper_x = atan(q0 / q1);
+
+		psi_lower = (lower_geom > lower_x) ? lower_geom : lower_x;
+		psi_upper = (upper_geom < upper_x) ? upper_geom : upper_x;
+		if (psi_lower >= psi_upper) {
+			return false;
+		}
+		return true;
+	}
+
+	void gauss_legendre(int n, std::vector<double>& nodes, std::vector<double>& weights) {
+		nodes.resize(n);
+		weights.resize(n);
+		int m = (n + 1) / 2;
+		for (int i = 0; i < m; ++i) {
+			double z = std::cos(PI * (i + 0.75) / (n + 0.5));
+			double z1;
+			double p1, p2;
+			do {
+				p1 = 1.0;
+				p2 = 0.0;
+				for (int j = 1; j <= n; ++j) {
+					double p3 = p2;
+					p2 = p1;
+					p1 = ((2.0 * j - 1.0) * z * p2 - (j - 1.0) * p3) / j;
+				}
+				double pp = n * (z * p1 - p2) / (z * z - 1.0);
+				z1 = z;
+				z = z1 - p1 / pp;
+			} while (std::fabs(z - z1) > 1e-14);
+
+			nodes[i] = -z;
+			nodes[n - 1 - i] = z;
+			double pp = n * (z * p1 - p2) / (z * z - 1.0);
+			double w = 2.0 / ((1.0 - z * z) * pp * pp);
+			weights[i] = weights[n - 1 - i] = w;
+		}
+	}
+
+	template <typename T>
+	T integrate_substitution(T q0,
+								T q1,
+								int quad_order,
+								double epsilon,
+								double alpha,
+								double power) {
+		double theta = -PI / 2.0;
+		T psi_lower, psi_upper;
+		if (!compute_window(q0, q1, alpha, theta, psi_lower, psi_upper)) {
+			return 0.0;
+		}
+
+		std::vector<double> nodes;
+		std::vector<double> weights;
+		gauss_legendre(quad_order, nodes, weights);
+
+		T half = 0.5 * (psi_upper - psi_lower);
+		T center = 0.5 * (psi_upper + psi_lower);
+		T scaled_sum(0.0);
+		for (int i = 0; i < quad_order; ++i) {
+			T psi = center + half * nodes[i];
+			T cos_psi = cos(psi);
+			if (ipc::Math<T>::abs(cos_psi) < 1e-12) {
+				continue;
+			}
+			T w = tan(psi);
+			T x_param = (q0 - w * q1);
+			if (x_param < 0.0 || x_param > 1.0) {
+				continue;
+			}
+			T value = integrand_value(x_param, q0, q1, T(0.0), T(-1.0), alpha, epsilon, power);
+			T scaled_value = (q1 * q1) * value;
+			T jac = (q1 / 1.0) / (cos_psi * cos_psi);
+			scaled_sum += weights[i] * scaled_value * jac;
+		}
+
+		T scaled_integral = half * scaled_sum;
+		return scaled_integral / (q1 * q1);
+	}
+}  // namespace
+
 
 template <typename T>
-std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, Eigen::Vector2<T>, T> sampleEE2Aligned(
-    Eigen::ConstRef<Vector<T, -1, 8>> positions
+std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vector2<T>, T> sampleEE2Aligned(
+    Eigen::ConstRef<Vector<T, -1, 8>> positions, int quad_order
 ){
 	// we align A with the x axis and sample B
-	const Vector<T, 4> A = positions.template head<4>();
+	const Eigen::Vector<T, 4> A = positions.template head<4>();
 	const Eigen::Vector2<T> A0 = A.template head<2>();
 	const Eigen::Vector2<T> A1 = A.template tail<2>();
 	const Eigen::Vector2<T> AV = A1 - A0;
@@ -51,75 +239,24 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, Eigen::Vector2<T>, T> sampleEE2A
 	Eigen::Matrix<T, 2, 2> rot;
 	rot.col(0) = Anorm;
 	rot.col(1) = Aorth;
-	const Vector<T, 4> B = positions.template tail<4>();
+	const Eigen::Vector<T, 4> B = positions.template tail<4>();
 	const Eigen::Vector2<T> B0 = B.template head<2>() - A0;
 	const Eigen::Vector2<T> B1 = B.template tail<2>() - A0;
-	const Eigen::Vector2<T> B0r = rot.transpose()*B0; // Rotate B0 to the new frame
-	const Eigen::Vector2<T> B1r = rot.transpose()*B1; // Rotate B1 to the new frame
-	Eigen::Matrix<T, Eigen::Dynamic, 2> M(QSIZE, 2);
-	for (size_t i = 0; i<QSIZE; ++i) {
-		const double t = QUADPOINTS[i];
+	const Eigen::Vector2<T> B0r = rot.transpose()*B0;
+	const Eigen::Vector2<T> B1r = rot.transpose()*B1;
+	std::vector<double> nodes;
+	std::vector<double> weights;
+	gauss_legendre(quad_order, nodes, weights);
+	Eigen::Matrix<T, Eigen::Dynamic, 2> M(quad_order, 2);
+	for (size_t i = 0; i<quad_order; ++i) {
+		const double t = nodes.at(i);
 		const Eigen::Vector2<T> P = (1-t)*B0r + t*B1r;
 		M.row(i) = P.transpose();
 	}
 	const Eigen::Vector2<T> Br_vec = B1r - B0r;
 	Eigen::Vector2<T> Br_normal(-Br_vec.y(), Br_vec.x());
 	Br_normal.normalize();
-	return {M, Br_normal, L};
-}
-
-template <typename T>
-T delta_alpha(const T& z, const double alpha) {
-	const T a2 = 2. / alpha;
-    return a2 * Math<T>::cubic_spline(a2 * z);
-}
-
-template <typename T>
-T h_eps(const T& z, const double eps) {
-    return 3 * Math<T>::cubic_spline(2*z/eps) / 2;
-}
-
-template <typename T>
-T potentialVE2(
-	const Eigen::Vector2<T>& q, const Eigen::Vector2<T>& n,
-	const T& L, const SmoothContactParameters& params
-) {
-	const double alpha = params.alpha_t;
-	const double eps = params.dhat;
-	if (n.y()>0) return 0;
-	const T &q0 = q.x();
-	const T &q1 = q.y();
-	const double phi = std::asin(alpha);
-	constexpr double HPI = 1.5707963267948966;
-	const T theta = acos(-n.x());
-	// range limited by the segment length
-	const T psi_min_segment = atan(fmin(-q0/q1,(L-q0)/q1));
-	const T psi_max_segment = atan(fmax(-q0/q1,(L-q0)/q1));
-	// range limited by the normal angle
-	const T psi_min_angle = fmax(-phi,-phi-theta-HPI);
-	const T psi_max_angle = fmin(phi,phi-theta-HPI);
-	// range limited by the distance
-	const T psi_min_dist = -acos(q1/eps);
-	const T psi_max_dist = acos(q1/eps);
-	// final range
-	const T psi_min = fmax(fmax(psi_min_segment, psi_min_angle), psi_min_dist);
-	const T psi_max = fmin(fmin(psi_max_segment, psi_max_angle), psi_max_dist);
-	if (psi_min>=psi_max) return 0;
-	T potential = 0;
-	for (size_t qp=0; qp<QSIZE; ++qp) {
-		const T psi = psi_min + (psi_max-psi_min)*QUADPOINTS[qp];
-		const T theta1 = HPI + theta + psi;
-		const T cosPsi = cos(psi);
-		const T q1DcosPsi = q1/cosPsi;
-		const T J = q1DcosPsi / (L*cosPsi);
-		potential += cosPsi*cosPsi*J*
-			h_eps(q1DcosPsi, eps)*
-			delta_alpha(abs(sin(theta1)), alpha)*
-			Math<T>::smooth_heaviside(cos(theta1), alpha)*
-			delta_alpha(abs(sin(psi)), alpha)*
-			Math<T>::smooth_heaviside(cosPsi, alpha);
-	}
-	return potential/(q1*q1);
+	return {M, weights, Br_normal, L};
 }
 
 double HighOrderCollision::operator()(
@@ -129,14 +266,13 @@ double HighOrderCollision::operator()(
 	Eigen::MatrixX2d qp;
 	Eigen::Vector2d normal;
 	double L;
-	std::tie(qp, normal, L) = sampleEE2Aligned<double>(positions);
-	double acc = 0;
-	for (size_t q=0; q<QSIZE; ++q) {
-		const Eigen::Vector2d p = qp.row(q);
-		acc += QUADWEIGHTS[q] * potentialVE2<double>(p, normal, L, params);
+	std::vector<double> weights;
+	std::tie(qp, weights, normal, L) = sampleEE2Aligned<double>(positions, QORD);
+	double acc(0.0);
+	for (size_t q=0; q<QORD; ++q) {
+		const Eigen::Vector2<double> p = qp.row(q);
+		acc += weights[q] * integrate_substitution<double>(p[0], p[1], QORD, params.dhat, params.alpha_t, params.r);
 	}
-    logger().debug("HighOrderCollision::operator() -> {}", acc);
-
     return acc;
 }
 
@@ -151,15 +287,14 @@ auto HighOrderCollision::gradient(
 	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
 	Eigen::Vector2<T> normal;
 	T L;
-	std::tie(qp, normal, L) = sampleEE2Aligned<T>(positions_ad);
+	std::vector<double> weights;
+	std::tie(qp, weights, normal, L) = sampleEE2Aligned<T>(positions_ad, QORD);
 	T acc(0.0);
-	for (size_t q=0; q<QSIZE; ++q) {
+	for (size_t q=0; q<QORD; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);
-		acc += QUADWEIGHTS[q] * potentialVE2<T>(p, normal, L, params);
+		acc += weights[q] * integrate_substitution<T>(p[0], p[1], QORD, params.dhat, params.alpha_t, params.r);
 	}
-    const auto grad = acc.grad;
-    logger().debug("HighOrderCollision::gradient -> norm={}", grad.norm());
-	return grad;
+	return acc.grad;
 }
 
 auto HighOrderCollision::hessian(
@@ -173,15 +308,14 @@ auto HighOrderCollision::hessian(
 	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
 	Eigen::Vector2<T> normal;
 	T L;
-	std::tie(qp, normal, L) = sampleEE2Aligned<T>(positions_ad);
+	std::vector<double> weights;
+	std::tie(qp, weights, normal, L) = sampleEE2Aligned<T>(positions_ad, QORD);
 	T acc(0.0);
-	for (size_t q=0; q<QSIZE; ++q) {
+	for (size_t q=0; q<QORD; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);
-		acc += QUADWEIGHTS[q] * potentialVE2<T>(p, normal, L, params);
+		acc += weights[q] * integrate_substitution<T>(p[0], p[1], QORD, params.dhat, params.alpha_t, params.r);
 	}
-    const auto hess = acc.Hess;
-    logger().debug("HighOrderCollision::hessian -> norm={}", hess.norm());
-	return hess;
+	return acc.Hess;
 }
 
 } // namespace ipc
