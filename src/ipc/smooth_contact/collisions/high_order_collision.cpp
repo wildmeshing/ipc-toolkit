@@ -20,14 +20,15 @@ HighOrderCollision::HighOrderCollision(
 	m_vertex_ids[2] = mesh.edges()(_primitive1, 0);
 	m_vertex_ids[3] = mesh.edges()(_primitive1, 1);
 	/*
-    m_is_active = (d.norm() < m_dhat) && primitive_a->is_active() && primitive_b->is_active();
-    if (d.norm() < 1e-12) {
-        logger().warn(
-            "pair distance {}, id {} and {}, dtype {}, active {}", d.norm(),
-            _primitive0, _primitive1,
-            PrimitiveDistType<PrimitiveA, PrimitiveB>::NAME, m_is_active);
-
-        logger().warn("value {}", (*this)(this->dof(V), params));
+    const Eigen::Vector3d ea0 = to_3D(V.row(m_vertex_ids[0]));
+    const Eigen::Vector3d ea1 = to_3D(V.row(m_vertex_ids[1]));
+    const Eigen::Vector3d eb0 = to_3D(V.row(m_vertex_ids[2]));
+    const Eigen::Vector3d eb1 = to_3D(V.row(m_vertex_ids[3]));
+	const auto dt = edge_edge_distance_type(ea0, ea1, eb0, eb1);
+    const double dist_sq = edge_edge_sqr_distance(Eigen::ConstRef<Eigen::Vector3d>(ea0), Eigen::ConstRef<Eigen::Vector3d>(ea1), Eigen::ConstRef<Eigen::Vector3d>(eb0), Eigen::ConstRef<Eigen::Vector3d>(eb1), dt);
+    m_is_active = dist_sq < _dhat * _dhat;
+    if (dist_sq < 1e-12) {
+        logger().warn("edge-edge pair distance is very small: {}", dist_sq);
     }*/
 }
 
@@ -225,23 +226,22 @@ namespace {
 
 template <typename T>
 std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vector2<T>, T> sampleEE2Aligned(
-    Eigen::ConstRef<Vector<T, -1, 8>> positions, int quad_order
+    Eigen::ConstRef<Eigen::Matrix<T, 4, 2>> positions, int quad_order
 ){
 	// we align A with the x axis and sample B
-	const Eigen::Vector<T, 4> A = positions.template head<4>();
-	const Eigen::Vector2<T> A0 = A.template head<2>();
-	const Eigen::Vector2<T> A1 = A.template tail<2>();
+	const Eigen::Vector2<T> A0 = positions.row(0);
+	const Eigen::Vector2<T> A1 = positions.row(1);
 	const Eigen::Vector2<T> AV = A1 - A0;
 	// new reference frame
 	const T L = AV.norm();
+	assert(L>0.0);
 	const Eigen::Vector2<T> Anorm = AV / L;
 	const Eigen::Vector2<T> Aorth(-Anorm.y(),Anorm.x());
 	Eigen::Matrix<T, 2, 2> rot;
 	rot.col(0) = Anorm;
 	rot.col(1) = Aorth;
-	const Eigen::Vector<T, 4> B = positions.template tail<4>();
-	const Eigen::Vector2<T> B0 = B.template head<2>() - A0;
-	const Eigen::Vector2<T> B1 = B.template tail<2>() - A0;
+	const Eigen::Vector2<T> B0 = positions.row(2).transpose() - A0;
+	const Eigen::Vector2<T> B1 = positions.row(3).transpose() - A0;
 	const Eigen::Vector2<T> B0r = rot.transpose()*B0;
 	const Eigen::Vector2<T> B1r = rot.transpose()*B1;
 	std::vector<double> nodes;
@@ -267,7 +267,8 @@ double HighOrderCollision::operator()(
 	Eigen::Vector2d normal;
 	double L;
 	std::vector<double> weights;
-	std::tie(qp, weights, normal, L) = sampleEE2Aligned<double>(positions, QORD);
+	Eigen::Matrix<double, 4, 2> positions_ad = slice_positions<double, 4, 2>(positions);
+	std::tie(qp, weights, normal, L) = sampleEE2Aligned<double>(positions_ad, QORD);
 	double acc(0.0);
 	for (size_t q=0; q<QORD; ++q) {
 		const Eigen::Vector2<double> p = qp.row(q);
@@ -283,7 +284,7 @@ auto HighOrderCollision::gradient(
 {
 	ScalarBase::setVariableCount(N_CORE_DOFS);
 	using T = ADGrad<N_CORE_DOFS>;
-	Vector<T, N_CORE_DOFS> positions_ad = slice_positions<T, N_CORE_DOFS, 1>(positions);
+	Eigen::Matrix<T, 4, 2> positions_ad = slice_positions<T, 4, 2>(positions);
 	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
 	Eigen::Vector2<T> normal;
 	T L;
@@ -304,7 +305,7 @@ auto HighOrderCollision::hessian(
 {
 	ScalarBase::setVariableCount(N_CORE_DOFS);
 	using T = ADHessian<N_CORE_DOFS>;
-	Vector<T, N_CORE_DOFS> positions_ad = slice_positions<T, N_CORE_DOFS, 1>(positions);
+	Eigen::Matrix<T, 4, 2> positions_ad = slice_positions<T, 4, 2>(positions);
 	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
 	Eigen::Vector2<T> normal;
 	T L;

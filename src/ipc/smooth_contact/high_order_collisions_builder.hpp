@@ -1,7 +1,6 @@
 #pragma once
 
-#include "smooth_collisions.hpp"
-#include <ipc/smooth_contact/collisions/high_order_collision.hpp>
+#include "high_order_collisions.hpp"
 
 #include <ipc/collision_mesh.hpp>
 #include <ipc/utils/maybe_parallel_for.hpp>
@@ -42,10 +41,10 @@ public:
 
     static void merge(
         const ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
-        SmoothCollisions& merged_collisions);
+        HighOrderCollisions& merged_collisions);
 
     // Constructed collisions
-    std::vector<std::shared_ptr<SmoothCollision>> collisions;
+    std::vector<std::shared_ptr<HighOrderCollision>> collisions;
 
     // -------------------------------------------------------------------------
 

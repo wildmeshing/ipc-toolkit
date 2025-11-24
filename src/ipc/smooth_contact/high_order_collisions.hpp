@@ -1,28 +1,17 @@
 #pragma once
 
-#include <ipc/collision_mesh.hpp>
-#include <ipc/candidates/candidates.hpp>
-#include <ipc/collisions/normal/edge_edge.hpp>
-#include <ipc/collisions/normal/edge_vertex.hpp>
-#include <ipc/collisions/normal/face_vertex.hpp>
-#include <ipc/collisions/normal/normal_collision.hpp>
-#include <ipc/collisions/normal/plane_vertex.hpp>
-#include <ipc/collisions/normal/vertex_vertex.hpp>
-#include <ipc/smooth_contact/collisions/smooth_collision.hpp>
-
-#include <Eigen/Core>
-
-#include <vector>
+#include <ipc/smooth_contact/smooth_collisions.hpp>
+#include <ipc/smooth_contact/collisions/high_order_collision.hpp>
 
 namespace ipc {
-class SmoothCollisions {
+class HighOrderCollisions {
 public:
     /// @brief The type of the collisions.
-    using value_type = SmoothCollision;
+    using value_type = HighOrderCollision;
 
 public:
-    SmoothCollisions() = default;
-    virtual ~SmoothCollisions() = default;
+    HighOrderCollisions() = default;
+    virtual ~HighOrderCollisions() = default;
 
     void compute_adaptive_dhat(
         const CollisionMesh& mesh,
@@ -68,12 +57,12 @@ public:
     /// @brief Get a reference to collision at index i.
     /// @param i The index of the collision.
     /// @return A reference to the collision.
-    SmoothCollision& operator[](size_t i);
+    HighOrderCollision& operator[](size_t i);
 
     /// @brief Get a const reference to collision at index i.
     /// @param i The index of the collision.
     /// @return A const reference to the collision.
-    const SmoothCollision& operator[](size_t i) const;
+    const HighOrderCollision& operator[](size_t i) const;
 
     /// @brief Compute minimum distance between all contact candidates
     /// @param mesh The collision mesh.
@@ -140,7 +129,7 @@ public:
 
 public:
     /// @brief (active) collision pairs
-    std::vector<std::shared_ptr<SmoothCollision>> collisions;
+    std::vector<std::shared_ptr<HighOrderCollision>> collisions;
 
     /// @brief per-vertex adaptive dhat
     Eigen::VectorXd vert_adaptive_dhat;
@@ -152,5 +141,4 @@ public:
     /// @brief Collision candidates
     Candidates m_candidates;
 };
-
-} // namespace ipc
+}

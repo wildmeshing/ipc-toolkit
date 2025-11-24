@@ -15,7 +15,7 @@ namespace {
         const std::shared_ptr<TCollision>& pair,
         unordered_map<std::pair<index_t, index_t>, std::shared_ptr<TCollision>>&
             cc_to_id,
-        std::vector<std::shared_ptr<SmoothCollision>>& collisions)
+        std::vector<std::shared_ptr<HighOrderCollision>>& collisions)
     {
         if (pair->is_active()
             && cc_to_id.find(pair->get_hash()) == cc_to_id.end()) { // filters dupes
@@ -28,7 +28,7 @@ namespace {
     template <int dim, typename TCollision>
     void add_collision(
         const std::shared_ptr<TCollision>& pair,
-        std::vector<std::shared_ptr<SmoothCollision>>& collisions)
+        std::vector<std::shared_ptr<HighOrderCollision>>& collisions)
     {
         if (pair->is_active()) {
             collisions.push_back(pair);
@@ -74,7 +74,7 @@ void HighOrderCollisionsBuilder<2>::add_edge_vertex_collisions(
 
 void HighOrderCollisionsBuilder<2>::merge(
     const ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
-    SmoothCollisions& merged_collisions)
+    HighOrderCollisions& merged_collisions)
 {
     unordered_map<
         std::pair<index_t, index_t>,

@@ -3,6 +3,7 @@ set(SOURCES
   test_adhesion_potentials.cpp
   test_barrier_potential.cpp
   test_smooth_potential.cpp
+  test_high_order_potential.cpp
   test_friction_potential.cpp
 
   # Benchmarks

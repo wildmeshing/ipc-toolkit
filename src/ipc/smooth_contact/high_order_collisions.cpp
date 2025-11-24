@@ -1,6 +1,6 @@
-#include "smooth_collisions.hpp"
+#include "high_order_collisions.hpp"
 
-#include "smooth_collisions_builder.hpp"
+#include "high_order_collisions_builder.hpp"
 
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_edge.hpp>
@@ -18,7 +18,7 @@
 
 namespace ipc {
 
-void SmoothCollisions::compute_adaptive_dhat(
+void HighOrderCollisions::compute_adaptive_dhat(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices, // set to zero for rest pose
     const SmoothContactParameters params,
@@ -113,23 +113,7 @@ void SmoothCollisions::compute_adaptive_dhat(
     }
 }
 
-void SmoothCollisions::build(
-    const CollisionMesh& mesh,
-    Eigen::ConstRef<Eigen::MatrixXd> vertices,
-    const SmoothContactParameters params,
-    const bool use_adaptive_dhat,
-    const std::shared_ptr<BroadPhase>& broad_phase)
-{
-    assert(vertices.rows() == mesh.num_vertices());
-
-    double inflation_radius = params.dhat / 2;
-
-    // Candidates m_candidates;
-    m_candidates.build(mesh, vertices, inflation_radius, broad_phase);
-    this->build(m_candidates, mesh, vertices, params, use_adaptive_dhat);
-}
-
-void SmoothCollisions::build(
+void HighOrderCollisions::build(
     const Candidates& candidates,
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
@@ -165,25 +149,27 @@ void SmoothCollisions::build(
     };
 
     if (mesh.dim() == 2) {
-        auto storage = create_thread_storage<SmoothCollisionsBuilder<2>>(
-            SmoothCollisionsBuilder<2>());
+        auto storage = create_thread_storage<HighOrderCollisionsBuilder<2>>(
+            HighOrderCollisionsBuilder<2>());
         maybe_parallel_for(
             candidates.ev_candidates.size(),
             [&](int start, int end, int thread_id) {
-                SmoothCollisionsBuilder<2>& local_storage =
+                HighOrderCollisionsBuilder<2>& local_storage =
                     get_local_thread_storage(storage, thread_id);
                 local_storage.add_edge_vertex_collisions(
                     mesh, vertices, candidates.ev_candidates, params, vert_dhat,
                     edge_dhat, start, end);
             });
-        SmoothCollisionsBuilder<2>::merge(storage, *this);
+        HighOrderCollisionsBuilder<2>::merge(storage, *this);
     } else {
-        auto storage = create_thread_storage<SmoothCollisionsBuilder<3>>(
-            SmoothCollisionsBuilder<3>());
+        throw std::logic_error("Not implemented");
+        /*
+        auto storage = create_thread_storage<HighOrderCollisionsBuilder<3>>(
+            HighOrderCollisionsBuilder<3>());
         maybe_parallel_for(
             candidates.ee_candidates.size(),
             [&](int start, int end, int thread_id) {
-                SmoothCollisionsBuilder<3>& local_storage =
+                HighOrderCollisionsBuilder<3>& local_storage =
                     get_local_thread_storage(storage, thread_id);
                 local_storage.add_edge_edge_collisions(
                     mesh, vertices, candidates.ee_candidates, params, vert_dhat,
@@ -193,23 +179,40 @@ void SmoothCollisions::build(
         maybe_parallel_for(
             candidates.fv_candidates.size(),
             [&](int start, int end, int thread_id) {
-                SmoothCollisionsBuilder<3>& local_storage =
+                HighOrderCollisionsBuilder<3>& local_storage =
                     get_local_thread_storage(storage, thread_id);
                 local_storage.add_face_vertex_collisions(
                     mesh, vertices, candidates.fv_candidates, params, vert_dhat,
                     edge_dhat, face_dhat, start, end);
             });
-        SmoothCollisionsBuilder<3>::merge(storage, *this);
+        HighOrderCollisionsBuilder<3>::merge(storage, *this);
+        */
     }
     m_candidates = candidates;
 }
 
+void HighOrderCollisions::build(
+    const CollisionMesh& mesh,
+    Eigen::ConstRef<Eigen::MatrixXd> vertices,
+    const SmoothContactParameters params,
+    const bool use_adaptive_dhat,
+    const std::shared_ptr<BroadPhase>& broad_phase)
+{
+    assert(vertices.rows() == mesh.num_vertices());
+
+    double inflation_radius = params.dhat / 2;
+
+    // Candidates m_candidates;
+    m_candidates.build(mesh, vertices, inflation_radius, broad_phase);
+    this->build(m_candidates, mesh, vertices, params, use_adaptive_dhat);
+}
+
 // ============================================================================
-size_t SmoothCollisions::size() const { return collisions.size(); }
-bool SmoothCollisions::empty() const { return collisions.empty(); }
-void SmoothCollisions::clear() { collisions.clear(); }
+size_t HighOrderCollisions::size() const { return collisions.size(); }
+bool HighOrderCollisions::empty() const { return collisions.empty(); }
+void HighOrderCollisions::clear() { collisions.clear(); }
 
-SmoothCollision& SmoothCollisions::operator[](size_t i)
+HighOrderCollision& HighOrderCollisions::operator[](size_t i)
 {
     if (i < collisions.size()) {
         return *collisions[i];
@@ -217,7 +220,7 @@ SmoothCollision& SmoothCollisions::operator[](size_t i)
     throw std::out_of_range("Collision index is out of range!");
 }
 
-const SmoothCollision& SmoothCollisions::operator[](size_t i) const
+const HighOrderCollision& HighOrderCollisions::operator[](size_t i) const
 {
     if (i < collisions.size()) {
         return *collisions[i];
@@ -225,7 +228,7 @@ const SmoothCollision& SmoothCollisions::operator[](size_t i) const
     throw std::out_of_range("Collision index is out of range!");
 }
 
-std::string SmoothCollisions::to_string(
+std::string HighOrderCollisions::to_string(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
     const SmoothContactParameters& params) const
@@ -245,7 +248,7 @@ std::string SmoothCollisions::to_string(
 }
 
 // NOTE: Actually distance squared
-double SmoothCollisions::compute_minimum_distance(
+double HighOrderCollisions::compute_minimum_distance(
     const CollisionMesh& mesh, Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
     assert(vertices.rows() == mesh.num_vertices());
@@ -276,7 +279,7 @@ double SmoothCollisions::compute_minimum_distance(
     return storage.combine([](double a, double b) { return std::min(a, b); });
 }
 
-double SmoothCollisions::compute_active_minimum_distance(
+double HighOrderCollisions::compute_active_minimum_distance(
     const CollisionMesh& mesh, Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
     assert(vertices.rows() == mesh.num_vertices());
