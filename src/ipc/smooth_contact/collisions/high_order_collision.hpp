@@ -6,7 +6,6 @@ namespace ipc {
 /// @brief Edge-edge collision in 2d
 class HighOrderCollision : public SmoothCollision {
 public:
-    using Super = SmoothCollision;
     static constexpr int N_CORE_DOFS = 8;
 
     HighOrderCollision(

@@ -35,7 +35,7 @@ HighOrderCollision::HighOrderCollision(
 
 namespace {
 	constexpr double PI = 3.141592653589793238462643383279502884;
-	constexpr int QORD = 3;
+	constexpr int QORD = 10;
 
 	template <typename T>
 	T cubic_bspline(T v) {
@@ -234,16 +234,20 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
 	const Eigen::Vector2<T> AV = A1 - A0;
 	// new reference frame
 	const T L = AV.norm();
-	assert(L>0.0);
-	const Eigen::Vector2<T> Anorm = AV / L;
-	const Eigen::Vector2<T> Aorth(-Anorm.y(),Anorm.x());
+	if (L<=0.0) throw std::logic_error("norm is wrong");
+	const Eigen::Vector2<T> AT = AV / L;
+	const Eigen::Vector2<T> AN(-AT.y(),AT.x());
 	Eigen::Matrix<T, 2, 2> rot;
-	rot.col(0) = Anorm;
-	rot.col(1) = Aorth;
-	const Eigen::Vector2<T> B0 = positions.row(2).transpose() - A0;
-	const Eigen::Vector2<T> B1 = positions.row(3).transpose() - A0;
-	const Eigen::Vector2<T> B0r = rot.transpose()*B0;
-	const Eigen::Vector2<T> B1r = rot.transpose()*B1;
+	rot.row(0) = AT;
+	rot.row(1) = AN;
+	const Eigen::Vector2<T> b0 = positions.row(2);
+	const Eigen::Vector2<T> b1 = positions.row(3);
+	const Eigen::Vector2<T> B0 = b0 - A0;
+	const Eigen::Vector2<T> B1 = b1 - A0;
+	if(abs(rot.determinant() - 1.0) > 1e-5) throw std::logic_error("rotation is wrong (Det)");
+	if(((rot * AV) - Eigen::Vector2<T>(L, 0)).norm() > 1e-5) throw std::logic_error("rotation is wrong (orient)");
+	const Eigen::Vector2<T> B0r = rot*B0;
+	const Eigen::Vector2<T> B1r = rot*B1;
 	std::vector<double> nodes;
 	std::vector<double> weights;
 	gauss_legendre(quad_order, nodes, weights);
@@ -253,28 +257,56 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
 		const Eigen::Vector2<T> P = (1-t)*B0r + t*B1r;
 		M.row(i) = P.transpose();
 	}
-	const Eigen::Vector2<T> Br_vec = B1r - B0r;
-	Eigen::Vector2<T> Br_normal(-Br_vec.y(), Br_vec.x());
-	Br_normal.normalize();
+	Eigen::Vector2<T> Br_vec = B1r - B0r;
+	Br_vec.normalize();
+	const Eigen::Vector2<T> Br_normal(-Br_vec.y(), Br_vec.x());
+	/*std::stringstream ss;
+	if constexpr (std::is_same<T, double>::value) {}
+	else{
+		ss <<
+			"A0 " << A0(0).val << ' ' << A0(1).val << '\n' <<
+			"A1 " << A1(0).val << ' ' << A1(1).val << '\n' <<
+			"AV " << AV(0).val << ' ' << AV(1).val << '\n' <<
+			"B0 " << B0(0).val << ' ' << B0(1).val << '\n' <<
+			"B1 " << B1(0).val << ' ' << B1(1).val << '\n' <<
+			"B0r " << B0r(0).val << ' ' << B0r(1).val << '\n' <<
+			"B1r " << B1r(0).val << ' ' << B1r(1).val << '\n' << '\n';
+	}
+	std::cout << ss.str();*/
 	return {M, weights, Br_normal, L};
+}
+
+template <typename T>
+T potential_onesided(
+	Eigen::ConstRef<Eigen::Matrix<T, 4, 2>> positions,
+    const SmoothContactParameters& params
+) {
+	ScalarBase::setVariableCount(HighOrderCollision::N_CORE_DOFS);
+	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
+	Eigen::Vector2<T> normal;
+	T L;
+	std::vector<double> weights;
+	std::tie(qp, weights, normal, L) = sampleEE2Aligned<T>(positions, QORD);
+	T acc(0.0);
+	for (size_t q=0; q<QORD; ++q) {
+		const Eigen::Vector2<T> p = qp.row(q);
+		acc += weights[q] * integrate_substitution<T>(p[0], p[1], QORD, params.dhat, params.alpha_t, params.r);
+	}
+	return acc;
 }
 
 double HighOrderCollision::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const SmoothContactParameters& params) const
 {
-	Eigen::MatrixX2d qp;
-	Eigen::Vector2d normal;
-	double L;
-	std::vector<double> weights;
 	Eigen::Matrix<double, 4, 2> positions_ad = slice_positions<double, 4, 2>(positions);
-	std::tie(qp, weights, normal, L) = sampleEE2Aligned<double>(positions_ad, QORD);
-	double acc(0.0);
-	for (size_t q=0; q<QORD; ++q) {
-		const Eigen::Vector2<double> p = qp.row(q);
-		acc += weights[q] * integrate_substitution<double>(p[0], p[1], QORD, params.dhat, params.alpha_t, params.r);
-	}
-    return acc;
+	Eigen::Matrix<double, 4, 2> positions_ad_rev;
+	positions_ad_rev.row(0) = positions_ad.row(2);
+	positions_ad_rev.row(1) = positions_ad.row(3);
+	positions_ad_rev.row(2) = positions_ad.row(0);
+	positions_ad_rev.row(3) = positions_ad.row(1);
+	double acc = potential_onesided<double>(positions_ad, params) + potential_onesided<double>(positions_ad_rev, params);
+	return acc;
 }
 
 auto HighOrderCollision::gradient(
@@ -282,19 +314,15 @@ auto HighOrderCollision::gradient(
     const SmoothContactParameters& params) const
     -> Vector<double, -1, ELEMENT_SIZE>
 {
-	ScalarBase::setVariableCount(N_CORE_DOFS);
 	using T = ADGrad<N_CORE_DOFS>;
 	Eigen::Matrix<T, 4, 2> positions_ad = slice_positions<T, 4, 2>(positions);
-	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
-	Eigen::Vector2<T> normal;
-	T L;
-	std::vector<double> weights;
-	std::tie(qp, weights, normal, L) = sampleEE2Aligned<T>(positions_ad, QORD);
-	T acc(0.0);
-	for (size_t q=0; q<QORD; ++q) {
-		const Eigen::Vector2<T> p = qp.row(q);
-		acc += weights[q] * integrate_substitution<T>(p[0], p[1], QORD, params.dhat, params.alpha_t, params.r);
-	}
+	Eigen::Matrix<T, 4, 2> positions_ad_rev;
+	positions_ad_rev.row(0) = positions_ad.row(2);
+	positions_ad_rev.row(1) = positions_ad.row(3);
+	positions_ad_rev.row(2) = positions_ad.row(0);
+	positions_ad_rev.row(3) = positions_ad.row(1);
+	T acc = potential_onesided<T>(positions_ad, params)
+		+ potential_onesided<T>(positions_ad_rev, params);
 	return acc.grad;
 }
 
@@ -303,19 +331,15 @@ auto HighOrderCollision::hessian(
     const SmoothContactParameters& params) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
-	ScalarBase::setVariableCount(N_CORE_DOFS);
 	using T = ADHessian<N_CORE_DOFS>;
 	Eigen::Matrix<T, 4, 2> positions_ad = slice_positions<T, 4, 2>(positions);
-	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
-	Eigen::Vector2<T> normal;
-	T L;
-	std::vector<double> weights;
-	std::tie(qp, weights, normal, L) = sampleEE2Aligned<T>(positions_ad, QORD);
-	T acc(0.0);
-	for (size_t q=0; q<QORD; ++q) {
-		const Eigen::Vector2<T> p = qp.row(q);
-		acc += weights[q] * integrate_substitution<T>(p[0], p[1], QORD, params.dhat, params.alpha_t, params.r);
-	}
+	Eigen::Matrix<T, 4, 2> positions_ad_rev;
+	positions_ad_rev.row(0) = positions_ad.row(2);
+	positions_ad_rev.row(1) = positions_ad.row(3);
+	positions_ad_rev.row(2) = positions_ad.row(0);
+	positions_ad_rev.row(3) = positions_ad.row(1);
+	T acc = potential_onesided<T>(positions_ad, params)
+		+ potential_onesided<T>(positions_ad_rev, params);
 	return acc.Hess;
 }
 
