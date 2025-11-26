@@ -35,7 +35,7 @@ HighOrderCollision::HighOrderCollision(
 
 namespace {
 	constexpr double PI = 3.141592653589793238462643383279502884;
-	constexpr int QORD = 10;
+	constexpr int QORD = 11;
 
 	template <typename T>
 	T cubic_bspline(T v) {
@@ -126,27 +126,44 @@ namespace {
 	template <typename T>
 	bool compute_window(T q0,
 						T q1,
+						T L,
 						double alpha,
-						double theta,
+						T theta,
 						T& psi_lower,
 						T& psi_upper) {
 		if (q1 <= 0.0) {
+			std::cout << "q1 <= 0.0" << std::endl;
 			return false;
 		}
 
 		double phi = std::asin(std::min(0.999999, std::max(0.0, alpha)));
-		T lower_geom = std::max(0., -theta - (PI / 2.0)) - phi;
-		T upper_geom = std::min(0., -theta - (PI / 2.0)) + phi;
+		const T th = -theta - (PI / 2.0);
+		T lower_geom = (th > 0 ? th : 0) - phi;
+		T upper_geom = (th < 0 ? th : 0) + phi;
+		//T lower_geom = std::max(-phi, -theta - (PI / 2.0) - phi);
+		//T upper_geom = std::min(+phi, -theta - (PI / 2.0) + phi);
+		std::cout << "psi range (geom): [" << lower_geom << ", " << upper_geom << "]" << std::endl;
 		if (lower_geom >= upper_geom) {
+			std::cout << "lower_geom >= upper_geom" << std::endl;
 			return false;
 		}
 
-		T lower_x = atan((q0 - 1.0) / q1);
+		// @federico added L
+		// T lower_x = atan((q0 - 1.0) / q1);
+		T lower_x = atan((q0 - L) / q1);
 		T upper_x = atan(q0 / q1);
+		std::cout << "psi range (x): [" << lower_x << ", " << upper_x << "]" << std::endl;
+		if (lower_x >= upper_x) {
+			std::cout << "lower_x >= upper_x" << std::endl;
+			return false;
+		}
 
-		psi_lower = (lower_geom > lower_x) ? lower_geom : lower_x;
-		psi_upper = (upper_geom < upper_x) ? upper_geom : upper_x;
+		psi_lower = (lower_geom > lower_x) ? lower_geom : lower_x; //max
+		psi_upper = (upper_geom < upper_x) ? upper_geom : upper_x; //min
+
+		std::cout << "psi range (final): [" << psi_lower << ", " << psi_upper << "]" << std::endl;
 		if (psi_lower >= psi_upper) {
+			std::cout << "psi_lower >= psi_upper" << std::endl;
 			return false;
 		}
 		return true;
@@ -182,15 +199,19 @@ namespace {
 	}
 
 	template <typename T>
-	T integrate_substitution(T q0,
-								T q1,
-								int quad_order,
-								double epsilon,
-								double alpha,
-								double power) {
-		double theta = -PI / 2.0;
+	T integrate_substitution(
+		T q0,
+		T q1,
+		T n0,
+		T n1,
+		T L,
+		int quad_order,
+		double epsilon,
+		double alpha,
+		double power) {
+		const T theta = atan2(n1, n0);
 		T psi_lower, psi_upper;
-		if (!compute_window(q0, q1, alpha, theta, psi_lower, psi_upper)) {
+		if (!compute_window(q0, q1, L, alpha, theta, psi_lower, psi_upper)) {
 			return 0.0;
 		}
 
@@ -212,7 +233,9 @@ namespace {
 			if (x_param < 0.0 || x_param > 1.0) {
 				continue;
 			}
-			T value = integrand_value(x_param, q0, q1, T(0.0), T(-1.0), alpha, epsilon, power);
+			// @federico added normal
+			//T value = integrand_value(x_param, q0, q1, T(0.0), T(-1.0), alpha, epsilon, power);
+			T value = integrand_value(x_param, q0, q1, n0, n1, alpha, epsilon, power);
 			T scaled_value = (q1 * q1) * value;
 			T jac = (q1 / 1.0) / (cos_psi * cos_psi);
 			scaled_sum += weights[i] * scaled_value * jac;
@@ -234,7 +257,11 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
 	const Eigen::Vector2<T> AV = A1 - A0;
 	// new reference frame
 	const T L = AV.norm();
-	if (L<=0.0) throw std::logic_error("norm is wrong");
+	if (L<=0.0) {
+		std::stringstream ss;
+		ss << "norm is wrong " << A0(0) << "," << A0(1) << " " << A1(0) << "," << A1(1) << " " << AV(0) << "," << AV(1) << " " << L;
+		throw std::logic_error(ss.str());
+	}
 	const Eigen::Vector2<T> AT = AV / L;
 	const Eigen::Vector2<T> AN(-AT.y(),AT.x());
 	Eigen::Matrix<T, 2, 2> rot;
@@ -253,8 +280,8 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
 	gauss_legendre(quad_order, nodes, weights);
 	Eigen::Matrix<T, Eigen::Dynamic, 2> M(quad_order, 2);
 	for (size_t i = 0; i<quad_order; ++i) {
-		const double t = nodes.at(i);
-		const Eigen::Vector2<T> P = (1-t)*B0r + t*B1r;
+		const double t = (nodes.at(i)+1)/2;
+		const Eigen::Vector2<T> P = ((1-t) * B0r + t * B1r);
 		M.row(i) = P.transpose();
 	}
 	Eigen::Vector2<T> Br_vec = B1r - B0r;
@@ -270,7 +297,8 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
 			"B0 " << B0(0).val << ' ' << B0(1).val << '\n' <<
 			"B1 " << B1(0).val << ' ' << B1(1).val << '\n' <<
 			"B0r " << B0r(0).val << ' ' << B0r(1).val << '\n' <<
-			"B1r " << B1r(0).val << ' ' << B1r(1).val << '\n' << '\n';
+			"B1r " << B1r(0).val << ' ' << B1r(1).val << '\n' <<
+			"BrN " << Br_normal(0).val << ' ' << Br_normal(1).val << '\n' << '\n';
 	}
 	std::cout << ss.str();*/
 	return {M, weights, Br_normal, L};
@@ -288,9 +316,12 @@ T potential_onesided(
 	std::vector<double> weights;
 	std::tie(qp, weights, normal, L) = sampleEE2Aligned<T>(positions, QORD);
 	T acc(0.0);
+	std::cout << "Positions:\n" << positions << std::endl;
+	std::cout << "Normal: " << normal << std::endl;
 	for (size_t q=0; q<QORD; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);
-		acc += weights[q] * integrate_substitution<T>(p[0], p[1], QORD, params.dhat, params.alpha_t, params.r);
+		acc += weights[q] * integrate_substitution<T>(p(0), p(1), normal(0), normal(1), L, QORD, params.dhat, params.alpha_t, params.r);
+		std::cout << q << " (" << p(0) << ", " << p(1) << ")" << " acc:" << acc << std::endl;
 	}
 	return acc;
 }
