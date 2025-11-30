@@ -227,9 +227,8 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
 {
     const auto method = make_default_broad_phase();
     //const bool adaptive_dhat = GENERATE(true, false);
-    //const bool orientable = GENERATE(true, false);
     const bool adaptive_dhat = false;
-    const bool orientable = false;
+    const bool orientable = GENERATE(true, false);
 
     double dhat = -1;
     std::string mesh_name;
@@ -241,25 +240,23 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
     }
 
     double min_dist_ratio = 1.5;
-    /*
     Eigen::MatrixXd vertices;
     Eigen::MatrixXi edges, faces;
     bool success = igl::readCSV(mesh_name + "-v.csv", vertices);
     success = success && igl::readCSV(mesh_name + "-e.csv", edges);
     CAPTURE(mesh_name);
     REQUIRE(success);
-    */
+    /*
     Eigen::MatrixXd vertices(4,2);
     Eigen::MatrixXi edges(2,2), faces;
     dhat = 2.;
     vertices <<
-        //-10., 0.,
-        //10., 0.,
-        -1., 0.,
-        2., 0.,
+        -100., 0.,
+        200., 0.,
         1., 1.,
         0., 1.;
     edges << 0,1,2,3;
+    */
     /*
     Eigen::MatrixXd vertices(8,2);
     Eigen::MatrixXi edges(8,2), faces;
@@ -292,7 +289,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
         7, 6,
         4, 7;
     */
-    std::cout << "\n" << vertices << "\n" << edges << "\n";
+    //std::cout << "\n" << vertices << "\n" << edges << "\n";
 
     CollisionMesh mesh;
     SmoothContactParameters params(dhat, 0.1, -0.05, 0.1, 0.05, 1);
@@ -307,11 +304,11 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
     CHECK(!collisions.empty());
     std::cout << "smooth collision candidate size " << collisions.size()
               << "\n";
-    std::cout << "edge-edge collision pairs:" << std::endl;
+    /*std::cout << "edge-edge collision pairs:" << std::endl;
     for (const auto& collision : collisions.collisions) {
         if (collision->type() == CollisionType::EDGE_EDGE)
             std::cout << "  (" << (*collision)[0] << ", " << (*collision)[1] << ")" << std::endl;
-    }
+    }*/
 
     CHECK(!has_intersections(mesh, vertices));
 
@@ -336,11 +333,11 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
             fd::flatten(vertices), f, fgrad_b, fd::AccuracyOrder::SECOND, 1e-8);
     }
 
-    for (size_t i = 0; i < vertices.size(); ++i) {
+    /*for (size_t i = 0; i < vertices.size(); ++i) {
         int x = i / vertices.cols();
         int y = i % vertices.cols();
         std::cout << x << ',' << y << ' ' << grad_b(i) << ' ' << fgrad_b(i) << '\n';
-    }
+    }*/
 
     REQUIRE(grad_b.squaredNorm() > 1e-8);
     std::cout << "grad relative error "
@@ -375,7 +372,8 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
 TEST_CASE("High Order barrier potential real sim 2D C^1", "[high_order_potential]")
 {
     const auto method = make_default_broad_phase();
-    const bool adaptive_dhat = GENERATE(true, false);
+    //const bool adaptive_dhat = GENERATE(true, false);
+    const bool adaptive_dhat = false;
 
     double dhat = -1;
     std::string mesh_name;
@@ -406,7 +404,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^1", "[high_order_potential
     CHECK(!collisions.empty());
     std::cout << "smooth collision candidate size " << collisions.size()
               << "\n";
-    std::cout << collisions.to_string(mesh, vertices, params) << "\n";
+    //std::cout << collisions.to_string(mesh, vertices, params) << "\n";
 
     CHECK(!has_intersections(mesh, vertices));
 
