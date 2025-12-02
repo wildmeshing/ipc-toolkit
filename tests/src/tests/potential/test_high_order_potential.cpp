@@ -34,8 +34,7 @@ TEST_CASE("High Order barrier potential codim", "[high_order_potential]")
     mesh = CollisionMesh(
         std::vector<bool>(vertices.rows(), true),
         std::vector<bool>(vertices.rows(), false), vertices, edges, faces);
-
-    SmoothContactParameters params(dhat, 0.85, 0.5, 0.95, 0.6, 2);
+    HighOrderContactParameters params(dhat, 0.85, 0.15, 2, 4);
     collisions.build(mesh, vertices, params, false, method);
     CAPTURE(dhat, method);
     CHECK(!collisions.empty());
@@ -155,7 +154,7 @@ TEST_CASE("High Order barrier potential full gradient and hessian 3D", tagsopt_h
         vertices = mesh.vertices(vertices);
     }
 
-    SmoothContactParameters params(dhat, 0.85, 0.5, 0.95, 0.6, 2);
+    HighOrderContactParameters params(dhat, 0.85, 0.15, 2, 4);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     collisions.compute_adaptive_dhat(mesh, vertices, params, method);
     collisions.build(mesh, vertices, params, adaptive_dhat, method);
@@ -292,7 +291,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
     //std::cout << "\n" << vertices << "\n" << edges << "\n";
 
     CollisionMesh mesh;
-    SmoothContactParameters params(dhat, 0.1, -0.05, 0.1, 0.05, 1);
+    HighOrderContactParameters params(dhat, 0.1, 0.1, 1, 4);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     HighOrderCollisions collisions;
     mesh = CollisionMesh(
@@ -394,7 +393,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^1", "[high_order_potential
     // std::cout << "\n" <<  vertices << "\n" << edges << "\n";
 
     CollisionMesh mesh;
-    SmoothContactParameters params(dhat, 0.9, -0.05, 0.95, 0.05, 1);
+    HighOrderContactParameters params(dhat, 0.9, 0.15, 1, 4);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     HighOrderCollisions collisions;
     mesh = CollisionMesh(vertices, edges, faces);

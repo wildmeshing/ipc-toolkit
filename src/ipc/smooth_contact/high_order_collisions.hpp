@@ -16,7 +16,7 @@ public:
     void compute_adaptive_dhat(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const SmoothContactParameters params,
+        const HighOrderContactParameters params,
         const std::shared_ptr<BroadPhase>& broad_phase =
             make_default_broad_phase());
 
@@ -27,7 +27,7 @@ public:
     void build(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const SmoothContactParameters params,
+        const HighOrderContactParameters params,
         const bool use_adaptive_dhat = false,
         const std::shared_ptr<BroadPhase>& broad_phase =
             make_default_broad_phase());
@@ -40,7 +40,7 @@ public:
         const Candidates& _candidates,
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const SmoothContactParameters params,
+        const HighOrderContactParameters params,
         const bool use_adaptive_dhat = false);
 
     // ------------------------------------------------------------------------
@@ -84,7 +84,7 @@ public:
     std::string to_string(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const SmoothContactParameters& params) const;
+        const HighOrderContactParameters& params) const;
 
     /// @brief Get per-vertex dhat value when dhat is adaptive
     double get_vert_dhat(int vert_id) const

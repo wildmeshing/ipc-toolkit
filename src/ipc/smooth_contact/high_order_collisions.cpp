@@ -21,7 +21,7 @@ namespace ipc {
 void HighOrderCollisions::compute_adaptive_dhat(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices, // set to zero for rest pose
-    const SmoothContactParameters params,
+    const HighOrderContactParameters params,
     const std::shared_ptr<BroadPhase>& broad_phase)
 {
     assert(vertices.rows() == mesh.num_vertices());
@@ -117,7 +117,7 @@ void HighOrderCollisions::build(
     const Candidates& candidates,
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
-    const SmoothContactParameters params,
+    const HighOrderContactParameters params,
     const bool use_adaptive_dhat)
 {
     assert(vertices.rows() == mesh.num_vertices());
@@ -194,7 +194,7 @@ void HighOrderCollisions::build(
 void HighOrderCollisions::build(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
-    const SmoothContactParameters params,
+    const HighOrderContactParameters params,
     const bool use_adaptive_dhat,
     const std::shared_ptr<BroadPhase>& broad_phase)
 {
@@ -231,7 +231,7 @@ const HighOrderCollision& HighOrderCollisions::operator[](size_t i) const
 std::string HighOrderCollisions::to_string(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
-    const SmoothContactParameters& params) const
+    const HighOrderContactParameters& params) const
 {
     std::stringstream ss;
     for (const auto& cc : collisions) {

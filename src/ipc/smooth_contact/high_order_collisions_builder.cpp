@@ -10,10 +10,9 @@
 namespace ipc {
 
 namespace {
-    template <int dim, typename TCollision>
     void add_collision(
-        const std::shared_ptr<TCollision>& pair,
-        unordered_map<std::pair<index_t, index_t>, std::shared_ptr<TCollision>>&
+        const std::shared_ptr<HighOrderCollision>& pair,
+        unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>&
             cc_to_id,
         std::vector<std::shared_ptr<HighOrderCollision>>& collisions)
     {
@@ -24,23 +23,13 @@ namespace {
             collisions.push_back(pair);
         }
     }
-
-    template <int dim, typename TCollision>
-    void add_collision(
-        const std::shared_ptr<TCollision>& pair,
-        std::vector<std::shared_ptr<HighOrderCollision>>& collisions)
-    {
-        if (pair->is_active()) {
-            collisions.push_back(pair);
-        }
-    }
 } // namespace
 
 void HighOrderCollisionsBuilder<2>::add_edge_vertex_collisions(
     const CollisionMesh& mesh,
     const Eigen::MatrixXd& vertices,
     const std::vector<EdgeVertexCandidate>& candidates,
-    const SmoothContactParameters& params,
+    const HighOrderContactParameters& params,
     const std::function<double(const index_t)>& vert_dhat,
     const std::function<double(const index_t)>& edge_dhat,
     const size_t start_i,
@@ -61,7 +50,7 @@ void HighOrderCollisionsBuilder<2>::add_edge_vertex_collisions(
 		if (distance_sqr >= dhat * dhat) continue;
 
 		for (int ej : adj) {
-			add_collision<2, HighOrderCollision>(
+			add_collision(
 				std::make_shared<HighOrderCollision>(
 					std::min<index_t>(ei, ej), std::max<index_t>(ei, ej),
 					mesh, params, dhat, vertices),

@@ -8,7 +8,7 @@ namespace ipc {
 
 class HighOrderContactPotential {
 public:
-    HighOrderContactPotential(const SmoothContactParameters& _params)
+    HighOrderContactPotential(const HighOrderContactParameters& _params)
         : params(_params)
     {
     }
@@ -80,7 +80,7 @@ public:
 
 protected:
     /// @brief GCP parameters for collision potential
-    SmoothContactParameters params;
+    HighOrderContactParameters params;
 };
 
 } // namespace ipc
