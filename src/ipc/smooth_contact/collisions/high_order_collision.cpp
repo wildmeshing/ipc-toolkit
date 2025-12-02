@@ -74,9 +74,10 @@ T potential_onesided(
 	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
 	Eigen::Vector2<T> normal;
 	std::vector<double> weights;
-	std::tie(qp, weights, normal) = SampleEdge<T>(edge1_pos, QORD);
+	const int qord = params.quad_points;
+	std::tie(qp, weights, normal) = SampleEdge<T>(edge1_pos, qord);
 	T acc(0.0);
-	for (size_t q=0; q<QORD; ++q) {
+	for (size_t q=0; q<qord; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);
 		const contact_potential_integration::LineSegment<T> segment(
 			{{ edge0_pos(0, 0), edge0_pos(0, 1) }},
@@ -84,7 +85,7 @@ T potential_onesided(
 		const std::array<T, 2> point{{ p(0), p(1) }};
 		const std::array<T, 2> normal_arr{{ normal(0), normal(1) }};
 		acc += weights[q] * contact_potential_integration::integrate_potential_line_segment_substitution<T>(
-			segment, point, normal_arr, params.dhat, params.alpha_t, params.r, QORD);
+			segment, point, normal_arr, params.dhat, params.alpha_t, params.r, qord);
 	}
 	return acc;
 }
