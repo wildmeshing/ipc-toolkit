@@ -4,8 +4,6 @@
 #include "line_segment_int_substitution_impl.h"
 //#include <math.h>
 
-constexpr int QORD = 16;
-
 namespace ipc {
 
 HighOrderCollision::HighOrderCollision(
