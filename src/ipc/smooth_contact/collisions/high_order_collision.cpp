@@ -13,28 +13,30 @@ HighOrderCollision::HighOrderCollision(
     const HighOrderContactParameters& params,
     const double _dhat,
     const Eigen::MatrixXd& V
-)
+) :
+	m_primitive0(_primitive0),
+	m_primitive1(_primitive1),
+	m_dhat(_dhat),
+	m_vertex_ids(4)
 {
-	primitive0 = _primitive0;
-	primitive1 = _primitive1;
-	m_dhat = _dhat;
-	m_is_active = true;
-	m_vertex_ids.resize(4);
-	m_vertex_ids[0] = mesh.edges()(_primitive0, 0);
-	m_vertex_ids[1] = mesh.edges()(_primitive0, 1);
-	m_vertex_ids[2] = mesh.edges()(_primitive1, 0);
-	m_vertex_ids[3] = mesh.edges()(_primitive1, 1);
-	/*
+	m_vertex_ids[0] = mesh.edges()(m_primitive0, 0);
+	m_vertex_ids[1] = mesh.edges()(m_primitive0, 1);
+	m_vertex_ids[2] = mesh.edges()(m_primitive1, 0);
+	m_vertex_ids[3] = mesh.edges()(m_primitive1, 1);
     const Eigen::Vector3d ea0 = to_3D(V.row(m_vertex_ids[0]));
     const Eigen::Vector3d ea1 = to_3D(V.row(m_vertex_ids[1]));
     const Eigen::Vector3d eb0 = to_3D(V.row(m_vertex_ids[2]));
     const Eigen::Vector3d eb1 = to_3D(V.row(m_vertex_ids[3]));
-	const auto dt = edge_edge_distance_type(ea0, ea1, eb0, eb1);
-    const double dist_sq = edge_edge_sqr_distance(Eigen::ConstRef<Eigen::Vector3d>(ea0), Eigen::ConstRef<Eigen::Vector3d>(ea1), Eigen::ConstRef<Eigen::Vector3d>(eb0), Eigen::ConstRef<Eigen::Vector3d>(eb1), dt);
-    m_is_active = dist_sq < _dhat * _dhat;
+    const double dist_sq = edge_edge_sqr_distance(
+		Eigen::ConstRef<Eigen::Vector3d>(ea0),
+		Eigen::ConstRef<Eigen::Vector3d>(ea1),
+		Eigen::ConstRef<Eigen::Vector3d>(eb0),
+		Eigen::ConstRef<Eigen::Vector3d>(eb1),
+		edge_edge_distance_type(ea0, ea1, eb0, eb1));
+    m_is_active = dist_sq < m_dhat * m_dhat;
     if (dist_sq < 1e-12) {
         logger().warn("edge-edge pair distance is very small: {}", dist_sq);
-    }*/
+    }
 }
 
 template <typename T>

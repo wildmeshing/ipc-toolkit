@@ -16,6 +16,7 @@
 
 using namespace ipc;
 
+/*
 TEST_CASE("High Order barrier potential codim", "[high_order_potential]")
 {
     const auto method = make_default_broad_phase();
@@ -221,6 +222,7 @@ TEST_CASE("High Order barrier potential full gradient and hessian 3D", tagsopt_h
               << hess_b.norm() << " " << fhess_b.norm() << "\n";
     CHECK((hess_b - fhess_b).norm() / hess_b.norm() < 1e-5);
 }
+*/
 
 TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential]")
 {

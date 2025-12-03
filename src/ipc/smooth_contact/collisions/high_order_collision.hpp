@@ -48,15 +48,15 @@ public:
     bool operator==(const HighOrderCollision& other) const
     {
         return (
-            primitive0 == other.primitive0 && primitive1 == other.primitive1);
+            m_primitive0 == other.m_primitive0 && m_primitive1 == other.m_primitive1);
     }
 
     index_t operator[](int idx) const
     {
         if (idx == 0) {
-            return primitive0;
+            return m_primitive0;
         } else if (idx == 1) {
-            return primitive1;
+            return m_primitive1;
         } else {
             throw std::runtime_error("Invalid index in high_order_collision!");
         }
@@ -64,7 +64,7 @@ public:
 
     std::pair<index_t, index_t> get_hash() const
     {
-        return std::make_pair(primitive0, primitive1);
+        return std::make_pair(m_primitive0, m_primitive1);
     }
 
     // ---- non distance type potential ----
@@ -100,7 +100,7 @@ public:
 
 protected:
     bool m_is_active = true;
-    index_t primitive0, primitive1;
+    index_t m_primitive0, m_primitive1;
     double m_dhat;
     std::vector<index_t> m_vertex_ids;
 };
