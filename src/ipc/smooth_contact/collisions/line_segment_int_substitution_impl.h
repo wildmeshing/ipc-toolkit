@@ -150,6 +150,50 @@ SubstitutionWindow<F> compute_substitution_window(
     return SubstitutionWindow<F>{psi_lower, psi_upper, q0, q1, length, rotated_normal};
 }
 
+template <typename F>
+std::array<F, 2> compute_quadrature_window(
+    const LineSegment<F>& sampledSegment,
+    const LineSegment<F>& rotatedSegment,
+    double alpha) {
+    F sampled_length = sqrt(sampledSegment.delta[0] * sampledSegment.delta[0] + sampledSegment.delta[1] * sampledSegment.delta[1]);
+
+    std::array<F, 2> delta = {{rotatedSegment.p1[0] - rotatedSegment.p0[0], rotatedSegment.p1[1] - rotatedSegment.p0[1]}};
+    F length = sqrt(delta[0] * delta[0] + delta[1] * delta[1]);
+    std::array<F, 2> normal = {{-delta[1] / length, delta[0] / length}};
+
+    auto [q0_p0, q1_p0, rotated_normal_p0, length_p0] = rotate_point_and_normal(sampledSegment, rotatedSegment.p0, normal);
+    auto [q0_p1, q1_p1, rotated_normal_p1, length_p1] = rotate_point_and_normal(sampledSegment, rotatedSegment.p1, normal);
+
+    if(!(abs(rotated_normal_p0[0] - rotated_normal_p1[0]) < 1e-9 && abs(rotated_normal_p0[1] - rotated_normal_p1[1]) < 1e-9)) {
+        throw std::logic_error("Normals at endpoints differ.");
+    }
+
+    if (!(0.0 < alpha && alpha < 1.0)) {
+        throw std::runtime_error("Substitution integral requires 0 < alpha < 1.");
+    }
+
+    double phi = asin(max(1e-12, min(1.0 - 1e-12, alpha)));
+    F theta = atan2(rotated_normal_p0[1], rotated_normal_p0[0]);
+
+    F psi_lower_geom = max(-phi, -theta - (PI / 2.0) - phi);
+    F psi_upper_geom = min(phi, -theta - (PI / 2.0) + phi);
+    if (psi_lower_geom >= psi_upper_geom) {
+        return {{0.0, 0.0}};
+    }
+    if((q0_p0 < q0_p1)) throw std::logic_error("Orientation is wrong.");
+    F x_lower_geom = q0_p1 + q1_p1*tan(psi_lower_geom);
+    F x_upper_geom = q0_p0 + q1_p0*tan(psi_upper_geom);
+
+    F x_lower = max(x_lower_geom, 0.)/sampled_length;
+    F x_upper = min(x_upper_geom, sampled_length)/sampled_length;
+
+    if (x_lower >= x_upper) {
+        return {{0.0, 0.0}};
+    }
+
+    return {{x_lower, x_upper}};
+}
+
 void gauss_legendre(int n, std::vector<double>& nodes, std::vector<double>& weights) {
     nodes.resize(n);
     weights.resize(n);

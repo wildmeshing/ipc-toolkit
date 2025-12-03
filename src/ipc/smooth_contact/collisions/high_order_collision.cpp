@@ -40,8 +40,8 @@ HighOrderCollision::HighOrderCollision(
 }
 
 template <typename T>
-std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vector2<T>> SampleEdge(
-    Eigen::ConstRef<Eigen::Matrix<T, 2, 2>> edge_positions, int quad_order
+std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vector2<T>> sample_edge(
+    Eigen::ConstRef<Eigen::Matrix<T, 2, 2>> edge_positions, int quad_order, std::array<T, 2> window={0.0, 1.0}
 ){
 	const Eigen::Vector2<T> p0 = edge_positions.row(0);
 	const Eigen::Vector2<T> p1 = edge_positions.row(1);
@@ -52,7 +52,8 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
 
 	Eigen::Matrix<T, Eigen::Dynamic, 2> M(quad_order, 2);
 	for (size_t i = 0; i<quad_order; ++i) {
-		const double t = (nodes.at(i)+1)/2;
+		const double t01 = (nodes.at(i)+1)/2;
+		const T t = ((1-t01) * window[0] + t01 * window[1]);
 		const Eigen::Vector2<T> P = ((1-t) * p0 + t * p1);
 		M.row(i) = P.transpose();
 	}
@@ -75,7 +76,15 @@ T potential_onesided(
 	Eigen::Vector2<T> normal;
 	std::vector<double> weights;
 	const int qord = params.quad_points;
-	std::tie(qp, weights, normal) = SampleEdge<T>(edge1_pos, qord);
+	const contact_potential_integration::LineSegment<T> projected_segment(
+		{{ edge0_pos(0, 0), edge0_pos(0, 1) }},
+		{{ edge0_pos(1, 0), edge0_pos(1, 1) }});
+	const contact_potential_integration::LineSegment<T> sampled_segment(
+		{{ edge1_pos(0, 0), edge1_pos(0, 1) }},
+		{{ edge1_pos(1, 0), edge1_pos(1, 1) }});
+	auto window = contact_potential_integration::compute_quadrature_window(
+		sampled_segment, projected_segment, params.alpha_t);
+	std::tie(qp, weights, normal) = sample_edge<T>(edge1_pos, qord, window);
 	T acc(0.0);
 	for (size_t q=0; q<qord; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);
