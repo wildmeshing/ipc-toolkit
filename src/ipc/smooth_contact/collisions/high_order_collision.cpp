@@ -45,6 +45,9 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
 ){
 	const Eigen::Vector2<T> p0 = edge_positions.row(0);
 	const Eigen::Vector2<T> p1 = edge_positions.row(1);
+	if (window[0] < 0.0 || window[1] > 1.0 || window[1] < window[0]) {
+		throw std::runtime_error("Invalid window!");
+	}
 
 	std::vector<double> nodes;
 	std::vector<double> weights;
@@ -85,6 +88,7 @@ T potential_onesided(
 	auto window = contact_potential_integration::compute_quadrature_window(
 		sampled_segment, projected_segment, params.alpha_t);
 	std::tie(qp, weights, normal) = sample_edge<T>(edge1_pos, qord, window);
+	const T window_width = window[1] - window[0];
 	T acc(0.0);
 	for (size_t q=0; q<qord; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);
@@ -96,7 +100,7 @@ T potential_onesided(
 		acc += weights[q] * contact_potential_integration::integrate_potential_line_segment_substitution<T>(
 			segment, point, normal_arr, params.dhat, params.alpha_t, params.r, qord);
 	}
-	return acc;
+	return window_width*acc;
 }
 
 double HighOrderCollision::operator()(
