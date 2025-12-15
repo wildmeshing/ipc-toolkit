@@ -1,42 +1,131 @@
 #include "high_order_collision.hpp"
 #include <ipc/config.hpp>
+#include <ipc/distance/point_point.hpp>
+#include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/edge_edge.hpp>
 #include "line_segment_int_substitution_impl.h"
-//#include <math.h>
 
 namespace ipc {
 
-HighOrderCollision::HighOrderCollision(
+// clang-format off
+template <> CollisionType HighOrderCollisionTemplate<Vertex2, Vertex2>::type() const { return CollisionType::VERTEX_VERTEX; }
+template <> CollisionType HighOrderCollisionTemplate<Edge2P1, Vertex2>::type() const { return CollisionType::EDGE_VERTEX; }
+template <> CollisionType HighOrderCollisionTemplate<Edge2P1, Edge2P1>::type() const { return CollisionType::EDGE_EDGE; }
+// clang-format on
+
+// clang-format off
+template <> std::string HighOrderCollisionTemplate<Vertex2, Vertex2>::name() const { return "vv_2d"; }
+template <> std::string HighOrderCollisionTemplate<Edge2P1, Vertex2>::name() const { return "ve_2d"; }
+template <> std::string HighOrderCollisionTemplate<Edge2P1, Edge2P1>::name() const { return "ee_2d"; }
+// clang-format on
+
+Eigen::VectorXd HighOrderCollision::dof(Eigen::ConstRef<Eigen::MatrixXd> X) const
+{
+    const int DIM = X.cols();
+    Eigen::VectorXd x(num_vertices() * DIM);
+    if (DIM == 2) {
+        for (int i = 0; i < num_vertices(); i++) {
+            x.segment<2>(i * 2) = X.row(m_vertex_ids[i]);
+        }
+    } else if (DIM == 3) {
+        for (int i = 0; i < num_vertices(); i++) {
+            x.segment<3>(i * 3) = X.row(m_vertex_ids[i]);
+        }
+    } else {
+        throw std::runtime_error("Invalid dimension!");
+    }
+    return x;
+}
+
+template <typename PrimitiveA, typename PrimitiveB>
+auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::get_core_indices() const
+    -> Vector<int, N_CORE_DOFS>
+{
+    Vector<int, N_CORE_DOFS> core_indices;
+    core_indices << Eigen::VectorXi::LinSpaced(
+        N_CORE_DOFS_A, 0, N_CORE_DOFS_A - 1),
+        Eigen::VectorXi::LinSpaced(
+            N_CORE_DOFS_B, primitive_a->n_dofs(),
+            primitive_a->n_dofs() + N_CORE_DOFS_B - 1);
+    return core_indices;
+}
+
+template <typename PrimitiveA, typename PrimitiveB>
+HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::HighOrderCollisionTemplate(
     index_t _primitive0,
     index_t _primitive1,
     const CollisionMesh& mesh,
     const HighOrderContactParameters& params,
     const double _dhat,
-    const Eigen::MatrixXd& V
-) :
-	m_primitive0(_primitive0),
-	m_primitive1(_primitive1),
-	m_dhat(_dhat),
-	m_vertex_ids(4)
+    const Eigen::MatrixXd& V)
+    : HighOrderCollision(_primitive0, _primitive1, _dhat, mesh)
 {
-	m_vertex_ids[0] = mesh.edges()(m_primitive0, 0);
-	m_vertex_ids[1] = mesh.edges()(m_primitive0, 1);
-	m_vertex_ids[2] = mesh.edges()(m_primitive1, 0);
-	m_vertex_ids[3] = mesh.edges()(m_primitive1, 1);
-    const Eigen::Vector3d ea0 = to_3D(V.row(m_vertex_ids[0]));
-    const Eigen::Vector3d ea1 = to_3D(V.row(m_vertex_ids[1]));
-    const Eigen::Vector3d eb0 = to_3D(V.row(m_vertex_ids[2]));
-    const Eigen::Vector3d eb1 = to_3D(V.row(m_vertex_ids[3]));
-    const double dist_sq = edge_edge_sqr_distance(
-		Eigen::ConstRef<Eigen::Vector3d>(ea0),
-		Eigen::ConstRef<Eigen::Vector3d>(ea1),
-		Eigen::ConstRef<Eigen::Vector3d>(eb0),
-		Eigen::ConstRef<Eigen::Vector3d>(eb1),
-		edge_edge_distance_type(ea0, ea1, eb0, eb1));
-    m_is_active = dist_sq < m_dhat * m_dhat;
-    if (dist_sq < 1e-12) {
-        logger().warn("edge-edge pair distance is very small: {}", dist_sq);
+    primitive_a = std::make_unique<PrimitiveA>(_primitive0, mesh, V);
+    primitive_b = std::make_unique<PrimitiveB>(_primitive1, mesh, V);
+        
+    if ((primitive_a->n_vertices() + primitive_b->n_vertices()) * DIM
+        > ELEMENT_SIZE) {
+        logger().error(
+            "Too many neighbors for collision pair! {} > {}! Increase MAX_VERT_3D in common.hpp",
+            primitive_a->n_vertices() + primitive_b->n_vertices(), MAX_VERT_3D);
     }
+
+    int i = 0;
+    m_vertex_ids.assign(
+        primitive_a->vertex_ids().size() + primitive_b->vertex_ids().size(),
+        -1);
+    for (auto& v : primitive_a->vertex_ids()) {
+        m_vertex_ids[i++] = v;
+    }
+    for (auto& v : primitive_b->vertex_ids()) {
+        m_vertex_ids[i++] = v;
+    }
+    assert(i == primitive_a->n_vertices() + primitive_b->n_vertices());
+
+    const double dist_sq = compute_distance(V);
+    m_is_active = dist_sq < m_dhat * m_dhat;
+    /*
+
+    if (d.norm() < 1e-12) {
+        logger().warn(
+            "pair distance {}, id {} and {}, dtype {}, active {}", d.norm(),
+            _primitive0, _primitive1,
+            PrimitiveDistType<PrimitiveA, PrimitiveB>::NAME, m_is_active);
+
+        logger().warn("value {}", (*this)(this->dof(V), params));
+    }
+    */
+}
+
+template<>
+double HighOrderCollisionTemplate<Vertex2, Vertex2>::compute_distance(
+    Eigen::ConstRef<Eigen::MatrixXd> vertices) const
+{
+    return point_point_distance(
+        vertices.row(m_vertex_ids[0]), vertices.row(m_vertex_ids[1]));
+}
+
+template<>
+double HighOrderCollisionTemplate<Edge2P1, Vertex2>::compute_distance(
+    Eigen::ConstRef<Eigen::MatrixXd> vertices) const
+{
+    return point_edge_distance(
+        vertices.row(m_vertex_ids[2]), vertices.row(m_vertex_ids[0]),
+        vertices.row(m_vertex_ids[1]));
+}
+
+template<>
+double HighOrderCollisionTemplate<Edge2P1, Edge2P1>::compute_distance(
+    Eigen::ConstRef<Eigen::MatrixXd> vertices) const
+{
+    const auto& ea0 = vertices.row(m_vertex_ids[0]);
+    const auto& ea1 = vertices.row(m_vertex_ids[1]);
+    const auto& eb0 = vertices.row(m_vertex_ids[2]);
+    const auto& eb1 = vertices.row(m_vertex_ids[3]);
+    return std::min({ point_edge_distance(ea0, eb0, eb1),
+                      point_edge_distance(ea1, eb0, eb1),
+                      point_edge_distance(eb0, ea0, ea1),
+                      point_edge_distance(eb1, ea0, ea1) });
 }
 
 template <typename T>
@@ -74,7 +163,6 @@ T potential_onesided(
 	Eigen::ConstRef<Eigen::Matrix<T, 2, 2>> edge1_pos,
     const HighOrderContactParameters& params
 ) {
-	ScalarBase::setVariableCount(HighOrderCollision::N_CORE_DOFS);
 	Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
 	Eigen::Vector2<T> normal;
 	std::vector<double> weights;
@@ -103,7 +191,45 @@ T potential_onesided(
 	return window_width*acc;
 }
 
-double HighOrderCollision::operator()(
+template <typename PrimitiveA, typename PrimitiveB>
+double HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::operator()(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+{
+    return 0;
+}
+
+template <typename PrimitiveA, typename PrimitiveB>
+auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::gradient(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+    -> Vector<double, -1, ELEMENT_SIZE>
+{
+    return Vector<double, -1, ELEMENT_SIZE>::Zero(n_dofs());
+}
+
+template <typename PrimitiveA, typename PrimitiveB>
+auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::hessian(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+    -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
+{
+    return MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n_dofs(), n_dofs());
+}
+
+// ---- distance ----
+
+template <typename PrimitiveA, typename PrimitiveB>
+double HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::compute_distance(
+    Eigen::ConstRef<Eigen::MatrixXd> vertices) const
+{
+    // This generic implementation is not used.
+    // Specializations will provide their own implementation.
+    return 0;
+}
+
+template <>
+double HighOrderCollisionTemplate<Edge2P1, Edge2P1>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params) const
 {
@@ -114,7 +240,8 @@ double HighOrderCollision::operator()(
 		+ potential_onesided<double>(edge1_pos, edge0_pos, params);
 }
 
-auto HighOrderCollision::gradient(
+template <>
+auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::gradient(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params) const
     -> Vector<double, -1, ELEMENT_SIZE>
@@ -128,10 +255,22 @@ auto HighOrderCollision::gradient(
 	return acc.grad;
 }
 
-auto HighOrderCollision::hessian(
+template <typename PrimitiveA, typename PrimitiveB>
+auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::core_vertex_ids() const
+    -> std::array<index_t, N_CORE_DOFS>
+{
+    std::array<index_t, N_CORE_DOFS> vids {};
+    auto ids = get_core_indices();
+    for (int i = 0; i < N_CORE_DOFS; i++) {
+        vids[i] = m_vertex_ids[ids[i]];
+    }
+    return vids;
+}
+
+template <>
+auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::hessian(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
-    -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
+    const HighOrderContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
 	using T = ADHessian<N_CORE_DOFS>;
 	Eigen::Matrix<T, 4, 2> positions_ad = slice_positions<T, 4, 2>(positions);
@@ -142,31 +281,9 @@ auto HighOrderCollision::hessian(
 	return acc.Hess;
 }
 
-double HighOrderCollision::compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const
-{
-    const Eigen::Vector3d ea0 = to_3D(vertices.row(m_vertex_ids[0]));
-    const Eigen::Vector3d ea1 = to_3D(vertices.row(m_vertex_ids[1]));
-    const Eigen::Vector3d eb0 = to_3D(vertices.row(m_vertex_ids[2]));
-    const Eigen::Vector3d eb1 = to_3D(vertices.row(m_vertex_ids[3]));
-    return edge_edge_distance(ea0, ea1, eb0, eb1);
-}
-
-Eigen::VectorXd HighOrderCollision::dof(Eigen::ConstRef<Eigen::MatrixXd> X) const
-{
-    const int DIM = X.cols();
-    Eigen::VectorXd x(num_vertices() * DIM);
-    if (DIM == 2) {
-        for (int i = 0; i < num_vertices(); i++) {
-            x.segment<2>(i * 2) = X.row(m_vertex_ids[i]);
-        }
-    } else if (DIM == 3) {
-        for (int i = 0; i < num_vertices(); i++) {
-            x.segment<3>(i * 3) = X.row(m_vertex_ids[i]);
-        }
-    } else {
-        throw std::runtime_error("Invalid dimension!");
-    }
-    return x;
-}
+// Note: Primitive pair order cannot change
+template class HighOrderCollisionTemplate<Edge2P1, Vertex2>;
+template class HighOrderCollisionTemplate<Vertex2, Vertex2>;
+template class HighOrderCollisionTemplate<Edge2P1, Edge2P1>;
 
 } // namespace ipc

@@ -224,73 +224,16 @@ TEST_CASE("High Order barrier potential full gradient and hessian 3D", tagsopt_h
 }
 */
 
-TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential]")
+void test_high_order_potential(
+    Eigen::MatrixXd& vertices,
+    Eigen::MatrixXi& edges,
+    double dhat)
 {
-    const auto method = make_default_broad_phase();
-    //const bool adaptive_dhat = GENERATE(true, false);
     const bool adaptive_dhat = false;
-    const bool orientable = GENERATE(true, false);
-
-    double dhat = -1;
-    std::string mesh_name;
-    SECTION("debug1")
-    {
-        mesh_name =
-            (tests::DATA_DIR / "gcp" / "nonlinear_solve_iter020.obj").string();
-        dhat = 3e-2;
-    }
-
-    double min_dist_ratio = 1.5;
-    Eigen::MatrixXd vertices;
-    Eigen::MatrixXi edges, faces;
-    bool success = igl::readCSV(mesh_name + "-v.csv", vertices);
-    success = success && igl::readCSV(mesh_name + "-e.csv", edges);
-    CAPTURE(mesh_name);
-    REQUIRE(success);
-    /*
-    Eigen::MatrixXd vertices(4,2);
-    Eigen::MatrixXi edges(2,2), faces;
-    dhat = 2.;
-    vertices <<
-        -100., 0.,
-        200., 0.,
-        1., 1.,
-        0., 1.;
-    edges << 0,1,2,3;
-    */
-    /*
-    Eigen::MatrixXd vertices(8,2);
-    Eigen::MatrixXi edges(8,2), faces;
-    dhat = .4;
-    vertices << // horizontal squares
-        -1., 1.,
-        -1., 0.,
-        -.1, 0.,
-        -.1, 1.,
-        .1,  1.,
-        .1,  0.,
-        1.,  0.,
-        1.,  1.;
-    vertices << // vertical squares
-        -1., 1.,
-        -1., 0.,
-        -.1, 0.,
-        -.1, 1.,
-        -1., -.1,
-        -1., -1.,
-        -.1, -1.,
-        -.1, -.1;
-    edges <<
-        1, 0,
-        2, 1,
-        3, 2,
-        0, 3,
-        5, 4,
-        6, 5,
-        7, 6,
-        4, 7;
-    */
-    //std::cout << "\n" << vertices << "\n" << edges << "\n";
+    const bool orientable = false;
+    const auto method = make_default_broad_phase();
+    const double min_dist_ratio = 1.5;
+    Eigen::MatrixXi faces;
 
     CollisionMesh mesh;
     HighOrderContactParameters params(dhat, 0.1, 0.1, 1, 4);
@@ -303,18 +246,19 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
     collisions.build(mesh, vertices, params, adaptive_dhat, method);
     CAPTURE(dhat, method, adaptive_dhat);
     CHECK(!collisions.empty());
-    std::cout << "smooth collision candidate size " << collisions.size()
-              << "\n";
-    /*std::cout << "edge-edge collision pairs:" << std::endl;
-    for (const auto& collision : collisions.collisions) {
-        if (collision->type() == CollisionType::EDGE_EDGE)
-            std::cout << "  (" << (*collision)[0] << ", " << (*collision)[1] << ")" << std::endl;
-    }*/
+    std::cout << "high order collision candidate size " << collisions.size()
+        << "\n";
+    for (const auto& c : collisions.collisions) {
+        std::cout << "  - Collision type: " << c->name() << ", primitives: ("
+                  << (*c)[0] << ", " << (*c)[1] << ")\n";
+    }
 
     CHECK(!has_intersections(mesh, vertices));
 
     HighOrderContactPotential potential(params);
-    std::cout << "energy: " << potential(collisions, mesh, vertices) << "\n";
+    const auto energy = potential(collisions, mesh, vertices);
+    std::cout << "energy: " << energy << "\n";
+    CHECK(energy > 0);
 
     // -------------------------------------------------------------------------
     // Gradient
@@ -333,12 +277,6 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
         fd::finite_gradient(
             fd::flatten(vertices), f, fgrad_b, fd::AccuracyOrder::SECOND, 1e-8);
     }
-
-    /*for (size_t i = 0; i < vertices.size(); ++i) {
-        int x = i / vertices.cols();
-        int y = i % vertices.cols();
-        std::cout << x << ',' << y << ' ' << grad_b(i) << ' ' << fgrad_b(i) << '\n';
-    }*/
 
     REQUIRE(grad_b.squaredNorm() > 1e-8);
     std::cout << "grad relative error "
@@ -368,6 +306,77 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
               << (hess_b - fhess_b).norm() / hess_b.norm() << "\n";
     CHECK((hess_b - fhess_b).norm() < 1e-7 * hess_b.norm());
     // CHECK(fd::compare_hessian(hess_b, fhess_b, 1e-3));
+}
+
+TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential]")
+{
+    double dhat = -1;
+    Eigen::MatrixXd vertices;
+    Eigen::MatrixXi edges;
+
+    SECTION("debug1")
+    {
+        std::string mesh_name =
+            (tests::DATA_DIR / "gcp" / "nonlinear_solve_iter020.obj").string();
+        dhat = 3e-2;
+        bool success = igl::readCSV(mesh_name + "-v.csv", vertices);
+        success = success && igl::readCSV(mesh_name + "-e.csv", edges);
+        CAPTURE(mesh_name);
+        REQUIRE(success);
+    }
+
+    /*
+    SECTION("simple_2_edges")
+    {
+        dhat = 2.0;
+        vertices.resize(4, 2);
+        edges.resize(2, 2);
+        vertices << -100., 0.,
+            200., 0.,
+            1., 1.,
+            0., 1.;
+        edges << 0, 1,
+            2, 3;
+    }
+    */
+
+    /*
+    SECTION("horizontal_squares")
+    {
+        dhat = 0.4;
+        vertices.resize(8, 2);
+        edges.resize(8, 2);
+        vertices << // horizontal squares
+            -1., 1.,
+            -1., 0.,
+            -.1, 0.,
+            -.1, 1.,
+            .1, 1.,
+            .1, 0.,
+            1., 0.,
+            1., 1.;
+        edges << 1, 0, 2, 1, 3, 2, 0, 3, 5, 4, 6, 5, 7, 6, 4, 7;
+    }*/
+
+    /*
+    SECTION("vertical_squares")
+    {
+        dhat = 0.4;
+        vertices.resize(8, 2);
+        edges.resize(8, 2);
+        vertices << // vertical squares
+            -1., 1.,
+            -1., 0.,
+            -.1, 0.,
+            -.1, 1.,
+            -1., -.1,
+            -1., -1.,
+            -.1, -1.,
+            -.1, -.1;
+        edges << 1, 0, 2, 1, 3, 2, 0, 3, 5, 4, 6, 5, 7, 6, 4, 7;
+    }*/
+
+    test_high_order_potential(vertices, edges, dhat);
 }
 
 TEST_CASE("High Order barrier potential real sim 2D C^1", "[high_order_potential]")
@@ -403,7 +412,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^1", "[high_order_potential
     collisions.build(mesh, vertices, params, adaptive_dhat, method);
     CAPTURE(dhat, method, adaptive_dhat);
     CHECK(!collisions.empty());
-    std::cout << "smooth collision candidate size " << collisions.size()
+    std::cout << "high order collision candidate size " << collisions.size()
               << "\n";
     //std::cout << collisions.to_string(mesh, vertices, params) << "\n";
 

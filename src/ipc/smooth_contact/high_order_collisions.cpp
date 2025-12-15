@@ -144,9 +144,11 @@ void HighOrderCollisions::build(
     auto edge_dhat = [&](const index_t e_id) {
         return this->get_edge_dhat(e_id);
     };
+    /*
     auto face_dhat = [&](const index_t f_id) {
         return this->get_face_dhat(f_id);
     };
+    */
 
     if (mesh.dim() == 2) {
         auto storage = create_thread_storage<HighOrderCollisionsBuilder<2>>(
