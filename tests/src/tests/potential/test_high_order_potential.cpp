@@ -246,13 +246,14 @@ void test_high_order_potential(
     collisions.build(mesh, vertices, params, adaptive_dhat, method);
     CAPTURE(dhat, method, adaptive_dhat);
     CHECK(!collisions.empty());
+    /*
     std::cout << "high order collision candidate size " << collisions.size()
         << "\n";
     for (const auto& c : collisions.collisions) {
         std::cout << "  - Collision type: " << c->name() << ", primitives: ("
                   << (*c)[0] << ", " << (*c)[1] << ")\n";
     }
-
+    */
     CHECK(!has_intersections(mesh, vertices));
 
     HighOrderContactPotential potential(params);
@@ -325,7 +326,6 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
         REQUIRE(success);
     }
 
-    /*
     SECTION("simple_2_edges")
     {
         dhat = 2.0;
@@ -338,33 +338,30 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
         edges << 0, 1,
             2, 3;
     }
-    */
 
-    /*
     SECTION("horizontal_squares")
     {
         dhat = 0.4;
         vertices.resize(8, 2);
         edges.resize(8, 2);
-        vertices << // horizontal squares
-            -1., 1.,
-            -1., 0.,
-            -.1, 0.,
-            -.1, 1.,
+        vertices <<
+            -1., 1.1,
+            -1., 0.1,
+            -.1, 0.1,
+            -.1, 1.1,
             .1, 1.,
             .1, 0.,
             1., 0.,
             1., 1.;
         edges << 1, 0, 2, 1, 3, 2, 0, 3, 5, 4, 6, 5, 7, 6, 4, 7;
-    }*/
+    }
 
-    /*
     SECTION("vertical_squares")
     {
         dhat = 0.4;
         vertices.resize(8, 2);
         edges.resize(8, 2);
-        vertices << // vertical squares
+        vertices <<
             -1., 1.,
             -1., 0.,
             -.1, 0.,
@@ -374,7 +371,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
             -.1, -1.,
             -.1, -.1;
         edges << 1, 0, 2, 1, 3, 2, 0, 3, 5, 4, 6, 5, 7, 6, 4, 7;
-    }*/
+    }
 
     test_high_order_potential(vertices, edges, dhat);
 }

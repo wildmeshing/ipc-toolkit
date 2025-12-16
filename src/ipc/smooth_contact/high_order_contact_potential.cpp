@@ -195,14 +195,18 @@ double HighOrderContactPotential::operator()(
     const HighOrderCollision& collision,
     Eigen::ConstRef<Eigen::VectorXd> positions) const
 {
-    return collision.weight * collision(positions, params);
+    return collision.weight
+        * collision(
+            positions, params, collision.n_vertices_a(), collision.n_vertices_b());
 }
 
 Eigen::VectorXd HighOrderContactPotential::gradient(
     const HighOrderCollision& collision,
     Eigen::ConstRef<Eigen::VectorXd> positions) const
 {
-    return collision.weight * collision.gradient(positions, params);
+    return collision.weight
+        * collision.gradient(
+            positions, params, collision.n_vertices_a(), collision.n_vertices_b());
 }
 
 Eigen::MatrixXd HighOrderContactPotential::hessian(
@@ -210,8 +214,9 @@ Eigen::MatrixXd HighOrderContactPotential::hessian(
     Eigen::ConstRef<Eigen::VectorXd> positions,
     const PSDProjectionMethod project_hessian_to_psd) const
 {
-    Eigen::MatrixXd hess =
-        collision.weight * collision.hessian(positions, params);
+    Eigen::MatrixXd hess = collision.weight
+        * collision.hessian(
+            positions, params, collision.n_vertices_a(), collision.n_vertices_b());
     return project_to_psd(hess, project_hessian_to_psd);
 }
 } // namespace ipc

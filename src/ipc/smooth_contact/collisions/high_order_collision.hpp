@@ -43,6 +43,12 @@ public:
     /// @brief Get the number of vertices in the collision stencil.
     virtual int num_vertices() const = 0;
 
+    /// @brief Get the number of vertices in primitive A's stencil.
+    virtual size_t n_vertices_a() const = 0;
+
+    /// @brief Get the number of vertices in primitive B's stencil.
+    virtual size_t n_vertices_b() const = 0;
+
     /// @brief Get the vertex IDs of the collision stencil.
     /// @return The vertex IDs of the collision stencil. Size is always 4, but elements i > num_vertices() are -1.
     std::vector<index_t> vertex_ids() const { return m_vertex_ids; }
@@ -75,22 +81,27 @@ public:
     /// @brief Compute the value of the GCP potential
     virtual double operator()(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const = 0;
+        const HighOrderContactParameters& params,
+        const size_t n_vertices_a = 0,
+        const size_t n_vertices_b = 0) const = 0;
 
     /// @brief Compute the gradient of the GCP potential wrt. vertices involved
     virtual Vector<double, -1, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const = 0;
+        const HighOrderContactParameters& params,
+        const size_t n_vertices_a = 0,
+        const size_t n_vertices_b = 0) const = 0;
 
     /// @brief Compute the Hessian of the GCP potential wrt. vertices involved
     virtual MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const = 0;
+        const HighOrderContactParameters& params,
+        const size_t n_vertices_a = 0,
+        const size_t n_vertices_b = 0) const = 0;
 
     bool operator==(const HighOrderCollision& other) const
     {
-        return (
-            primitive0 == other.primitive0 && primitive1 == other.primitive1);
+        return (primitive0 == other.primitive0 && primitive1 == other.primitive1);
     }
 
     bool operator!=(const HighOrderCollision& other) const
@@ -162,6 +173,9 @@ public:
         return primitive_a->n_vertices() + primitive_b->n_vertices();
     }
 
+    size_t n_vertices_a() const override { return primitive_a->n_vertices(); }
+    size_t n_vertices_b() const override { return primitive_b->n_vertices(); }
+
     template <typename T>
     Vector<T, N_CORE_DOFS> core_dof(const Eigen::MatrixX<T>& X) const
     {
@@ -176,7 +190,9 @@ public:
     /// @return GCP potential value
     double operator()(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const override;
+        const HighOrderContactParameters& params,
+        const size_t n_vertices_a = PrimitiveA::N_CORE_POINTS,
+        const size_t n_vertices_b = PrimitiveB::N_CORE_POINTS) const override;
 
     /// @brief Compute the potential gradient wrt. positions
     /// @param positions Vertex positions
@@ -184,7 +200,9 @@ public:
     /// @return GCP potential gradient
     Vector<double, -1, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const override;
+        const HighOrderContactParameters& params,
+        const size_t n_vertices_a = PrimitiveA::N_CORE_POINTS,
+        const size_t n_vertices_b = PrimitiveB::N_CORE_POINTS) const override;
 
     /// @brief Compute the potential Hessian wrt. positions
     /// @param positions Vertex positions
@@ -192,7 +210,9 @@ public:
     /// @return GCP potential Hessian
     MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const override;
+        const HighOrderContactParameters& params,
+        const size_t n_vertices_a = PrimitiveA::N_CORE_POINTS,
+        const size_t n_vertices_b = PrimitiveB::N_CORE_POINTS) const override;
 
     // ---- distance ----
 

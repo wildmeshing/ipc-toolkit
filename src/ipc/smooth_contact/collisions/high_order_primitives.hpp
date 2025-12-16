@@ -63,7 +63,6 @@ namespace {
     }
 }
 
-// Forward declare the concrete primitive types
 class Vertex2 : public HighOrderPrimitive {
 public:
     static constexpr int N_CORE_POINTS = 1;
