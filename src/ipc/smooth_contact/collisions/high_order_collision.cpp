@@ -191,6 +191,142 @@ T potential_EE_onesided_old(
 }
 */
 
+// ----------------------------------------------------
+
+template <typename T>
+T potential_VV_onesided(
+    const Eigen::Matrix<T, Eigen::Dynamic, 2>& vertex_stencil,
+    const Eigen::Matrix<T, Eigen::Dynamic, 2>& qpoint_stencil,
+    const HighOrderContactParameters& params)
+{
+    // The central vertex of the second stencil is our query point.
+    const std::array<T, 2> query_point = {{ qpoint_stencil(0, 0), qpoint_stencil(0, 1) }};
+
+    // The central vertex of the first stencil is the vertex for which we are computing the potential.
+    const std::array<T, 2> vertex_pt = {{ vertex_stencil(0, 0), vertex_stencil(0, 1) }};
+
+    T phi_start_next_val;
+    T phi_end_prev_val;
+    const T* phi_start_next = nullptr;
+    const T* phi_end_prev = nullptr;
+
+    if (vertex_stencil.rows() >= 2) {
+        // The "next" edge is from the central vertex (0) to the first neighbor (1).
+        const Eigen::Vector2<T> p0 = vertex_stencil.row(0);
+        const Eigen::Vector2<T> p_next = vertex_stencil.row(1);
+        const Eigen::Vector2<T> tangent_next = (p_next - p0).normalized();
+        const Eigen::Vector2<T> normal_next(-tangent_next.y(), tangent_next.x());
+        const std::array<T, 2> rel_next = {{ query_point[0] - p0(0), query_point[1] - p0(1) }};
+        const T r_q_next = rel_next[0] * normal_next(0) + rel_next[1] * normal_next(1);
+        const T y_q_next = rel_next[0] * tangent_next(0) + rel_next[1] * tangent_next(1);
+        phi_start_next_val = smoothed_offset_potential::phi_value(r_q_next, y_q_next, T(0));
+        phi_start_next = &phi_start_next_val;
+    }
+
+    if (vertex_stencil.rows() >= 3) {
+        // The "previous" edge is from the second neighbor (2) to the central vertex (0).
+        const Eigen::Vector2<T> p0 = vertex_stencil.row(0);
+        const Eigen::Vector2<T> p_prev = vertex_stencil.row(2);
+        const Eigen::Vector2<T> tangent_prev = (p0 - p_prev).normalized();
+        const Eigen::Vector2<T> normal_prev(-tangent_prev.y(), tangent_prev.x());
+        const std::array<T, 2> rel_prev = {{ query_point[0] - p_prev(0), query_point[1] - p_prev(1) }};
+        const T r_q_prev = rel_prev[0] * normal_prev(0) + rel_prev[1] * normal_prev(1);
+        const T y_q_prev = rel_prev[0] * tangent_prev(0) + rel_prev[1] * tangent_prev(1);
+        phi_end_prev_val = smoothed_offset_potential::phi_value(r_q_prev, y_q_prev, (p0 - p_prev).norm());
+        phi_end_prev = &phi_end_prev_val;
+    }
+
+    return smoothed_offset_potential::polyline_vertex_potential(
+        query_point, vertex_pt, phi_start_next, phi_end_prev, T(params.alpha_t), params.r);
+}
+
+template <typename T>
+T potential_VV(
+    Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const size_t n_vertices_a,
+    const size_t n_vertices_b)
+{
+    Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
+        slice_positions<T, Eigen::Dynamic, 2>(positions);
+    Eigen::Matrix<T, Eigen::Dynamic, 2> v0_stencil_pos = all_pos.topRows(n_vertices_a);
+    Eigen::Matrix<T, Eigen::Dynamic, 2> v1_stencil_pos = all_pos.bottomRows(n_vertices_b);
+
+    return potential_VV_onesided(v0_stencil_pos, v1_stencil_pos, params)
+        + potential_VV_onesided(v1_stencil_pos, v0_stencil_pos, params);
+}
+
+// ----------------------------------------------------
+
+template <typename T>
+T potential_EV_onesided(
+    const Eigen::Matrix<T, 2, 2>& edge_pos,
+    const Eigen::Matrix<T, Eigen::Dynamic, 2>& vertex_stencil_pos,
+    const HighOrderContactParameters& params)
+{
+    Eigen::Matrix<T, 1, 2> vertex_pos = vertex_stencil_pos.topRows(1);
+    const Eigen::Vector2<T> p0 = edge_pos.row(0);
+	const Eigen::Vector2<T> p1 = edge_pos.row(1);
+	const Eigen::Vector2<T> tangent_vec = p1 - p0;
+	const T length = tangent_vec.norm();
+	const Eigen::Vector2<T> tangent = tangent_vec / length;
+	const Eigen::Vector2<T> normal_vec(-tangent.y(), tangent.x());
+
+	const std::array<T, 2> p0_arr{{ p0(0), p0(1) }};
+	const std::array<T, 2> tangent_arr{{ tangent(0), tangent(1) }};
+	const std::array<T, 2> normal_arr{{ normal_vec(0), normal_vec(1) }};
+
+    const std::array<T, 2> point{{ vertex_pos(0), vertex_pos(1) }};
+    T phi_start, phi_end;
+    return smoothed_offset_potential::polyline_edge_potential<T>(
+        point, p0_arr, tangent_arr, normal_arr, length, params.alpha_t,
+        params.r, phi_start, phi_end);
+}
+
+template <typename T>
+T potential_VE_onesided(
+    const Eigen::Matrix<T, Eigen::Dynamic, 2>& vertex_stencil_pos,
+    const Eigen::Matrix<T, 2, 2>& edge_pos,
+    const HighOrderContactParameters& params)
+{
+    Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
+    Eigen::Vector2<T> normal;
+    std::vector<double> weights;
+    const int qord = params.quad_points;
+
+    // Sample points on the edge
+    std::tie(qp, weights, normal) = sample_edge<T>(edge_pos, qord);
+    const T scale = (edge_pos.row(1) - edge_pos.row(0)).norm();
+
+    T acc(0.0);
+    for (size_t q = 0; q < qord; ++q) {
+        Eigen::Matrix<T, 1, 2> qpoint_stencil = qp.row(q);
+        acc += weights[q]
+            * potential_VV_onesided<T>(vertex_stencil_pos, qpoint_stencil, params);
+    }
+    return scale * acc;
+}
+
+template <typename T>
+T potential_EV(
+    Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>>
+        positions,
+    const HighOrderContactParameters& params,
+    const size_t n_vertices_a,
+    const size_t n_vertices_b)
+{
+    Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
+        slice_positions<T, Eigen::Dynamic, 2>(positions);
+    Eigen::Matrix<T, 2, 2> edge_pos = all_pos.topRows(n_vertices_a);
+    Eigen::Matrix<T, Eigen::Dynamic, 2> vertex_stencil_pos =
+        all_pos.bottomRows(n_vertices_b);
+
+    return potential_EV_onesided(edge_pos, vertex_stencil_pos, params)
+        + potential_VE_onesided(vertex_stencil_pos, edge_pos, params);
+}
+
+// ----------------------------------------------------
+
 template <typename T>
 T potential_EE_onesided(
 	Eigen::ConstRef<Eigen::Matrix<T, 2, 2>> edge0_pos,
@@ -251,100 +387,7 @@ T potential_EE(
 		+ potential_EE_onesided<T>(edge1_pos, edge0_pos, params));
 }
 
-template <typename T>
-T potential_EV(
-    Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b)
-{
-    // The number of vertices for Edge2P1 is 2.
-    constexpr int n_edge_vertices = 2;
-    Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
-        slice_positions<T, -1, 2>(positions);
-    Eigen::Matrix<T, 2, 2> edge_pos = all_pos.topRows(n_edge_vertices);
-    // The Vertex2 primitive stores the main vertex first, then its neighbors.
-    Eigen::Matrix<T, 1, 2> vertex_pos = all_pos.row(n_edge_vertices);
-    //Eigen::Matrix<T, Eigen::Dynamic, 2> vertex_stencil_pos = all_pos.bottomRows(all_pos.rows() - n_edge_vertices);
-    
-	const Eigen::Vector2<T> p0 = edge_pos.row(0);
-	const Eigen::Vector2<T> p1 = edge_pos.row(1);
-	const Eigen::Vector2<T> tangent_vec = p1 - p0;
-	const T length = tangent_vec.norm();
-	const Eigen::Vector2<T> tangent = tangent_vec / length;
-	const Eigen::Vector2<T> normal_vec(-tangent.y(), tangent.x());
-
-	const std::array<T, 2> p0_arr{{ p0(0), p0(1) }};
-	const std::array<T, 2> tangent_arr{{ tangent(0), tangent(1) }};
-	const std::array<T, 2> normal_arr{{ normal_vec(0), normal_vec(1) }};
-
-    const std::array<T, 2> point{{ vertex_pos(0), vertex_pos(1) }};
-    T phi_start, phi_end;
-    return smoothed_offset_potential::polyline_edge_potential<T>(
-            point,
-            p0_arr,
-            tangent_arr,
-            normal_arr,
-            length,
-            params.alpha_t,
-            params.r,
-            phi_start,
-            phi_end);
-}
-
-template <typename T>
-T potential_VV(
-    Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b)
-{
-    Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos = slice_positions<T, Eigen::Dynamic, 2>(positions);
-    Eigen::Matrix<T, Eigen::Dynamic, 2> v0_stencil_pos = all_pos.topRows(n_vertices_a);
-    Eigen::Matrix<T, Eigen::Dynamic, 2> v1_stencil_pos = all_pos.bottomRows(n_vertices_b);
-
-    const std::array<T, 2> query_point = {{ v1_stencil_pos(0, 0), v1_stencil_pos(0, 1) }};
-
-    // The central vertex of the first stencil is the vertex for which we are computing the potential.
-    const std::array<T, 2> vertex_pt = {{ v0_stencil_pos(0, 0), v0_stencil_pos(0, 1) }};
-
-    T phi_start_next_val;
-    T phi_end_prev_val;
-    const T* phi_start_next = nullptr;
-    const T* phi_end_prev = nullptr;
-
-    if (n_vertices_a >= 2) {
-        // The "next" edge is from the central vertex (0) to the first neighbor (1).
-        const Eigen::Vector2<T> p0 = v0_stencil_pos.row(0);
-        const Eigen::Vector2<T> p_next = v0_stencil_pos.row(1);
-        const Eigen::Vector2<T> tangent_next = (p_next - p0).normalized();
-        const Eigen::Vector2<T> normal_next(-tangent_next.y(), tangent_next.x());
-        const std::array<T, 2> rel_next = {{ query_point[0] - p0(0), query_point[1] - p0(1) }};
-        const T r_q_next = rel_next[0] * normal_next(0) + rel_next[1] * normal_next(1);
-        const T y_q_next = rel_next[0] * tangent_next(0) + rel_next[1] * tangent_next(1);
-        phi_start_next_val = smoothed_offset_potential::phi_value(r_q_next, y_q_next, T(0));
-        phi_start_next = &phi_start_next_val;
-    }
-
-    if (n_vertices_a >= 3) {
-        // The "previous" edge is from the second neighbor (2) to the central vertex (0).
-        const Eigen::Vector2<T> p0 = v0_stencil_pos.row(0);
-        const Eigen::Vector2<T> p_prev = v0_stencil_pos.row(2);
-        const Eigen::Vector2<T> tangent_prev = (p0 - p_prev).normalized();
-        const Eigen::Vector2<T> normal_prev(-tangent_prev.y(), tangent_prev.x());
-        const std::array<T, 2> rel_prev = {{ query_point[0] - p_prev(0), query_point[1] - p_prev(1) }};
-        const T r_q_prev = rel_prev[0] * normal_prev(0) + rel_prev[1] * normal_prev(1);
-        const T y_q_prev = rel_prev[0] * tangent_prev(0) + rel_prev[1] * tangent_prev(1);
-        phi_end_prev_val = smoothed_offset_potential::phi_value(r_q_prev, y_q_prev, (p0 - p_prev).norm());
-        phi_end_prev = &phi_end_prev_val;
-    }
-
-    if (n_vertices_a >= 4)
-        throw std::runtime_error("2D vertex stencil has more than 4 vertices!");
-
-        return smoothed_offset_potential::polyline_vertex_potential(
-        query_point, vertex_pt, phi_start_next, phi_end_prev, T(params.alpha_t), params.r);
-}
+// ----------------------------------------------------
 
 template <typename PrimitiveA, typename PrimitiveB>
 double HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::operator()(

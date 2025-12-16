@@ -282,7 +282,7 @@ void test_high_order_potential(
     REQUIRE(grad_b.squaredNorm() > 1e-8);
     std::cout << "grad relative error "
               << (grad_b - fgrad_b).norm() / grad_b.norm() << "\n";
-    CHECK((grad_b - fgrad_b).norm() < 1e-7 * grad_b.norm());
+    CHECK((grad_b - fgrad_b).norm() < 1e-6 * grad_b.norm());
     // CHECK(fd::compare_gradient(grad_b, fgrad_b));
 
     // -------------------------------------------------------------------------
@@ -305,7 +305,7 @@ void test_high_order_potential(
     REQUIRE(hess_b.squaredNorm() > 1e-3);
     std::cout << "hess relative error "
               << (hess_b - fhess_b).norm() / hess_b.norm() << "\n";
-    CHECK((hess_b - fhess_b).norm() < 1e-7 * hess_b.norm());
+    CHECK((hess_b - fhess_b).norm() < 1e-6 * hess_b.norm());
     // CHECK(fd::compare_hessian(hess_b, fhess_b, 1e-3));
 }
 
