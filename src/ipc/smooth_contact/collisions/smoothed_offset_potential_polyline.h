@@ -7,14 +7,6 @@
 namespace smoothed_offset_potential {
 
 template <typename F>
-struct PolylineGeometry {
-    const std::vector<std::array<F, 2>>& pts;
-    const std::vector<std::array<F, 2>>& tangents;
-    const std::vector<std::array<F, 2>>& normals;
-    const std::vector<F>& lengths;
-};
-
-template <typename F>
 F my_abs(const F &x) { return x < 0 ? -x : x; }
 
 /**
@@ -132,75 +124,4 @@ F polyline_vertex_potential(
     return 0.0;
 }
 
-/**
- * @brief Calculates the smoothed potential at a 'point' due to a polyline.
- *
- * @tparam F The floating point type.
- * @param point The 2D query point.
- * @param geometry The pre-calculated geometry of the polyline.
- * @param alpha Smoothness parameter for angular transitions.
- * @param power Decay rate of the potential with distance.
- * @return The calculated potential value.
- */
-template <typename F>
-F polyline_potential(
-    const std::array<F, 2>& point,
-    const PolylineGeometry<F>& geometry,
-    F alpha,
-    double power) {
-    const auto& pts = geometry.pts;
-    const auto& tangents = geometry.tangents;
-    const auto& normals = geometry.normals;
-    const auto& lengths = geometry.lengths;
-    size_t num_segments = lengths.size();
-
-    std::vector<F> phi_start(num_segments);
-    std::vector<F> phi_end(num_segments);
-
-    F total = 0.0;
-
-    // Edge contributions
-    for (size_t idx = 0; idx < num_segments; ++idx) {
-        total += polyline_edge_potential(
-            point,
-            pts[idx],
-            tangents[idx],
-            normals[idx],
-            lengths[idx],
-            alpha,
-            power,
-            phi_start[idx],
-            phi_end[idx]);
-    }
-
-    // Vertex contributions
-    for (size_t idx = 0; idx < num_segments + 1; ++idx) {
-        if (idx == num_segments) {
-            // End vertex
-            total += polyline_vertex_potential(point, pts[idx], static_cast<const F*>(nullptr),
-                                               &phi_end[idx - 1], alpha, power);
-        } else if (idx == 0) {
-            // Start vertex
-            total += polyline_vertex_potential(point, pts[idx], &phi_start[idx],
-                                               static_cast<const F*>(nullptr), alpha, power);
-        } else {
-            // Interior vertex
-            total += polyline_vertex_potential(
-                point, pts[idx], &phi_start[idx], &phi_end[idx - 1], alpha, power);
-        }
-    }
-
-    return total;
-}
-
 }  // namespace smoothed_offset_potential
-
-extern "C" double polyline_potential_double(
-    const double* point,
-    int num_vertices,
-    const double* pts,
-    const double* tangents,
-    const double* normals,
-    const double* lengths,
-    double alpha,
-    double power);
