@@ -3,7 +3,7 @@
 #include <ipc/distance/point_point.hpp>
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/edge_edge.hpp>
-#include "smoothed_offset_potential_polyline.h"
+#include "smoothed_offset_potential_linear.h"
 
 namespace ipc {
 
@@ -196,15 +196,21 @@ template <typename T>
 std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vector2<T>> sample_edge(
     Eigen::ConstRef<Eigen::Matrix<T, 2, 2>> edge_positions, int quad_order, std::array<T, 2> window={{0.0, 1.0}}
 ){
-	const Eigen::Vector2<T> p0 = edge_positions.row(0);
+    const Eigen::Vector2<T> p0 = edge_positions.row(0);
 	const Eigen::Vector2<T> p1 = edge_positions.row(1);
+	Eigen::Vector2<T> edge_vec = p1 - p0;
+	edge_vec.normalize();
+	const Eigen::Vector2<T> edge_normal(-edge_vec.y(), edge_vec.x());
+
+	Eigen::Matrix<T, Eigen::Dynamic, 2> M(quad_order, 2);
 	if (window[0] < 0.0 || window[1] > 1.0 || window[1] < window[0]) {
-		throw std::runtime_error("Invalid window!");
+        std::stringstream ss;
+        ss << "Invalid window: " << window[0] << ',' << window[1] << "!";
+        throw std::runtime_error(ss.str());
 	}
 
 	const auto& [nodes, weights] = GaussLobatto::get_rule(quad_order);
 
-	Eigen::Matrix<T, Eigen::Dynamic, 2> M(quad_order, 2);
     const T center = (window[0] + window[1]) / 2;
     const T halfw = (window[1] - window[0]) / 2;
 	for (size_t i = 0; i<quad_order; ++i) {
@@ -212,10 +218,6 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
 		const Eigen::Vector2<T> P = ((1-t) * p0 + t * p1);
 		M.row(i) = P.transpose();
 	}
-
-	Eigen::Vector2<T> edge_vec = p1 - p0;
-	edge_vec.normalize();
-	const Eigen::Vector2<T> edge_normal(-edge_vec.y(), edge_vec.x());
 
 	return {M, weights, edge_normal};
 }
@@ -235,14 +237,6 @@ T potential_EV(
     const Eigen::Matrix<T, 2, 2> edge_pos = all_pos.topRows(n_vertices_a);
     const Eigen::Matrix<T, Eigen::Dynamic, 2> vertex_stencil = all_pos.bottomRows(n_vertices_b);
 
-    Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
-    std::vector<double> weights;
-    Eigen::Vector2<T> normal;
-    const int qord = params.quad_points;
-
-    // Sample points on the edge
-    std::tie(qp, weights, normal) = sample_edge<T>(edge_pos, qord);
-    const T scale = (edge_pos.row(1) - edge_pos.row(0)).norm();
     const std::array<T, 2> vertex_pt = {{ vertex_stencil(0, 0), vertex_stencil(0, 1) }};
 
     T phi_start_next_val;
@@ -250,17 +244,29 @@ T potential_EV(
     const T* phi_start_next = nullptr;
     const T* phi_end_prev = nullptr;
 
-    // TODO cannot distinguish left and right open segments
+    if (vertex_stencil.rows() == 2) {
+        throw std::logic_error("Open 2D polylines are not supported yet. make sure that every vertex has two neighbours");
+    }
+
     Eigen::Vector2<T> tangent_next, normal_next = Eigen::Vector2<T>::Zero();
+    std::array<T, 2> v1_arr;
+    const std::array<T, 2>* v1_ptr = nullptr;
+
+
     if (vertex_stencil.rows() >= 2) {
         const Eigen::Vector2<T> p0 = vertex_stencil.row(0);
         const Eigen::Vector2<T> p_next = vertex_stencil.row(1);
         tangent_next = (p_next - p0).normalized();
         normal_next << -tangent_next.y(), tangent_next.x();
+        v1_arr = {{tangent_next.x(), tangent_next.y()}};
+        v1_ptr = &v1_arr;
     }
 
     Eigen::Vector2<T> tangent_prev, normal_prev = Eigen::Vector2<T>::Zero();
     T p_prev_norm = 0;
+    std::array<T, 2> v2_arr;
+    const std::array<T, 2>* v2_ptr = nullptr;
+
     if (vertex_stencil.rows() >= 3) {
         const Eigen::Vector2<T> p0 = vertex_stencil.row(0);
         const Eigen::Vector2<T> p_prev = vertex_stencil.row(2);
@@ -268,7 +274,25 @@ T potential_EV(
         p_prev_norm = edge_prev.norm();
         tangent_prev = edge_prev / p_prev_norm;
         normal_prev << -tangent_prev.y(), tangent_prev.x();
+        v2_arr = {{-tangent_prev.x(), -tangent_prev.y()}};
+        v2_ptr = &v2_arr;
     }
+
+    const std::array<T, 2> edge_p0 = {{edge_pos(0, 0), edge_pos(0, 1)}};
+    const std::array<T, 2> edge_p1 = {{edge_pos(1, 0), edge_pos(1, 1)}};
+
+    std::array<T, 2> window = smoothed_offset_potential::compute_vertex_window(
+        edge_p0, edge_p1, vertex_pt, v1_ptr, v2_ptr, T(params.alpha_t));
+    if (window[0] == 1.0 && window[1] == 0.0) return T(0);
+
+    Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
+    std::vector<double> weights;
+    Eigen::Vector2<T> normal;
+    const int qord = params.quad_points;
+
+    // Sample points on the edge
+    std::tie(qp, weights, normal) = sample_edge<T>(edge_pos, qord, window);
+    const T scale = (edge_pos.row(1) - edge_pos.row(0)).norm() * (window[1] - window[0]);
 
     T acc(0.0);
     for (size_t q = 0; q < qord; ++q) {
@@ -317,12 +341,22 @@ T potential_EE_onesided(
 	const Eigen::Vector2<T> normal_vec(-tangent.y(), tangent.x());
 
 	const std::array<T, 2> p0_arr{{ p0(0), p0(1) }};
+    const std::array<T, 2> p1_arr{{ p1(0), p1(1) }};
 	const std::array<T, 2> tangent_arr{{ tangent(0), tangent(1) }};
 	const std::array<T, 2> normal_arr{{ normal_vec(0), normal_vec(1) }};
 
+    const Eigen::Vector2<T> ep0 = edge1_pos.row(0);
+    const Eigen::Vector2<T> ep1 = edge1_pos.row(1);
+    const std::array<T, 2> ep0_arr{{ ep0(0), ep0(1) }};
+    const std::array<T, 2> ep1_arr{{ ep1(0), ep1(1) }};
+
+    std::array<T, 2> window = smoothed_offset_potential::compute_edge_window(
+        ep0_arr, ep1_arr, p0_arr, p1_arr, T(params.alpha_t));
+    if (window[0] == 1.0 && window[1] == 0.0) return T(0);
+
 	// "sampled_segment" is the segment we integrate over (edge1)
-	std::tie(qp, weights, normal) = sample_edge<T>(edge1_pos, qord);
-	const T scale = (edge1_pos.row(1) - edge1_pos.row(0)).norm();
+	std::tie(qp, weights, normal) = sample_edge<T>(edge1_pos, qord, window);
+	const T scale = (edge1_pos.row(1) - edge1_pos.row(0)).norm() * (window[1] - window[0]);
 	T acc(0.0);
 	for (size_t q=0; q<qord; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);

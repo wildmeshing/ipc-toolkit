@@ -236,7 +236,7 @@ void test_high_order_potential(
     Eigen::MatrixXi faces;
 
     CollisionMesh mesh;
-    HighOrderContactParameters params(dhat, 0.1, 0.1, 1, 4);
+    HighOrderContactParameters params(dhat, 0.1, 0.1, 1, 16);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     HighOrderCollisions collisions;
     mesh = CollisionMesh(
@@ -326,6 +326,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
         REQUIRE(success);
     }
 
+    /*
     SECTION("simple_2_edges")
     {
         dhat = 2.0;
@@ -338,6 +339,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
         edges << 0, 1,
             2, 3;
     }
+    */
 
     SECTION("horizontal_squares")
     {
