@@ -315,17 +315,6 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
     Eigen::MatrixXd vertices;
     Eigen::MatrixXi edges;
 
-    SECTION("debug1")
-    {
-        std::string mesh_name =
-            (tests::DATA_DIR / "gcp" / "nonlinear_solve_iter020.obj").string();
-        dhat = 3e-2;
-        bool success = igl::readCSV(mesh_name + "-v.csv", vertices);
-        success = success && igl::readCSV(mesh_name + "-e.csv", edges);
-        CAPTURE(mesh_name);
-        REQUIRE(success);
-    }
-
     /*
     SECTION("simple_2_edges")
     {
@@ -341,6 +330,29 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
     }
     */
 
+    SECTION("wedge")
+    {
+        dhat = 0.4;
+        vertices.resize(7, 2);
+        edges.resize(7, 2);
+        vertices <<
+            -1., 1.,
+            -1., 0.,
+            0., 0.,
+            0., 1.,
+            .01, .5,
+            1., 0.,
+            1., 1.;
+        edges <<
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 0,
+            4, 5,
+            5, 6,
+            6, 4;
+    }
+
     SECTION("horizontal_squares")
     {
         dhat = 0.4;
@@ -355,7 +367,15 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
             .1, 0.,
             1., 0.,
             1., 1.;
-        edges << 1, 0, 2, 1, 3, 2, 0, 3, 5, 4, 6, 5, 7, 6, 4, 7;
+        edges <<
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 0,
+            4, 5,
+            5, 6,
+            6, 7,
+            7, 4;
     }
 
     SECTION("vertical_squares")
@@ -372,7 +392,26 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
             -1., -1.,
             -.1, -1.,
             -.1, -.1;
-        edges << 1, 0, 2, 1, 3, 2, 0, 3, 5, 4, 6, 5, 7, 6, 4, 7;
+        edges <<
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 0,
+            4, 5,
+            5, 6,
+            6, 7,
+            7, 4;
+    }
+
+    SECTION("debug1")
+    {
+        std::string mesh_name =
+            (tests::DATA_DIR / "gcp" / "nonlinear_solve_iter020.obj").string();
+        dhat = 3e-2;
+        bool success = igl::readCSV(mesh_name + "-v.csv", vertices);
+        success = success && igl::readCSV(mesh_name + "-e.csv", edges);
+        CAPTURE(mesh_name);
+        REQUIRE(success);
     }
 
     test_high_order_potential(vertices, edges, dhat);

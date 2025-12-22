@@ -4,6 +4,7 @@
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/edge_edge.hpp>
 #include "smoothed_offset_potential_linear.h"
+#include "high_order_quadrature.hpp"
 
 namespace ipc {
 
@@ -128,69 +129,6 @@ double HighOrderCollisionTemplate<Edge2P1, Edge2P1>::compute_distance(
                       point_edge_distance(eb1, ea0, ea1) });
 }
 
-namespace {
-    // Class to compute and cache nodes and weights for Gauss-Lobatto quadrature.
-    class GaussLobatto {
-    public:
-        using Rule = std::pair<std::vector<double>, std::vector<double>>;
-
-        // Get the quadrature rule for a given order n.
-        // The result is cached, so subsequent calls with the same n are fast.
-        static const Rule& get_rule(int n)
-        {
-            static std::map<int, Rule> cache;
-            if (cache.find(n) == cache.end()) {
-                cache[n] = compute_rule(n);
-            }
-            return cache.at(n);
-        }
-
-    private:
-        // Computes the nodes and weights for Gauss-Lobatto quadrature of order n.
-        static Rule compute_rule(int n)
-        {
-            static constexpr double PI = 3.14159265358979323846;
-            std::vector<double> nodes(n), weights(n);
-
-            if (n <= 1) {
-                return { nodes, weights };
-            }
-
-            nodes[0] = -1.0;
-            nodes[n - 1] = 1.0;
-            weights[0] = weights[n - 1] = 2.0 / (n * (n - 1.0));
-
-            if (n == 2) {
-                return { nodes, weights };
-            }
-
-            const int m = n - 1; // Degree of Legendre polynomial
-            const int n_interior = n - 2;
-            const int n_half = (n_interior + 1) / 2;
-
-            for (int i = 0; i < n_half; ++i) {
-                double z = std::cos(PI * (i + 1.0) / m);
-                double z1;
-                do {
-                    double p_m = 1.0, p_m_minus_1 = 0.0, p_m_minus_2 = 0.0;
-                    for (int j = 1; j <= m; ++j) {
-                        p_m_minus_2 = p_m_minus_1;
-                        p_m_minus_1 = p_m;
-                        p_m = ((2.0 * j - 1.0) * z * p_m_minus_1 - (j - 1.0) * p_m_minus_2) / j;
-                    }
-                    double p_prime_m = m * (z * p_m - p_m_minus_1) / (z * z - 1.0);
-                    double p_prime_prime_m = (2.0 * z * p_prime_m - m * (m + 1.0) * p_m) / (1.0 - z * z);
-                    z1 = z;
-                    z = z1 - p_prime_m / p_prime_prime_m;
-                } while (std::abs(z - z1) > 1e-15);
-
-                nodes[i + 1] = -z;
-                nodes[n - 2 - i] = z;
-            }
-            return { nodes, weights };
-        }
-    };
-} // namespace
 
 template <typename T>
 std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vector2<T>> sample_edge(
@@ -209,7 +147,8 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
         throw std::runtime_error(ss.str());
 	}
 
-	const auto& [nodes, weights] = GaussLobatto::get_rule(quad_order);
+    std::vector<double> nodes, weights;
+    std::tie(nodes, weights) = GaussLobatto::get_rule(quad_order);
 
     const T center = (window[0] + window[1]) / 2;
     const T halfw = (window[1] - window[0]) / 2;
@@ -245,20 +184,19 @@ T potential_EV(
     const T* phi_end_prev = nullptr;
 
     if (vertex_stencil.rows() == 2) {
-        throw std::logic_error("Open 2D polylines are not supported yet. make sure that every vertex has two neighbours");
+        throw std::logic_error("Open 2D polylines are not supported yet. Make sure that every vertex has two neighbors.");
     }
 
     Eigen::Vector2<T> tangent_next, normal_next = Eigen::Vector2<T>::Zero();
     std::array<T, 2> v1_arr;
     const std::array<T, 2>* v1_ptr = nullptr;
 
-
+    const Eigen::Vector2<T> p0 = vertex_stencil.row(0);
     if (vertex_stencil.rows() >= 2) {
-        const Eigen::Vector2<T> p0 = vertex_stencil.row(0);
         const Eigen::Vector2<T> p_next = vertex_stencil.row(1);
         tangent_next = (p_next - p0).normalized();
-        normal_next << -tangent_next.y(), tangent_next.x();
-        v1_arr = {{tangent_next.x(), tangent_next.y()}};
+        normal_next << tangent_next.y(), -tangent_next.x();
+        v1_arr = {{-tangent_next.x(), -tangent_next.y()}};
         v1_ptr = &v1_arr;
     }
 
@@ -268,13 +206,12 @@ T potential_EV(
     const std::array<T, 2>* v2_ptr = nullptr;
 
     if (vertex_stencil.rows() >= 3) {
-        const Eigen::Vector2<T> p0 = vertex_stencil.row(0);
         const Eigen::Vector2<T> p_prev = vertex_stencil.row(2);
         const Eigen::Vector2<T> edge_prev = p0 - p_prev;
         p_prev_norm = edge_prev.norm();
         tangent_prev = edge_prev / p_prev_norm;
-        normal_prev << -tangent_prev.y(), tangent_prev.x();
-        v2_arr = {{-tangent_prev.x(), -tangent_prev.y()}};
+        normal_prev << tangent_prev.y(), -tangent_prev.x();
+        v2_arr = {{tangent_prev.x(), tangent_prev.y()}};
         v2_ptr = &v2_arr;
     }
 
@@ -282,8 +219,8 @@ T potential_EV(
     const std::array<T, 2> edge_p1 = {{edge_pos(1, 0), edge_pos(1, 1)}};
 
     std::array<T, 2> window = smoothed_offset_potential::compute_vertex_window(
-        edge_p0, edge_p1, vertex_pt, v1_ptr, v2_ptr, T(params.alpha_t));
-    if (window[0] == 1.0 && window[1] == 0.0) return T(0);
+        edge_p0, edge_p1, vertex_pt, v1_ptr, v2_ptr, params.alpha_t, &params.dhat);
+    if (window[0] == 1.0 && window[1] == 0.0) return T(0); // TODO this messes with AD, change how this is handled
 
     Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
     std::vector<double> weights;
@@ -292,8 +229,7 @@ T potential_EV(
 
     // Sample points on the edge
     std::tie(qp, weights, normal) = sample_edge<T>(edge_pos, qord, window);
-    const T scale = (edge_pos.row(1) - edge_pos.row(0)).norm() * (window[1] - window[0]);
-
+    const T scale = .5 * (edge_pos.row(1) - edge_pos.row(0)).norm() * (window[1] - window[0]);
     T acc(0.0);
     for (size_t q = 0; q < qord; ++q) {
         const std::array<T, 2> query_point = {{ qp(q, 0), qp(q, 1) }};
@@ -312,9 +248,8 @@ T potential_EV(
             phi_end_prev_val = smoothed_offset_potential::phi_value(r_q_prev, y_q_prev, p_prev_norm);
             phi_end_prev = &phi_end_prev_val;
         }
-
         acc += weights[q] * smoothed_offset_potential::polyline_vertex_potential(
-            query_point, vertex_pt, phi_start_next, phi_end_prev, T(params.alpha_t), params.r);
+            query_point, vertex_pt, phi_start_next, phi_end_prev, params.alpha_t, params.r, params.dhat);
     }
     return scale * acc;
 }
@@ -333,8 +268,8 @@ T potential_EE_onesided(
 	const int qord = params.quad_points;
 
 	// "segment" is the segment we are computing the potential for (edge0)
-	const Eigen::Vector2<T> p0 = edge0_pos.row(0);
-	const Eigen::Vector2<T> p1 = edge0_pos.row(1);
+	const Eigen::Vector2<T> p0 = edge0_pos.row(1);
+	const Eigen::Vector2<T> p1 = edge0_pos.row(0);
 	const Eigen::Vector2<T> tangent_vec = p1 - p0;
 	const T length = tangent_vec.norm();
 	const Eigen::Vector2<T> tangent = tangent_vec / length;
@@ -351,12 +286,12 @@ T potential_EE_onesided(
     const std::array<T, 2> ep1_arr{{ ep1(0), ep1(1) }};
 
     std::array<T, 2> window = smoothed_offset_potential::compute_edge_window(
-        ep0_arr, ep1_arr, p0_arr, p1_arr, T(params.alpha_t));
-    if (window[0] == 1.0 && window[1] == 0.0) return T(0);
+        ep0_arr, ep1_arr, p0_arr, p1_arr, params.alpha_t, &params.dhat);
+    if (window[0] == 1.0 && window[1] == 0.0) return T(0); // TODO this messes with AD, change how this is handled
 
 	// "sampled_segment" is the segment we integrate over (edge1)
 	std::tie(qp, weights, normal) = sample_edge<T>(edge1_pos, qord, window);
-	const T scale = (edge1_pos.row(1) - edge1_pos.row(0)).norm() * (window[1] - window[0]);
+	const T scale = .5 * (edge1_pos.row(1) - edge1_pos.row(0)).norm() * (window[1] - window[0]);
 	T acc(0.0);
 	for (size_t q=0; q<qord; ++q) {
 		const Eigen::Vector2<T> p = qp.row(q);
@@ -372,6 +307,7 @@ T potential_EE_onesided(
 				length,
 				params.alpha_t,
 				params.r,
+				params.dhat,
 				phi_start,
 				phi_end);
 	}

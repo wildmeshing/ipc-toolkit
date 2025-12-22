@@ -50,16 +50,21 @@ namespace {
     // Helper function to find the vertices adjacent to a given vertex in a 2D mesh.
     std::vector<index_t> find_vertex_neighbors_2D(const CollisionMesh& mesh, const index_t v_id)
     {
-        std::vector<index_t> neighbors;
+        std::array<index_t,2> neighbors;
+        std::fill(neighbors.begin(), neighbors.end(), v_id);
         for (const auto& edge_id : mesh.vertex_edge_adjacencies()[v_id]) {
             const auto& edge = mesh.edges().row(edge_id);
             if (edge[0] == v_id) {
-                neighbors.push_back(edge[1]);
+                neighbors[0] = edge[1];
             } else {
-                neighbors.push_back(edge[0]);
+                neighbors[1] = edge[0];
             }
         }
-        return neighbors;
+        std::vector<index_t> neighbors_ordered;
+        for (index_t n : neighbors) {
+            if (n != v_id) neighbors_ordered.push_back(n);
+        }
+        return neighbors_ordered;
     }
 }
 

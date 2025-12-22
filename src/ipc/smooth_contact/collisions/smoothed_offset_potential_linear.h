@@ -26,6 +26,29 @@ F H(F t) {
     return ((2.0 - t) * (t + 1.0) * (t + 1.0)) / 4.0;
 }
 
+template <typename F>
+F cubic_bspline(F v) {
+    using namespace std;
+    using namespace TinyAD;
+    F abs_v = abs(v);
+    if (abs_v < 1.0) {
+        return (2.0 / 3.0) - abs_v * abs_v + 0.5 * abs_v * abs_v * abs_v;
+    }
+    if (abs_v < 2.0) {
+        F diff = 2.0 - abs_v;
+        return (1.0 / 6.0) * diff * diff * diff;
+    }
+    return 0.0;
+}
+
+template <typename F>
+F h_epsilon(F value, double epsilon) {
+    if (value <= 0.0) {
+        return 0.0;
+    }
+    return 2.0 * cubic_bspline(2.0 * value / epsilon);
+}
+
 /**
  * @brief Calculates the cosine of the angle between the segment's tangent and
  * the vector from a point on the segment's line to the query point.
@@ -38,6 +61,8 @@ F H(F t) {
  */
 template <typename F>
 F phi_value(F r_value, F y_q, F y) {
+    using namespace std;
+    using namespace TinyAD;
     F diff = y_q - y;
     F denom = hypot(diff, r_value);
     // Avoid division by zero if the point is on the vertex/endpoint
@@ -55,6 +80,7 @@ F phi_value(F r_value, F y_q, F y) {
  * @param length The length of the segment.
  * @param alpha Smoothness parameter.
  * @param power Decay rate of the potential.
+ * @param epsilon The smoothing radius for the potential.
  * @param phi_start Output parameter for the phi value at the start.
  * @param phi_end Output parameter for the phi value at the end.
  * @return The edge potential contribution.
@@ -66,13 +92,13 @@ F polyline_edge_potential(
     const std::array<F, 2>& tangent,
     const std::array<F, 2>& normal,
     F length,
-    F alpha,
+    double alpha,
     double power,
+    double epsilon,
     F& phi_start,
     F& phi_end) {
     using namespace std;
     using namespace TinyAD;
-    
     std::array<F, 2> rel = {{point[0] - p0[0], point[1] - p0[1]}};
     F r_q = rel[0] * normal[0] + rel[1] * normal[1];
     F y_q = rel[0] * tangent[0] + rel[1] * tangent[1];
@@ -82,7 +108,7 @@ F polyline_edge_potential(
 
     F denom = pow(abs(r_q), power);
     if (denom > 1e-12) {
-        return H(phi_start / alpha) * H(-phi_end / alpha) / denom;
+        return h_epsilon(abs(r_q), epsilon) * H(phi_start / alpha) * H(-phi_end / alpha) / denom;
     }
     return 0.0;
 }
@@ -101,6 +127,7 @@ F polyline_edge_potential(
  *   end of the *previous* edge. Pass nullptr for the start vertex.
  * @param alpha Smoothness parameter for angular transitions.
  * @param power Decay rate of the potential with distance.
+ * @param epsilon The smoothing radius for the potential.
  * @return The calculated potential contribution from the vertex.
  */
 template <typename F>
@@ -109,11 +136,11 @@ F polyline_vertex_potential(
     const std::array<F, 2>& vertex_pt,
     const F* phi_start_next,
     const F* phi_end_prev,
-    F alpha,
-    double power) {
+    double alpha,
+    double power,
+    double epsilon) {
     using namespace std;
     using namespace TinyAD;
-
     F term = 1.0;
     if (phi_start_next) {  // Start or interior vertex
         term -= H(*phi_start_next / alpha);
@@ -124,9 +151,52 @@ F polyline_vertex_potential(
 
     F dist_to_vertex = hypot(point[0] - vertex_pt[0], point[1] - vertex_pt[1]);
     if (abs(dist_to_vertex) > 1e-12) {
-        return term / pow(dist_to_vertex, power);
+        return h_epsilon(dist_to_vertex, epsilon) * term / pow(dist_to_vertex, power);
     }
     return 0.0;
+}
+
+/**
+ * @brief Intersects a line segment with a circle.
+ *
+ * Returns the interval [u_min, u_max] of the segment's parameter `u`
+ * (in [0,1]) that lies within the circle.
+ *
+ * @tparam F The floating point type.
+ * @param p0 The start point of the line segment.
+ * @param p1 The end point of the line segment.
+ * @param center The center of the circle.
+ * @param radius The radius of the circle.
+ * @return A tuple (u_min, u_max). If u_min > u_max, the intersection is empty.
+ */
+template <typename F>
+std::array<F, 2> intersect_segment_with_circle(
+    const std::array<F, 2>& p0,
+    const std::array<F, 2>& p1,
+    const std::array<F, 2>& center,
+    double radius) {
+    using namespace std;
+    std::array<F, 2> d = {{p1[0] - p0[0], p1[1] - p0[1]}};
+    std::array<F, 2> f = {{p0[0] - center[0], p0[1] - center[1]}};
+
+    F a = d[0] * d[0] + d[1] * d[1];
+    F b = 2 * (f[0] * d[0] + f[1] * d[1]);
+    F c = f[0] * f[0] + f[1] * f[1] - radius * radius;
+
+    if (abs(a) < 1e-12) {
+        return (c > 0) ? std::array<F, 2>{{1.0, 0.0}} : std::array<F, 2>{{0.0, 1.0}};
+    }
+
+    F discriminant = b * b - 4 * a * c;
+    if (discriminant < 0) {
+        return {{1.0, 0.0}};
+    }
+
+    F sqrt_discriminant = sqrt(discriminant);
+    F u1 = (-b - sqrt_discriminant) / (2 * a);
+    F u2 = (-b + sqrt_discriminant) / (2 * a);
+
+    return {{max(F(0.0), u1), min(F(1.0), u2)}};
 }
 
 /**
@@ -150,7 +220,6 @@ std::array<F, 2> intersect_segment_with_halfplane(
     const std::array<F, 2>& n) {
     using namespace std;
     using namespace TinyAD;
-
     F u_min = 0.0, u_max = 1.0;
     std::array<F, 2> delta = {{p1[0] - p0[0], p1[1] - p0[1]}};
     F dot_delta_n = delta[0] * n[0] + delta[1] * n[1];
@@ -176,10 +245,15 @@ std::array<F, 2> compute_vertex_window(
     const std::array<F, 2>& vertex,
     const std::array<F, 2>* v1,
     const std::array<F, 2>* v2,
-    F alpha) {
+    double alpha,
+    const double* epsilon = nullptr) {
     using namespace std;
     using namespace TinyAD;
     if (!v1 && !v2) {
+        if (epsilon) {
+            auto res = intersect_segment_with_circle(p0, p1, vertex, *epsilon);
+            return (res[0] > res[1]) ? std::array<F, 2>{{1.0, 0.0}} : res;
+        }
         return {{0.0, 1.0}};
     }
 
@@ -216,11 +290,25 @@ std::array<F, 2> compute_vertex_window(
             bool empty1 = res1[0] > res1[1];
             bool empty2 = res2[0] > res2[1];
 
-            if (empty1 && empty2) return {{1.0, 0.0}};
-            if (empty1) return res2;
-            if (empty2) return res1;
+            std::array<F, 2> union_res;
+            if (empty1 && empty2) {
+                union_res = {{1.0, 0.0}};
+            } else if (empty1) {
+                union_res = res2;
+            } else if (empty2) {
+                union_res = res1;
+            } else {
+                union_res = {{min(res1[0], res2[0]), max(res1[1], res2[1])}};
+            }
 
-            return {{min(res1[0], res2[0]), max(res1[1], res2[1])}};
+            if (epsilon) {
+                auto res_circle = intersect_segment_with_circle(p0, p1, vertex, *epsilon);
+                if (res_circle[0] > res_circle[1] || union_res[0] > union_res[1]) {
+                    return {{1.0, 0.0}};
+                }
+                return {{max(union_res[0], res_circle[0]), min(union_res[1], res_circle[1])}};
+            }
+            return union_res;
         }
     }
 
@@ -239,6 +327,13 @@ std::array<F, 2> compute_vertex_window(
         u_max = min(u_max, res2[1]);
     }
 
+    if (epsilon) {
+        auto res_circle = intersect_segment_with_circle(p0, p1, vertex, *epsilon);
+        if (res_circle[0] > res_circle[1]) return {{1.0, 0.0}};
+        u_min = max(u_min, res_circle[0]);
+        u_max = min(u_max, res_circle[1]);
+    }
+
     if (u_min > u_max) {
         return {{1.0, 0.0}};
     }
@@ -255,7 +350,8 @@ std::array<F, 2> compute_edge_window(
     const std::array<F, 2>& p1,
     const std::array<F, 2>& edge_p0,
     const std::array<F, 2>& edge_p1,
-    F alpha) {
+    double alpha,
+    const double* epsilon = nullptr) {
     using namespace std;
     using namespace TinyAD;
     
@@ -297,6 +393,17 @@ std::array<F, 2> compute_edge_window(
 
     F u_min = max({res_edge[0], res_left[0], res_right[0]});
     F u_max = min({res_edge[1], res_left[1], res_right[1]});
+
+    if (epsilon) {
+        std::array<F, 2> p_off = {{edge_p0[0] + n_edge[0] * (*epsilon), edge_p0[1] + n_edge[1] * (*epsilon)}};
+        std::array<F, 2> n_off = {{-n_edge[0], -n_edge[1]}};
+        auto res_off = intersect_segment_with_halfplane(p0, p1, p_off, n_off);
+        if (res_off[0] > res_off[1]) {
+            return {{1.0, 0.0}};
+        }
+        u_min = max(u_min, res_off[0]);
+        u_max = min(u_max, res_off[1]);
+    }
 
     if (u_min > u_max) {
         return {{1.0, 0.0}};
