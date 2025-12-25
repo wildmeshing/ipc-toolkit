@@ -9,9 +9,9 @@
 namespace ipc {
 
 // clang-format off
-template <> CollisionType HighOrderCollisionTemplate<Vertex2, Vertex2>::type() const { return CollisionType::VERTEX_VERTEX; }
-template <> CollisionType HighOrderCollisionTemplate<Edge2P1, Vertex2>::type() const { return CollisionType::EDGE_VERTEX; }
-template <> CollisionType HighOrderCollisionTemplate<Edge2P1, Edge2P1>::type() const { return CollisionType::EDGE_EDGE; }
+template <> HighOrderCollisionType HighOrderCollisionTemplate<Vertex2, Vertex2>::type() const { return HighOrderCollisionType::VERTEX_VERTEX; }
+template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge2P1, Vertex2>::type() const { return HighOrderCollisionType::EDGE_VERTEX; }
+template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge2P1, Edge2P1>::type() const { return HighOrderCollisionType::EDGE_EDGE; }
 // clang-format on
 
 // clang-format off

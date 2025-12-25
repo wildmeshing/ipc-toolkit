@@ -1,5 +1,5 @@
 #pragma once
-#include "common.hpp"
+#include <ipc/utils/logger.hpp>
 
 namespace ipc {
 

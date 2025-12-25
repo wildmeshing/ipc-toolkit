@@ -1,15 +1,24 @@
 #pragma once
 
 #include "high_order_primitives.hpp"
-#include "smooth_collision.hpp"
-#include <ipc/smooth_contact/high_order_contact_parameters.hpp>
+#include <ipc/high_order_contact/high_order_contact_parameters.hpp>
+#include <ipc/utils/math.hpp>
+#include <ipc/utils/autodiff_types.hpp>
 
 namespace ipc {
+
+enum class HighOrderCollisionType : uint8_t {
+    EDGE_VERTEX,
+    VERTEX_VERTEX,
+    FACE_VERTEX,
+    EDGE_EDGE,
+};
 
 /// @brief Contact pair class for Geometric Contact Potential.
 /// @note Unlike NormalCollision, HighOrderCollision has to be reconstructed whenever vertices change position
 class HighOrderCollision {
 public:
+    static constexpr int MAX_VERT_3D = 20 * 2;
     static constexpr int ELEMENT_SIZE = 3 * MAX_VERT_3D;
 
     HighOrderCollision(
@@ -38,7 +47,7 @@ public:
     virtual int n_dofs() const = 0;
 
     /// @brief Contact pair type
-    virtual CollisionType type() const = 0;
+    virtual HighOrderCollisionType type() const = 0;
 
     /// @brief Get the number of vertices in the collision stencil.
     virtual int num_vertices() const = 0;
@@ -163,7 +172,7 @@ public:
     {
         return primitive_a->n_dofs() + primitive_b->n_dofs();
     }
-    CollisionType type() const override;
+    HighOrderCollisionType type() const override;
 
     Vector<int, N_CORE_DOFS> get_core_indices() const;
     std::array<index_t, N_CORE_DOFS> core_vertex_ids() const;

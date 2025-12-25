@@ -51,22 +51,22 @@ void HighOrderCollisions::compute_adaptive_dhat(
         const double dist =
             params.adaptive_dhat_ratio() * sqrt(cc->compute_distance(vertices));
         switch (cc->type()) {
-        case CollisionType::EDGE_EDGE: {
+        case HighOrderCollisionType::EDGE_EDGE: {
             assign_min(edge_adaptive_dhat((*cc)[0]), dist);
             assign_min(edge_adaptive_dhat((*cc)[1]), dist);
             break;
         }
-        case CollisionType::EDGE_VERTEX: {
+        case HighOrderCollisionType::EDGE_VERTEX: {
             assign_min(edge_adaptive_dhat((*cc)[0]), dist);
             assign_min(vert_adaptive_dhat((*cc)[1]), dist);
             break;
         }
-        case CollisionType::FACE_VERTEX: {
+        case HighOrderCollisionType::FACE_VERTEX: {
             assign_min(face_adaptive_dhat((*cc)[0]), dist);
             assign_min(vert_adaptive_dhat((*cc)[1]), dist);
             break;
         }
-        case CollisionType::VERTEX_VERTEX: {
+        case HighOrderCollisionType::VERTEX_VERTEX: {
             assign_min(vert_adaptive_dhat((*cc)[0]), dist);
             assign_min(vert_adaptive_dhat((*cc)[1]), dist);
             break;

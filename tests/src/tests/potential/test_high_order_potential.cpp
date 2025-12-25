@@ -6,7 +6,7 @@
 #include <catch2/benchmark/catch_benchmark.hpp>
 
 #include <ipc/potentials/barrier_potential.hpp>
-#include <ipc/smooth_contact/high_order_contact_potential.hpp>
+#include <ipc/high_order_contact/high_order_contact_potential.hpp>
 #include <ipc/distance/line_line.hpp>
 
 #include <finitediff.hpp>

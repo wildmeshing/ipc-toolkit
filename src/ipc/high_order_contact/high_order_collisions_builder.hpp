@@ -1,6 +1,6 @@
 #pragma once
 
-#include "high_order_collisions.hpp"
+#include <ipc/high_order_contact/high_order_collisions.hpp>
 
 #include <ipc/collision_mesh.hpp>
 #include <ipc/utils/maybe_parallel_for.hpp>

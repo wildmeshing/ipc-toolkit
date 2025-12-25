@@ -1,7 +1,7 @@
 #pragma once
 
 #include <ipc/collision_mesh.hpp>
-#include <ipc/smooth_contact/high_order_contact_parameters.hpp>
+#include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
 namespace ipc {
