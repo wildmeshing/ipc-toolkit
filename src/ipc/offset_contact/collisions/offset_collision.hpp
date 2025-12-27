@@ -1,13 +1,13 @@
 #pragma once
 
-#include "high_order_primitives.hpp"
-#include <ipc/high_order_contact/high_order_contact_parameters.hpp>
+#include "offset_primitives.hpp"
+#include <ipc/offset_contact/offset_contact_parameters.hpp>
 #include <ipc/utils/math.hpp>
 #include <ipc/utils/autodiff_types.hpp>
 
 namespace ipc {
 
-enum class HighOrderCollisionType : uint8_t {
+enum class OffsetCollisionType : uint8_t {
     EDGE_VERTEX,
     VERTEX_VERTEX,
     FACE_VERTEX,
@@ -15,13 +15,13 @@ enum class HighOrderCollisionType : uint8_t {
 };
 
 /// @brief Contact pair class for Geometric Contact Potential.
-/// @note Unlike NormalCollision, HighOrderCollision has to be reconstructed whenever vertices change position
-class HighOrderCollision {
+/// @note Unlike NormalCollision, OffsetCollision has to be reconstructed whenever vertices change position
+class OffsetCollision {
 public:
     static constexpr int MAX_VERT_3D = 20 * 2;
     static constexpr int ELEMENT_SIZE = 3 * MAX_VERT_3D;
 
-    HighOrderCollision(
+    OffsetCollision(
         const index_t _primitive0,
         const index_t _primitive1,
         const double _dhat,
@@ -32,7 +32,7 @@ public:
     {
     }
 
-    virtual ~HighOrderCollision() = default;
+    virtual ~OffsetCollision() = default;
 
     /// @brief Check if this contact pair is active (depending on both orientation and distance)
     bool is_active() const { return m_is_active; }
@@ -47,7 +47,7 @@ public:
     virtual int n_dofs() const = 0;
 
     /// @brief Contact pair type
-    virtual HighOrderCollisionType type() const = 0;
+    virtual OffsetCollisionType type() const = 0;
 
     /// @brief Get the number of vertices in the collision stencil.
     virtual int num_vertices() const = 0;
@@ -90,24 +90,24 @@ public:
     /// @brief Compute the value of the GCP potential
     virtual double operator()(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const = 0;
+        const OffsetContactParameters& params) const = 0;
 
     /// @brief Compute the gradient of the GCP potential wrt. vertices involved
     virtual Vector<double, -1, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const = 0;
+        const OffsetContactParameters& params) const = 0;
 
     /// @brief Compute the Hessian of the GCP potential wrt. vertices involved
     virtual MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const = 0;
+        const OffsetContactParameters& params) const = 0;
 
-    bool operator==(const HighOrderCollision& other) const
+    bool operator==(const OffsetCollision& other) const
     {
         return (primitive0 == other.primitive0 && primitive1 == other.primitive1);
     }
 
-    bool operator!=(const HighOrderCollision& other) const
+    bool operator!=(const OffsetCollision& other) const
     {
         return !(*this == other);
     }
@@ -119,7 +119,7 @@ public:
         } else if (idx == 1) {
             return primitive1;
         } else {
-            throw std::runtime_error("Invalid index in high order collision!");
+            throw std::runtime_error("Invalid index in offset collision!");
         }
     }
 
@@ -139,9 +139,9 @@ protected:
 
 /// @brief Templated class for various types of contact pairs
 template <typename PrimitiveA, typename PrimitiveB>
-class HighOrderCollisionTemplate : public HighOrderCollision {
+class OffsetCollisionTemplate : public OffsetCollision {
 public:
-    using Super = HighOrderCollision;
+    using Super = OffsetCollision;
     static constexpr int N_CORE_POINTS =
         PrimitiveA::N_CORE_POINTS + PrimitiveB::N_CORE_POINTS;
     static constexpr int DIM = PrimitiveA::DIM;
@@ -150,15 +150,15 @@ public:
     static constexpr int N_CORE_DOFS = N_CORE_POINTS * DIM;
     static constexpr int ELEMENT_SIZE = Super::ELEMENT_SIZE;
 
-    HighOrderCollisionTemplate(
+    OffsetCollisionTemplate(
         index_t primitive0,
         index_t primitive1,
         const CollisionMesh& mesh,
-        const HighOrderContactParameters& params,
+        const OffsetContactParameters& params,
         const double dhat,
         const Eigen::MatrixXd& V);
 
-    virtual ~HighOrderCollisionTemplate() = default;
+    virtual ~OffsetCollisionTemplate() = default;
 
     std::string name() const override;
 
@@ -166,7 +166,7 @@ public:
     {
         return primitive_a->n_dofs() + primitive_b->n_dofs();
     }
-    HighOrderCollisionType type() const override;
+    OffsetCollisionType type() const override;
 
     Vector<int, N_CORE_DOFS> get_core_indices() const;
     std::array<index_t, N_CORE_DOFS> core_vertex_ids() const;
@@ -193,7 +193,7 @@ public:
     /// @return GCP potential value
     double operator()(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const override;
+        const OffsetContactParameters& params) const override;
 
     /// @brief Compute the potential gradient wrt. positions
     /// @param positions Vertex positions
@@ -201,7 +201,7 @@ public:
     /// @return GCP potential gradient
     Vector<double, -1, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const override;
+        const OffsetContactParameters& params) const override;
 
     /// @brief Compute the potential Hessian wrt. positions
     /// @param positions Vertex positions
@@ -209,7 +209,7 @@ public:
     /// @return GCP potential Hessian
     MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const override;
+        const OffsetContactParameters& params) const override;
 
     // ---- distance ----
 

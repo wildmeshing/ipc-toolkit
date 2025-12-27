@@ -1,4 +1,4 @@
-#include "high_order_contact_potential.hpp"
+#include "offset_contact_potential.hpp"
 
 #include <ipc/utils/local_to_global.hpp>
 #include <ipc/utils/maybe_parallel_for.hpp>
@@ -10,8 +10,8 @@
 
 namespace ipc {
 
-double HighOrderContactPotential::operator()(
-    const HighOrderCollisions& collisions,
+double OffsetContactPotential::operator()(
+    const OffsetCollisions& collisions,
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> X) const
 {
@@ -36,8 +36,8 @@ double HighOrderContactPotential::operator()(
     return storage.combine([](double a, double b) { return a + b; });
 }
 
-Eigen::VectorXd HighOrderContactPotential::gradient(
-    const HighOrderCollisions& collisions,
+Eigen::VectorXd OffsetContactPotential::gradient(
+    const OffsetCollisions& collisions,
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> X) const
 {
@@ -56,7 +56,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
             auto& global_grad = get_local_thread_storage(storage, thread_id);
 
             for (size_t i = start; i < end; i++) {
-                const HighOrderCollision& collision = collisions[i];
+                const OffsetCollision& collision = collisions[i];
 
                 const Eigen::VectorXd local_grad =
                     this->gradient(collision, collision.dof(X));
@@ -76,8 +76,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
     return grad;
 }
 
-Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
-    const HighOrderCollisions& collisions,
+Eigen::SparseMatrix<double> OffsetContactPotential::hessian(
+    const OffsetCollisions& collisions,
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> X,
     const PSDProjectionMethod project_hessian_to_psd) const
@@ -100,7 +100,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
             auto& hess_triplets = get_local_thread_storage(storage, thread_id);
 
             for (size_t i = start; i < end; i++) {
-                const HighOrderCollision& collision = collisions[i];
+                const OffsetCollision& collision = collisions[i];
 
                 const Eigen::MatrixXd local_hess = this->hessian(
                     collisions[i], collisions[i].dof(X),
@@ -191,22 +191,22 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
     return hess;
 }
 
-double HighOrderContactPotential::operator()(
-    const HighOrderCollision& collision,
+double OffsetContactPotential::operator()(
+    const OffsetCollision& collision,
     Eigen::ConstRef<Eigen::VectorXd> positions) const
 {
     return collision.weight * collision(positions, params);
 }
 
-Eigen::VectorXd HighOrderContactPotential::gradient(
-    const HighOrderCollision& collision,
+Eigen::VectorXd OffsetContactPotential::gradient(
+    const OffsetCollision& collision,
     Eigen::ConstRef<Eigen::VectorXd> positions) const
 {
     return collision.weight * collision.gradient(positions, params);
 }
 
-Eigen::MatrixXd HighOrderContactPotential::hessian(
-    const HighOrderCollision& collision,
+Eigen::MatrixXd OffsetContactPotential::hessian(
+    const OffsetCollision& collision,
     Eigen::ConstRef<Eigen::VectorXd> positions,
     const PSDProjectionMethod project_hessian_to_psd) const
 {

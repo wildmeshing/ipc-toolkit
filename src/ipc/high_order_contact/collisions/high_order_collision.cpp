@@ -331,9 +331,7 @@ T potential_EE(
 template <typename PrimitiveA, typename PrimitiveB>
 double HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b) const
+    const HighOrderContactParameters& params) const
 {
     return 0;
 }
@@ -341,9 +339,7 @@ double HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::operator()(
 template <typename PrimitiveA, typename PrimitiveB>
 auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::gradient(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b) const
+    const HighOrderContactParameters& params) const
     -> Vector<double, -1, ELEMENT_SIZE>
 {
     return Vector<double, -1, ELEMENT_SIZE>::Zero(n_dofs());
@@ -352,9 +348,7 @@ auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::gradient(
 template <typename PrimitiveA, typename PrimitiveB>
 auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::hessian(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b) const
+    const HighOrderContactParameters& params) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     return MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(
@@ -375,9 +369,7 @@ double HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::compute_distance(
 template <>
 double HighOrderCollisionTemplate<Edge2P1, Edge2P1>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b) const
+    const HighOrderContactParameters& params) const
 {
     return potential_EE<double>(positions, params);
 }
@@ -385,9 +377,7 @@ double HighOrderCollisionTemplate<Edge2P1, Edge2P1>::operator()(
 template <>
 double HighOrderCollisionTemplate<Edge2P1, Vertex2>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b) const
+    const HighOrderContactParameters& params) const
 {
     return potential_EV<double>(
         positions, params, primitive_a->n_vertices(), primitive_b->n_vertices());
@@ -396,9 +386,7 @@ double HighOrderCollisionTemplate<Edge2P1, Vertex2>::operator()(
 template <>
 auto HighOrderCollisionTemplate<Edge2P1, Vertex2>::gradient(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b) const -> Vector<double, -1, ELEMENT_SIZE>
+    const HighOrderContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
     return potential_EV<ADGrad<-1>>(
@@ -409,9 +397,7 @@ auto HighOrderCollisionTemplate<Edge2P1, Vertex2>::gradient(
 template <>
 auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::gradient(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b) const
+    const HighOrderContactParameters& params) const
     -> Vector<double, -1, ELEMENT_SIZE>
 {
 	return potential_EE<ADGrad<N_CORE_DOFS>>(positions, params).grad;
@@ -432,9 +418,7 @@ auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::core_vertex_ids() const
 template <>
 auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::hessian(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
+    const HighOrderContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
 	return potential_EE<ADHessian<N_CORE_DOFS>>(positions, params).Hess;
 }
@@ -442,9 +426,7 @@ auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::hessian(
 template <>
 auto HighOrderCollisionTemplate<Edge2P1, Vertex2>::hessian(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
+    const HighOrderContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
     return potential_EV<ADHessian<-1>>(
