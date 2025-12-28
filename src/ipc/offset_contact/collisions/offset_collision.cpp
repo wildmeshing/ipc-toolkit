@@ -8,13 +8,13 @@
 namespace ipc {
 
 // clang-format off
-template <> OffsetCollisionType OffsetCollisionTemplate<Vertex2, Vertex2>::type() const { return OffsetCollisionType::VERTEX_VERTEX; }
-template <> OffsetCollisionType OffsetCollisionTemplate<Edge2P1, Vertex2>::type() const { return OffsetCollisionType::EDGE_VERTEX; }
+template <> OffsetCollisionType OffsetCollisionTemplate<ogcVert2, ogcVert2>::type() const { return OffsetCollisionType::VERTEX_VERTEX; }
+template <> OffsetCollisionType OffsetCollisionTemplate<ogcEdge2, ogcVert2>::type() const { return OffsetCollisionType::EDGE_VERTEX; }
 // clang-format on
 
 // clang-format off
-template <> std::string OffsetCollisionTemplate<Vertex2, Vertex2>::name() const { return "vv_2d"; }
-template <> std::string OffsetCollisionTemplate<Edge2P1, Vertex2>::name() const { return "ve_2d"; }
+template <> std::string OffsetCollisionTemplate<ogcVert2, ogcVert2>::name() const { return "vv_2d"; }
+template <> std::string OffsetCollisionTemplate<ogcEdge2, ogcVert2>::name() const { return "ve_2d"; }
 // clang-format on
 
 Eigen::VectorXd OffsetCollision::dof(Eigen::ConstRef<Eigen::MatrixXd> X) const
@@ -96,7 +96,7 @@ OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::OffsetCollisionTemplate(
 }
 
 template<>
-double OffsetCollisionTemplate<Vertex2, Vertex2>::compute_distance(
+double OffsetCollisionTemplate<ogcVert2, ogcVert2>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
     return point_point_distance(
@@ -104,7 +104,7 @@ double OffsetCollisionTemplate<Vertex2, Vertex2>::compute_distance(
 }
 
 template<>
-double OffsetCollisionTemplate<Edge2P1, Vertex2>::compute_distance(
+double OffsetCollisionTemplate<ogcEdge2, ogcVert2>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
     return point_edge_distance(
@@ -149,7 +149,7 @@ T potential_VV(
         T y_q = rel.dot(t);
         
         // phi at start of next edge (y=0)
-        phi_start_next_val = smoothed_offset_potential::phi_value(r_q, y_q, T(0));
+        phi_start_next_val = offset_potential::phi_value(r_q, y_q, T(0));
         phi_start_next = &phi_start_next_val;
     }
 
@@ -166,11 +166,11 @@ T potential_VV(
         T y_q = rel.dot(t);
 
         // phi at end of prev edge (y=len)
-        phi_end_prev_val = smoothed_offset_potential::phi_value(r_q, y_q, len);
+        phi_end_prev_val = offset_potential::phi_value(r_q, y_q, len);
         phi_end_prev = &phi_end_prev_val;
     }
 
-    return smoothed_offset_potential::polyline_vertex_potential(
+    return offset_potential::polyline_vertex_potential(
         point, vertex_pt, phi_start_next, phi_end_prev, params.r, params.dhat);
 }
 
@@ -203,7 +203,7 @@ T potential_EV(
     const std::array<T, 2> n_arr = {{n_hat.x(), n_hat.y()}};
 
     T phi_start, phi_end;
-    return smoothed_offset_potential::polyline_edge_potential(
+    return offset_potential::polyline_edge_potential(
         vertex_pt, p0_arr, t_arr, n_arr, len,
         params.r, params.dhat,
         phi_start, phi_end);
@@ -250,7 +250,7 @@ double OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::compute_distance(
 }
 
 template <>
-double OffsetCollisionTemplate<Edge2P1, Vertex2>::operator()(
+double OffsetCollisionTemplate<ogcEdge2, ogcVert2>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
 {
@@ -259,7 +259,7 @@ double OffsetCollisionTemplate<Edge2P1, Vertex2>::operator()(
 }
 
 template <>
-auto OffsetCollisionTemplate<Edge2P1, Vertex2>::gradient(
+auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::gradient(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
 {
@@ -282,7 +282,7 @@ auto OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::core_vertex_ids() const
 }
 
 template <>
-auto OffsetCollisionTemplate<Edge2P1, Vertex2>::hessian(
+auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::hessian(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
@@ -293,7 +293,7 @@ auto OffsetCollisionTemplate<Edge2P1, Vertex2>::hessian(
 }
 
 template <>
-double OffsetCollisionTemplate<Vertex2, Vertex2>::operator()(
+double OffsetCollisionTemplate<ogcVert2, ogcVert2>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
 {
@@ -302,7 +302,7 @@ double OffsetCollisionTemplate<Vertex2, Vertex2>::operator()(
 }
 
 template <>
-auto OffsetCollisionTemplate<Vertex2, Vertex2>::gradient(
+auto OffsetCollisionTemplate<ogcVert2, ogcVert2>::gradient(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
 {
@@ -312,7 +312,7 @@ auto OffsetCollisionTemplate<Vertex2, Vertex2>::gradient(
 }
 
 template <>
-auto OffsetCollisionTemplate<Vertex2, Vertex2>::hessian(
+auto OffsetCollisionTemplate<ogcVert2, ogcVert2>::hessian(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
@@ -322,7 +322,7 @@ auto OffsetCollisionTemplate<Vertex2, Vertex2>::hessian(
 }
 
 // Note: Primitive pair order cannot change
-template class OffsetCollisionTemplate<Edge2P1, Vertex2>;
-template class OffsetCollisionTemplate<Vertex2, Vertex2>;
+template class OffsetCollisionTemplate<ogcEdge2, ogcVert2>;
+template class OffsetCollisionTemplate<ogcVert2, ogcVert2>;
 
 } // namespace ipc

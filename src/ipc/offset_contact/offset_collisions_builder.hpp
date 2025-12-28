@@ -39,11 +39,11 @@ public:
     // Store the indices to pairs to avoid duplicates.
     unordered_map<
         std::pair<index_t, index_t>,
-        std::shared_ptr<OffsetCollisionTemplate<Vertex2, Vertex2>>>
+        std::shared_ptr<OffsetCollisionTemplate<ogcVert2, ogcVert2>>>
         vert_vert_2_to_id;
     unordered_map<
         std::pair<index_t, index_t>,
-        std::shared_ptr<OffsetCollisionTemplate<Edge2P1, Vertex2>>>
+        std::shared_ptr<OffsetCollisionTemplate<ogcEdge2, ogcVert2>>>
         vert_edge_2_to_id;
 };
 

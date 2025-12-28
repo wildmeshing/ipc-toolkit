@@ -48,15 +48,17 @@ protected:
 
 namespace {
     // Helper function to find the vertices adjacent to a given vertex in a 2D mesh.
-    std::vector<index_t> find_vertex_neighbors_2D(const CollisionMesh& mesh, const index_t v_id)
+    std::vector<index_t> ogc_find_vertex_neighbors_2D(const CollisionMesh& mesh, const index_t v_id)
     {
         std::array<index_t,2> neighbors;
         std::fill(neighbors.begin(), neighbors.end(), v_id);
         for (const auto& edge_id : mesh.vertex_edge_adjacencies()[v_id]) {
             const auto& edge = mesh.edges().row(edge_id);
             if (edge[0] == v_id) {
+                if (neighbors[0] != v_id) throw std::logic_error("multiple vertex neighbors");
                 neighbors[0] = edge[1];
             } else {
+                if (neighbors[1] != v_id) throw std::logic_error("multiple vertex neighbors");
                 neighbors[1] = edge[0];
             }
         }
@@ -68,19 +70,19 @@ namespace {
     }
 }
 
-class Vertex2 : public OffsetPrimitive {
+class ogcVert2 : public OffsetPrimitive {
 public:
     static constexpr int N_CORE_POINTS = 1;
     static constexpr int DIM = 2;
 
-    Vertex2(
+    ogcVert2(
         const index_t id,
         const CollisionMesh& mesh,
         const Eigen::MatrixXd& V)
         : OffsetPrimitive(id)
     {
         m_vertex_ids.push_back(id);
-        std::vector<index_t> neighbors = find_vertex_neighbors_2D(mesh, id);
+        std::vector<index_t> neighbors = ogc_find_vertex_neighbors_2D(mesh, id);
         for (const auto& neighbor_id : neighbors) {
             m_vertex_ids.push_back(neighbor_id);
         }
@@ -90,12 +92,12 @@ public:
     int n_dofs() const override { return n_vertices() * DIM; }
 };
 
-class Edge2P1 : public OffsetPrimitive {
+class ogcEdge2 : public OffsetPrimitive {
 public:
     static constexpr int N_CORE_POINTS = 2;
     static constexpr int DIM = 2;
 
-    Edge2P1(
+    ogcEdge2(
         const index_t id,
         const CollisionMesh& mesh,
         const Eigen::MatrixXd& V)

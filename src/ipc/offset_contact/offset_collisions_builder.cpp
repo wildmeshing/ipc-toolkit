@@ -48,7 +48,7 @@ void OffsetCollisionsBuilder<2>::add_edge_vertex_collisions(
 			assert(distance_sqr >= 0);
 			if (distance_sqr < dhat * dhat) {
 				add_collision(
-					std::make_shared<OffsetCollisionTemplate<Edge2P1, Vertex2>>(
+					std::make_shared<OffsetCollisionTemplate<ogcEdge2, ogcVert2>>(
 						ei, vi, mesh, params, dhat, vertices),
 					vert_edge_2_to_id, collisions);
 			}
@@ -60,7 +60,7 @@ void OffsetCollisionsBuilder<2>::add_edge_vertex_collisions(
 			const double vv_dhat = std::min(vert_dhat(vi), vert_dhat(vj));
 			if ((vertices.row(vi) - vertices.row(vj)).norm() < vv_dhat) {
 				add_collision(
-					std::make_shared<OffsetCollisionTemplate<Vertex2, Vertex2>>(
+					std::make_shared<OffsetCollisionTemplate<ogcVert2, ogcVert2>>(
 						std::min(vi, vj), std::max(vi, vj), mesh, params,
 						vv_dhat, vertices),
 					vert_vert_2_to_id, collisions);
@@ -77,11 +77,11 @@ void OffsetCollisionsBuilder<2>::merge(
 {
     unordered_map<
         std::pair<index_t, index_t>,
-        std::shared_ptr<OffsetCollisionTemplate<Vertex2, Vertex2>>>
+        std::shared_ptr<OffsetCollisionTemplate<ogcVert2, ogcVert2>>>
         vert_vert_2_to_id;
     unordered_map<
         std::pair<index_t, index_t>,
-        std::shared_ptr<OffsetCollisionTemplate<Edge2P1, Vertex2>>>
+        std::shared_ptr<OffsetCollisionTemplate<ogcEdge2, ogcVert2>>>
         vert_edge_2_to_id;
 
     // size up the hash items

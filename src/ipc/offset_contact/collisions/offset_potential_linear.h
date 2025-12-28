@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace smoothed_offset_potential {
+namespace offset_potential {
 
 /**
  * @brief Heaviside function, with 0 -> 1 transition on -1 to 1.
@@ -149,4 +149,4 @@ F polyline_vertex_potential(
     else return 0.0;
 }
 
-}  // namespace smoothed_offset_potential
+}  // ed_offset_potential

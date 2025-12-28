@@ -236,7 +236,7 @@ void test_offset_potential(
     Eigen::MatrixXi faces;
 
     CollisionMesh mesh;
-    OffsetContactParameters params(dhat, 0.1, 0.1, 1, 16);
+    OffsetContactParameters params(dhat);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     OffsetCollisions collisions;
     mesh = CollisionMesh(
@@ -442,7 +442,7 @@ TEST_CASE("Offset barrier potential real sim 2D C^1", "[offset_potential]")
     // std::cout << "\n" <<  vertices << "\n" << edges << "\n";
 
     CollisionMesh mesh;
-    OffsetContactParameters params(dhat, 0.9, 0.15, 1, 4);
+    OffsetContactParameters params(dhat);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     OffsetCollisions collisions;
     mesh = CollisionMesh(vertices, edges, faces);
