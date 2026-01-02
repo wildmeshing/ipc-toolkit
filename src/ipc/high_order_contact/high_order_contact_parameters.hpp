@@ -6,31 +6,24 @@ namespace ipc {
 struct HighOrderContactParameters {
     HighOrderContactParameters(
         const double _dhat,
-        const double _alpha_t,
-        const double _alpha_n,
+        const double _alpha,
         const int _r,
         const int _quad_points) :
         dhat(_dhat),
-        alpha_t(_alpha_t),
-        alpha_n(_alpha_n),
+        alpha(_alpha),
         r(_r),
         quad_points(_quad_points)
     {
-        if (abs(alpha_t) > 1) {
+        if (abs(alpha) > 1) {
             logger().error(
-                "Parameter 'alpha_t' must be in [-1, 1]! alpha_t: {}", alpha_t);
-        }
-        if (abs(alpha_n) > 1) {
-            logger().error(
-                "Parameter 'alpha_n' must be in [-1, 1]! alpha_n: {}", alpha_n);
+                "Parameter 'alpha' must be in [-1, 1]! alpha: {}", alpha);
         }
     }
 
     double dhat = 1;
-    double alpha_t = 1;
-    double alpha_n = 0.1;
+    double alpha = 1;
     int r = 2;
-    int quad_points = 4;
+    int quad_points = 20;
 
 
     double adaptive_dhat_ratio() const { return m_adaptive_dhat_ratio; }

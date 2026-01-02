@@ -395,14 +395,44 @@ std::array<F, 2> compute_edge_window(
     F u_max = min({res_edge[1], res_left[1], res_right[1]});
 
     if (epsilon) {
-        std::array<F, 2> p_off = {{edge_p0[0] + n_edge[0] * (*epsilon), edge_p0[1] + n_edge[1] * (*epsilon)}};
-        std::array<F, 2> n_off = {{-n_edge[0], -n_edge[1]}};
-        auto res_off = intersect_segment_with_halfplane(p0, p1, p_off, n_off);
-        if (res_off[0] > res_off[1]) {
-            return {{1.0, 0.0}};
+        // 1. Intersect with the left and right halfspaces (aligned to edge) and the epsilon-shifted plane.
+        std::array<F, 2> v1 = {{ex, ey}};
+        std::array<F, 2> v2 = {{-ex, -ey}};
+        auto res_rect_left = intersect_segment_with_halfplane(p0, p1, edge_p0, v1);
+        auto res_rect_right = intersect_segment_with_halfplane(p0, p1, edge_p1, v2);
+
+        std::array<F, 2> p_ceil = {{edge_p0[0] + n_edge[0] * (*epsilon), edge_p0[1] + n_edge[1] * (*epsilon)}};
+        std::array<F, 2> n_ceil = {{-n_edge[0], -n_edge[1]}};
+        auto res_rect_ceil = intersect_segment_with_halfplane(p0, p1, p_ceil, n_ceil);
+
+        std::array<F, 2> interval_rect = {{1.0, 0.0}};
+        if (res_rect_left[0] <= res_rect_left[1] && res_rect_right[0] <= res_rect_right[1] && res_rect_ceil[0] <= res_rect_ceil[1]) {
+            F r_min = max({res_rect_left[0], res_rect_right[0], res_rect_ceil[0]});
+            F r_max = min({res_rect_left[1], res_rect_right[1], res_rect_ceil[1]});
+            if (r_min <= r_max) {
+                interval_rect = {{r_min, r_max}};
+            }
         }
-        u_min = max(u_min, res_off[0]);
-        u_max = min(u_max, res_off[1]);
+
+        // 2. Intersect with two circles of epsilon radius centered at the endpoints.
+        auto interval_circ1 = intersect_segment_with_circle(p0, p1, edge_p0, *epsilon);
+        auto interval_circ2 = intersect_segment_with_circle(p0, p1, edge_p1, *epsilon);
+
+        // 3. Compute the union of these three intervals.
+        F u_min_union = 1.0, u_max_union = 0.0;
+        bool any_valid = false;
+        auto add_iv = [&](const std::array<F, 2>& iv) { if (iv[0] <= iv[1]) { if (!any_valid) { u_min_union = iv[0]; u_max_union = iv[1]; any_valid = true; } else { u_min_union = min(u_min_union, iv[0]); u_max_union = max(u_max_union, iv[1]); } } };
+        
+        add_iv(interval_rect);
+        add_iv(interval_circ1);
+        add_iv(interval_circ2);
+
+        if (!any_valid)
+            return {{1.0, 0.0}};
+
+        // 4. Compute the intersection of the resulting interval with the previously computed result.
+        u_min = max(u_min, u_min_union);
+        u_max = min(u_max, u_max_union);
     }
 
     if (u_min > u_max) {

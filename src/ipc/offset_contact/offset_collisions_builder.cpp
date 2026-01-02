@@ -36,33 +36,31 @@ void OffsetCollisionsBuilder<2>::add_edge_vertex_collisions(
 {
     for (size_t i = start_i; i < end_i; i++) {
         const auto& [ei, vi] = candidates[i];
-		const double dhat = std::min(edge_dhat(ei), vert_dhat(vi));
+        const double dhat_EV = std::min(vert_dhat(vi), edge_dhat(ei));
 		const PointEdgeDistanceType pe_dtype = point_edge_distance_type(
 			vertices.row(vi), vertices.row(mesh.edges()(ei, 0)),
 			vertices.row(mesh.edges()(ei, 1)));
 
-		if (pe_dtype == PointEdgeDistanceType::P_E) {
-			const double distance_sqr = point_edge_distance(
-				vertices.row(vi), vertices.row(mesh.edges()(ei, 0)),
-				vertices.row(mesh.edges()(ei, 1)), pe_dtype);
-			assert(distance_sqr >= 0);
-			if (distance_sqr < dhat * dhat) {
-				add_collision(
-					std::make_shared<OffsetCollisionTemplate<ogcEdge2, ogcVert2>>(
-						ei, vi, mesh, params, dhat, vertices),
-					vert_edge_2_to_id, collisions);
-			}
-		}
+        const double distance_sqr = point_edge_distance(
+            vertices.row(vi), vertices.row(mesh.edges()(ei, 0)),
+            vertices.row(mesh.edges()(ei, 1)), pe_dtype);
+        assert(distance_sqr >= 0);
+        if (distance_sqr < dhat_EV * dhat_EV) {
+            add_collision(
+                std::make_shared<OffsetCollisionTemplate<ogcEdge2, ogcVert2>>(
+                    ei, vi, mesh, params, dhat_EV, vertices),
+                vert_edge_2_to_id, collisions);
+        }
 
 		// vertex-vertex
 		for (int j = 0; j < 2; j++) {
 			const index_t vj = mesh.edges()(ei, j);
-			const double vv_dhat = std::min(vert_dhat(vi), vert_dhat(vj));
-			if ((vertices.row(vi) - vertices.row(vj)).norm() < vv_dhat) {
+            const double dhat_VV = std::min(vert_dhat(vi), vert_dhat(vj));
+			if ((vertices.row(vi) - vertices.row(vj)).norm() < dhat_VV) {
 				add_collision(
 					std::make_shared<OffsetCollisionTemplate<ogcVert2, ogcVert2>>(
 						std::min(vi, vj), std::max(vi, vj), mesh, params,
-						vv_dhat, vertices),
+						dhat_VV, vertices),
 					vert_vert_2_to_id, collisions);
 			}
 		}

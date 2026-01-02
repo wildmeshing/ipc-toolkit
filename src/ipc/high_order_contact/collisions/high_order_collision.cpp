@@ -103,7 +103,7 @@ double HighOrderCollisionTemplate<Vertex2, Vertex2>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
     return point_point_distance(
-        vertices.row(m_vertex_ids[0]), vertices.row(m_vertex_ids[1]));
+        vertices.row(m_vertex_ids[0]), vertices.row(m_vertex_ids[n_vertices_a()]));
 }
 
 template<>
@@ -111,7 +111,7 @@ double HighOrderCollisionTemplate<Edge2P1, Vertex2>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
     return point_edge_distance(
-        vertices.row(m_vertex_ids[2]), vertices.row(m_vertex_ids[0]),
+        vertices.row(m_vertex_ids[n_vertices_a()]), vertices.row(m_vertex_ids[0]),
         vertices.row(m_vertex_ids[1]));
 }
 
@@ -121,8 +121,8 @@ double HighOrderCollisionTemplate<Edge2P1, Edge2P1>::compute_distance(
 {
     const auto& ea0 = vertices.row(m_vertex_ids[0]);
     const auto& ea1 = vertices.row(m_vertex_ids[1]);
-    const auto& eb0 = vertices.row(m_vertex_ids[2]);
-    const auto& eb1 = vertices.row(m_vertex_ids[3]);
+    const auto& eb0 = vertices.row(m_vertex_ids[n_vertices_a()]);
+    const auto& eb1 = vertices.row(m_vertex_ids[n_vertices_a() + 1]);
     return std::min({ point_edge_distance(ea0, eb0, eb1),
                       point_edge_distance(ea1, eb0, eb1),
                       point_edge_distance(eb0, ea0, ea1),
@@ -164,6 +164,118 @@ std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vect
 // ----------------------------------------------------
 
 template <typename T>
+T potential_VV_onesided(
+    Eigen::ConstRef<Eigen::Matrix<T, Eigen::Dynamic, 2>> v_a,
+    Eigen::ConstRef<Eigen::Matrix<T, Eigen::Dynamic, 2>> v_b,
+    const HighOrderContactParameters& params)
+{
+    const std::array<T, 2> query_point = {{ v_b(0, 0), v_b(0, 1) }}; // Query point (Vertex B)
+    const std::array<T, 2> vertex_pt = {{ v_a(0, 0), v_a(0, 1) }}; // Source vertex (Vertex A)
+
+    T phi_start_next_val;
+    T phi_end_prev_val;
+    const T* phi_start_next = nullptr;
+    const T* phi_end_prev = nullptr;
+
+    Eigen::Vector2<T> tangent_next, normal_next = Eigen::Vector2<T>::Zero();
+    std::array<T, 2> v1_arr;
+
+    const Eigen::Vector2<T> p0 = v_a.row(0);
+    if (v_a.rows() >= 2) {
+        const Eigen::Vector2<T> p_next = v_a.row(1);
+        tangent_next = (p_next - p0).normalized();
+        normal_next << tangent_next.y(), -tangent_next.x();
+        v1_arr = {{-tangent_next.x(), -tangent_next.y()}};
+    }
+
+    Eigen::Vector2<T> tangent_prev, normal_prev = Eigen::Vector2<T>::Zero();
+    T p_prev_norm = 0;
+    std::array<T, 2> v2_arr;
+
+    if (v_a.rows() >= 3) {
+        const Eigen::Vector2<T> p_prev = v_a.row(2);
+        const Eigen::Vector2<T> edge_prev = p0 - p_prev;
+        p_prev_norm = edge_prev.norm();
+        tangent_prev = edge_prev / p_prev_norm;
+        normal_prev << tangent_prev.y(), -tangent_prev.x();
+        v2_arr = {{tangent_prev.x(), tangent_prev.y()}};
+    }
+
+    if (v_a.rows() >= 2) {
+        const std::array<T, 2> rel_next = {{ query_point[0] - v_a(0, 0), query_point[1] - v_a(0, 1) }};
+        const T r_q_next = rel_next[0] * normal_next(0) + rel_next[1] * normal_next(1);
+        const T y_q_next = rel_next[0] * tangent_next(0) + rel_next[1] * tangent_next(1);
+        phi_start_next_val = smoothed_offset_potential::phi_value(r_q_next, y_q_next, T(0));
+        phi_start_next = &phi_start_next_val;
+    }
+    if (v_a.rows() >= 3) {
+        const std::array<T, 2> rel_prev = {{ query_point[0] - v_a(2, 0), query_point[1] - v_a(2, 1) }};
+        const T r_q_prev = rel_prev[0] * normal_prev(0) + rel_prev[1] * normal_prev(1);
+        const T y_q_prev = rel_prev[0] * tangent_prev(0) + rel_prev[1] * tangent_prev(1);
+        phi_end_prev_val = smoothed_offset_potential::phi_value(r_q_prev, y_q_prev, p_prev_norm);
+        phi_end_prev = &phi_end_prev_val;
+    }
+    return smoothed_offset_potential::polyline_vertex_potential(
+        query_point, vertex_pt, phi_start_next, phi_end_prev, params.alpha, params.r, params.dhat);
+}
+
+template <typename T>
+T potential_VV(
+    Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>>
+        positions,
+    const HighOrderContactParameters& params,
+    const size_t n_vertices_a,
+    const size_t n_vertices_b)
+{
+    if (params.quad_points != 0) throw std::logic_error("Quad points > 0 in potential_VV");
+    Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
+        slice_positions<T, Eigen::Dynamic, 2>(positions);
+    const Eigen::Matrix<T, Eigen::Dynamic, 2> v_a = all_pos.topRows(n_vertices_a);
+    const Eigen::Matrix<T, Eigen::Dynamic, 2> v_b = all_pos.bottomRows(n_vertices_b);
+
+    return potential_VV_onesided<T>(v_a, v_b, params)
+         + potential_VV_onesided<T>(v_b, v_a, params);
+}
+
+// ----------------------------------------------------
+
+template <typename T>
+T potential_VE(
+    Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>>
+        positions,
+    const HighOrderContactParameters& params,
+    const size_t n_vertices_a,
+    const size_t n_vertices_b)
+{
+    if (params.quad_points != 0) throw std::logic_error("Quad points > 0 in potential_VE");
+    Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
+        slice_positions<T, Eigen::Dynamic, 2>(positions);
+    const Eigen::Matrix<T, 2, 2> edge_pos = all_pos.topRows(n_vertices_a);
+    const Eigen::Matrix<T, Eigen::Dynamic, 2> vertex_stencil = all_pos.bottomRows(n_vertices_b);
+    const std::array<T, 2> vertex_pt = {{ vertex_stencil(0, 0), vertex_stencil(0, 1) }};
+
+    // Edge geometry
+    const Eigen::Vector2<T> p0 = edge_pos.row(0);
+    const Eigen::Vector2<T> p1 = edge_pos.row(1);
+    const Eigen::Vector2<T> t_vec = p1 - p0;
+    const T len = t_vec.norm();
+    const Eigen::Vector2<T> t_hat = t_vec / len;
+    const Eigen::Vector2<T> n_hat = {-t_hat.y(), t_hat.x()};
+
+    const std::array<T, 2> p0_arr = {{p0.x(), p0.y()}};
+    const std::array<T, 2> t_arr = {{t_hat.x(), t_hat.y()}};
+    const std::array<T, 2> n_arr = {{n_hat.x(), n_hat.y()}};
+
+    T phi_start, phi_end;
+    return smoothed_offset_potential::polyline_edge_potential(
+        vertex_pt, p0_arr, t_arr, n_arr, len,
+        params.alpha, params.r, params.dhat,
+        phi_start, phi_end);
+}
+
+// ----------------------------------------------------
+
+template <typename T>
 T potential_EV(
     Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>>
         positions,
@@ -171,6 +283,9 @@ T potential_EV(
     const size_t n_vertices_a,
     const size_t n_vertices_b)
 {
+    // No integration
+    if (params.quad_points == 0) return potential_VE<T>(positions, params, n_vertices_a, n_vertices_b);
+
     Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
         slice_positions<T, Eigen::Dynamic, 2>(positions);
     const Eigen::Matrix<T, 2, 2> edge_pos = all_pos.topRows(n_vertices_a);
@@ -219,8 +334,8 @@ T potential_EV(
     const std::array<T, 2> edge_p1 = {{edge_pos(1, 0), edge_pos(1, 1)}};
 
     std::array<T, 2> window = smoothed_offset_potential::compute_vertex_window(
-        edge_p0, edge_p1, vertex_pt, v1_ptr, v2_ptr, params.alpha_t, &params.dhat);
-    if (window[0] == 1.0 && window[1] == 0.0) return T(0); // TODO this messes with AD, change how this is handled
+        edge_p0, edge_p1, vertex_pt, v1_ptr, v2_ptr, params.alpha, &params.dhat);
+    if (window[0] == 1.0 && window[1] == 0.0) return T(0);
 
     Eigen::Matrix<T, Eigen::Dynamic, 2> qp;
     std::vector<double> weights;
@@ -249,7 +364,7 @@ T potential_EV(
             phi_end_prev = &phi_end_prev_val;
         }
         acc += weights[q] * smoothed_offset_potential::polyline_vertex_potential(
-            query_point, vertex_pt, phi_start_next, phi_end_prev, params.alpha_t, params.r, params.dhat);
+            query_point, vertex_pt, phi_start_next, phi_end_prev, params.alpha, params.r, params.dhat);
     }
     return scale * acc;
 }
@@ -286,8 +401,8 @@ T potential_EE_onesided(
     const std::array<T, 2> ep1_arr{{ ep1(0), ep1(1) }};
 
     std::array<T, 2> window = smoothed_offset_potential::compute_edge_window(
-        ep0_arr, ep1_arr, p0_arr, p1_arr, params.alpha_t, &params.dhat);
-    if (window[0] == 1.0 && window[1] == 0.0) return T(0); // TODO this messes with AD, change how this is handled
+        ep0_arr, ep1_arr, p0_arr, p1_arr, params.alpha, &params.dhat);
+    if (window[0] == 1.0 && window[1] == 0.0) return T(0);
 
 	// "sampled_segment" is the segment we integrate over (edge1)
 	std::tie(qp, weights, normal) = sample_edge<T>(edge1_pos, qord, window);
@@ -305,7 +420,7 @@ T potential_EE_onesided(
 				tangent_arr,
 				normal_arr,
 				length,
-				params.alpha_t,
+				params.alpha,
 				params.r,
 				params.dhat,
 				phi_start,
@@ -319,6 +434,7 @@ T potential_EE(
     Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params
 ) {
+    if (params.quad_points == 0) throw std::logic_error("Quad points = 0 in potential_EE");
 	Eigen::Matrix<T, 4, 2> all_pos = slice_positions<T, 4, 2>(positions);
     Eigen::Matrix<T, 2, 2> edge0_pos = all_pos.topRows(2);
 	Eigen::Matrix<T, 2, 2> edge1_pos = all_pos.bottomRows(2);
@@ -384,6 +500,24 @@ double HighOrderCollisionTemplate<Edge2P1, Vertex2>::operator()(
 }
 
 template <>
+double HighOrderCollisionTemplate<Vertex2, Vertex2>::operator()(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+{
+    return potential_VV<double>(
+        positions, params, primitive_a->n_vertices(), primitive_b->n_vertices());
+}
+
+template <>
+auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::gradient(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+    -> Vector<double, -1, ELEMENT_SIZE>
+{
+	return potential_EE<ADGrad<N_CORE_DOFS>>(positions, params).grad;
+}
+
+template <>
 auto HighOrderCollisionTemplate<Edge2P1, Vertex2>::gradient(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
@@ -395,12 +529,13 @@ auto HighOrderCollisionTemplate<Edge2P1, Vertex2>::gradient(
 }
 
 template <>
-auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::gradient(
+auto HighOrderCollisionTemplate<Vertex2, Vertex2>::gradient(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
-    -> Vector<double, -1, ELEMENT_SIZE>
+    const HighOrderContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
 {
-	return potential_EE<ADGrad<N_CORE_DOFS>>(positions, params).grad;
+    ScalarBase::setVariableCount(positions.rows());
+    return potential_VV<ADGrad<-1>>(
+               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices()).grad;
 }
 
 template <typename PrimitiveA, typename PrimitiveB>
@@ -432,6 +567,16 @@ auto HighOrderCollisionTemplate<Edge2P1, Vertex2>::hessian(
     return potential_EV<ADHessian<-1>>(
                positions, params, primitive_a->n_vertices(), primitive_b->n_vertices())
         .Hess;
+}
+
+template <>
+auto HighOrderCollisionTemplate<Vertex2, Vertex2>::hessian(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
+{
+    ScalarBase::setVariableCount(positions.rows());
+    return potential_VV<ADHessian<-1>>(
+               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices()).Hess;
 }
 
 // Note: Primitive pair order cannot change

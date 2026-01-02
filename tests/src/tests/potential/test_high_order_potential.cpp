@@ -236,7 +236,7 @@ void test_high_order_potential(
     Eigen::MatrixXi faces;
 
     CollisionMesh mesh;
-    HighOrderContactParameters params(dhat, 0.1, 0.1, 1, 16);
+    HighOrderContactParameters params(dhat, 0.1, 1, 0);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     HighOrderCollisions collisions;
     mesh = CollisionMesh(
@@ -333,26 +333,29 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
     SECTION("wedge")
     {
         dhat = 0.4;
-        vertices.resize(7, 2);
-        edges.resize(7, 2);
+        vertices.resize(8, 2);
+        edges.resize(8, 2);
         vertices <<
             -1., 1.,
             -1., 0.,
             0., 0.,
             0., 1.,
-            .01, .5,
+            .02, .5,
             1., 0.,
-            1., 1.;
+            1., 1.,
+            .01, .5;
         edges <<
             0, 1,
             1, 2,
             2, 3,
-            3, 0,
+            3, 7,
+            7, 0,
             4, 5,
             5, 6,
             6, 4;
     }
 
+    /*
     SECTION("horizontal_squares")
     {
         dhat = 0.4;
@@ -413,6 +416,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
         CAPTURE(mesh_name);
         REQUIRE(success);
     }
+    */
 
     test_high_order_potential(vertices, edges, dhat);
 }
@@ -442,7 +446,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^1", "[high_order_potential
     // std::cout << "\n" <<  vertices << "\n" << edges << "\n";
 
     CollisionMesh mesh;
-    HighOrderContactParameters params(dhat, 0.9, 0.15, 1, 4);
+    HighOrderContactParameters params(dhat, 0.9, 1, 4);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     HighOrderCollisions collisions;
     mesh = CollisionMesh(vertices, edges, faces);

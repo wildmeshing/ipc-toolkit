@@ -100,7 +100,7 @@ double OffsetCollisionTemplate<ogcVert2, ogcVert2>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
     return point_point_distance(
-        vertices.row(m_vertex_ids[0]), vertices.row(m_vertex_ids[1]));
+        vertices.row(m_vertex_ids[0]), vertices.row(m_vertex_ids[n_vertices_a()]));
 }
 
 template<>
@@ -108,7 +108,7 @@ double OffsetCollisionTemplate<ogcEdge2, ogcVert2>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
     return point_edge_distance(
-        vertices.row(m_vertex_ids[2]), vertices.row(m_vertex_ids[0]),
+        vertices.row(m_vertex_ids[n_vertices_a()]), vertices.row(m_vertex_ids[0]),
         vertices.row(m_vertex_ids[1]));
 }
 
@@ -116,18 +116,11 @@ double OffsetCollisionTemplate<ogcEdge2, ogcVert2>::compute_distance(
 // ----------------------------------------------------
 
 template <typename T>
-T potential_VV(
-    Eigen::ConstRef<Vector<double, -1, OffsetCollision::ELEMENT_SIZE>>
-        positions,
-    const OffsetContactParameters& params,
-    const size_t n_vertices_a,
-    const size_t n_vertices_b)
+T potential_VV_onesided(
+    Eigen::ConstRef<Eigen::Matrix<T, Eigen::Dynamic, 2>> v_a,
+    Eigen::ConstRef<Eigen::Matrix<T, Eigen::Dynamic, 2>> v_b,
+    const OffsetContactParameters& params)
 {
-    Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
-        slice_positions<T, Eigen::Dynamic, 2>(positions);
-    const Eigen::Matrix<T, Eigen::Dynamic, 2> v_a = all_pos.topRows(n_vertices_a);
-    const Eigen::Matrix<T, Eigen::Dynamic, 2> v_b = all_pos.bottomRows(n_vertices_b);
-
     const std::array<T, 2> point = {{ v_b(0, 0), v_b(0, 1) }}; // Query point (Vertex B)
     const std::array<T, 2> vertex_pt = {{ v_a(0, 0), v_a(0, 1) }}; // Source vertex (Vertex A)
 
@@ -174,10 +167,27 @@ T potential_VV(
         point, vertex_pt, phi_start_next, phi_end_prev, params.r, params.dhat);
 }
 
+template <typename T>
+T potential_VV(
+    Eigen::ConstRef<Vector<double, -1, OffsetCollision::ELEMENT_SIZE>>
+        positions,
+    const OffsetContactParameters& params,
+    const size_t n_vertices_a,
+    const size_t n_vertices_b)
+{
+    Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
+        slice_positions<T, Eigen::Dynamic, 2>(positions);
+    const Eigen::Matrix<T, Eigen::Dynamic, 2> v_a = all_pos.topRows(n_vertices_a);
+    const Eigen::Matrix<T, Eigen::Dynamic, 2> v_b = all_pos.bottomRows(n_vertices_b);
+
+    return potential_VV_onesided<T>(v_a, v_b, params)
+         + potential_VV_onesided<T>(v_b, v_a, params);
+}
+
 // ----------------------------------------------------
 
 template <typename T>
-T potential_EV(
+T potential_VE(
     Eigen::ConstRef<Vector<double, -1, OffsetCollision::ELEMENT_SIZE>>
         positions,
     const OffsetContactParameters& params,
@@ -254,7 +264,7 @@ double OffsetCollisionTemplate<ogcEdge2, ogcVert2>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
 {
-    return potential_EV<double>(
+    return potential_VE<double>(
         positions, params, primitive_a->n_vertices(), primitive_b->n_vertices());
 }
 
@@ -264,7 +274,7 @@ auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::gradient(
     const OffsetContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
-    return potential_EV<ADGrad<-1>>(
+    return potential_VE<ADGrad<-1>>(
                positions, params, primitive_a->n_vertices(), primitive_b->n_vertices())
         .grad;
 }
@@ -287,7 +297,7 @@ auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::hessian(
     const OffsetContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
-    return potential_EV<ADHessian<-1>>(
+    return potential_VE<ADHessian<-1>>(
                positions, params, primitive_a->n_vertices(), primitive_b->n_vertices())
         .Hess;
 }
