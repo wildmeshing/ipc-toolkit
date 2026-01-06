@@ -50,6 +50,7 @@ namespace {
     // Helper function to find the vertices adjacent to a given vertex in a 2D mesh.
     std::vector<index_t> find_vertex_neighbors_2D(const CollisionMesh& mesh, const index_t v_id)
     {
+        assert (mesh.dim() == 2);
         std::array<index_t,2> neighbors;
         std::fill(neighbors.begin(), neighbors.end(), v_id);
         for (const auto& edge_id : mesh.vertex_edge_adjacencies()[v_id]) {
@@ -65,6 +66,21 @@ namespace {
             if (n != v_id) neighbors_ordered.push_back(n);
         }
         return neighbors_ordered;
+    }
+
+    // Helper function to find the vertices adjacent to a given vertex in a 3D mesh.
+    std::vector<index_t> find_vertex_neighbors_3D(const CollisionMesh& mesh, const index_t v_id)
+    {
+        assert (mesh.dim() == 3);
+        std::vector<index_t> neighbors;
+        for (int eid : mesh.vertices_to_edges()[v_id]) {
+            index_t neighbor_id = mesh.edges()(eid, 0) == v_id
+                ? mesh.edges()(eid, 1)
+                : mesh.edges()(eid, 0);
+
+            neighbors.push_back(neighbor_id);
+        }
+        return neighbors;
     }
 }
 
@@ -102,6 +118,64 @@ public:
         : HighOrderPrimitive(id)
     {
         m_vertex_ids = { mesh.edges()(id, 0), mesh.edges()(id, 1) };
+    }
+
+    int n_vertices() const override { return m_vertex_ids.size(); }
+    int n_dofs() const override { return n_vertices() * DIM; }
+};
+
+class Vertex3 : public HighOrderPrimitive {
+public:
+    static constexpr int N_CORE_POINTS = 1;
+    static constexpr int DIM = 3;
+
+    Vertex3(
+        const index_t id,
+        const CollisionMesh& mesh,
+        const Eigen::MatrixXd& V)
+        : HighOrderPrimitive(id)
+    {
+        m_vertex_ids.push_back(id);
+        std::vector<index_t> neighbors = find_vertex_neighbors_3D(mesh, id);
+        for (const auto& neighbor_id : neighbors) {
+            m_vertex_ids.push_back(neighbor_id);
+        }
+    }
+
+    int n_vertices() const override { return m_vertex_ids.size(); }
+    int n_dofs() const override { return n_vertices() * DIM; }
+};
+
+class Edge3P1 : public HighOrderPrimitive {
+public:
+    static constexpr int N_CORE_POINTS = 2;
+    static constexpr int DIM = 3;
+
+    Edge3P1(
+        const index_t id,
+        const CollisionMesh& mesh,
+        const Eigen::MatrixXd& V)
+        : HighOrderPrimitive(id)
+    {
+        m_vertex_ids = { mesh.edges()(id, 0), mesh.edges()(id, 1) };
+    }
+
+    int n_vertices() const override { return m_vertex_ids.size(); }
+    int n_dofs() const override { return n_vertices() * DIM; }
+};
+
+class Face3P1 : public HighOrderPrimitive {
+public:
+    static constexpr int N_CORE_POINTS = 3;
+    static constexpr int DIM = 3;
+
+    Face3P1(
+        const index_t id,
+        const CollisionMesh& mesh,
+        const Eigen::MatrixXd& V)
+        : HighOrderPrimitive(id)
+    {
+        m_vertex_ids = { mesh.faces()(id, 0), mesh.faces()(id, 1), mesh.faces()(id, 2) };
     }
 
     int n_vertices() const override { return m_vertex_ids.size(); }
