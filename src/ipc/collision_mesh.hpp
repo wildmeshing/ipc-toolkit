@@ -382,6 +382,8 @@ protected:
     std::vector<unordered_set<int>> m_vertex_edge_adjacencies;
     /// @brief Vertices adjacent to edges
     std::vector<unordered_set<int>> m_edge_vertex_adjacencies;
+    /// @brief Faces adjacent to edges
+    std::vector<std::array<int, 2>> m_edge_face_adjacencies;
 
     /// @brief For each vertex, the faces adjacent to it.
     std::vector<std::vector<int>> m_vertices_to_faces;

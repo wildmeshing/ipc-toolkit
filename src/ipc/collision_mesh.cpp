@@ -239,10 +239,22 @@ void CollisionMesh::init_adjacencies()
     }
 
     m_edge_vertex_adjacencies.resize(m_edges.rows());
+    m_edge_face_adjacencies.assign(m_edges.rows(), std::array<int, 2>({-1, -1}));
     for (int i = 0; i < m_faces.rows(); i++) {
         for (int j = 0; j < 3; ++j) {
             m_edge_vertex_adjacencies[m_faces_to_edges(i, j)].insert(
                 m_faces(i, (j + 2) % 3));
+
+            auto& face_ids = m_edge_face_adjacencies[m_faces_to_edges(i, j)];
+            if (face_ids[0] >= 0 && face_ids[0] != i) {
+                face_ids[1] = i;
+            }
+            else if (face_ids[1] < 0) {
+                face_ids[0] = i;
+            }
+            else {
+                log_and_throw_error("Non-manifold edge found!");
+            }
         }
     }
 
