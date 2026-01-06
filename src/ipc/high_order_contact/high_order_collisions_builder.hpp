@@ -51,4 +51,67 @@ public:
         edge_edge_2_to_id;
 };
 
+template <> class HighOrderCollisionsBuilder<3> {
+public:
+    HighOrderCollisionsBuilder() { }
+
+    void add_edge_edge_collisions(
+        const CollisionMesh& mesh,
+        const Eigen::MatrixXd& vertices,
+        const std::vector<EdgeEdgeCandidate>& candidates,
+        const HighOrderContactParameters& params,
+        const std::function<double(const index_t)>& vert_dhat,
+        const std::function<double(const index_t)>& edge_dhat,
+        const std::function<double(const index_t)>& face_dhat,
+        const size_t start_i,
+        const size_t end_i);
+
+    void add_face_vertex_collisions(
+        const CollisionMesh& mesh,
+        const Eigen::MatrixXd& vertices,
+        const std::vector<FaceVertexCandidate>& candidates,
+        const HighOrderContactParameters& params,
+        const std::function<double(const index_t)>& vert_dhat,
+        const std::function<double(const index_t)>& edge_dhat,
+        const std::function<double(const index_t)>& face_dhat,
+        const size_t start_i,
+        const size_t end_i);
+
+    // -------------------------------------------------------------------------
+
+    static void merge(
+        const ParallelCacheType<HighOrderCollisionsBuilder<3>>& local_storage,
+        HighOrderCollisions& merged_collisions);
+
+    // Constructed collisions
+    std::vector<std::shared_ptr<HighOrderCollision>> collisions;
+
+    // -------------------------------------------------------------------------
+
+    // Store the indices to pairs to avoid duplicates.
+    unordered_map<
+        std::pair<index_t, index_t>,
+        std::shared_ptr<HighOrderCollisionTemplate<Vertex3, Vertex3>>>
+        vert_vert_3_to_id;
+    unordered_map<
+        std::pair<index_t, index_t>,
+        std::shared_ptr<HighOrderCollisionTemplate<Edge3P1, Vertex3>>>
+        vert_edge_3_to_id;
+    unordered_map<
+        std::pair<index_t, index_t>,
+        std::shared_ptr<HighOrderCollisionTemplate<Face3P1, Vertex3>>>
+        vert_face_3_to_id;
+    unordered_map<
+        std::pair<index_t, index_t>,
+        std::shared_ptr<HighOrderCollisionTemplate<Edge3P1, Edge3P1>>>
+        edge_edge_3_to_id;
+    unordered_map<
+        std::pair<index_t, index_t>,
+        std::shared_ptr<HighOrderCollisionTemplate<Edge3P1, Face3P1>>>
+        edge_face_3_to_id;
+    unordered_map<
+        std::pair<index_t, index_t>,
+        std::shared_ptr<HighOrderCollisionTemplate<Face3P1, Face3P1>>>
+        face_face_3_to_id;
+};
 } // namespace ipc
