@@ -221,6 +221,17 @@ public:
         return m_edge_vertex_adjacencies;
     }
 
+    const std::vector<std::array<int, 2>> &edge_face_adjacencies() const
+    {
+        if (dim() != 3) {
+            log_and_throw_error("Edge-face adjacencies is only available in 3D.");
+        }
+        if (m_edge_face_adjacencies.empty()) {
+            log_and_throw_error("Call init_adjacencies() first.");
+        }
+        return m_edge_face_adjacencies;
+    }
+
     /// @brief Determine if the adjacencies have been initialized by calling init_adjacencies().
     bool are_adjacencies_initialized() const
     {
