@@ -12,12 +12,26 @@ namespace ipc {
 template <> HighOrderCollisionType HighOrderCollisionTemplate<Vertex2, Vertex2>::type() const { return HighOrderCollisionType::VERTEX_VERTEX; }
 template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge2P1, Vertex2>::type() const { return HighOrderCollisionType::EDGE_VERTEX; }
 template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge2P1, Edge2P1>::type() const { return HighOrderCollisionType::EDGE_EDGE; }
+
+template <> HighOrderCollisionType HighOrderCollisionTemplate<Vertex3, Vertex3>::type() const { return HighOrderCollisionType::VERTEX_VERTEX; }
+template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge3P1, Vertex3>::type() const { return HighOrderCollisionType::EDGE_VERTEX; }
+template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge3P1, Edge3P1>::type() const { return HighOrderCollisionType::EDGE_EDGE; }
+template <> HighOrderCollisionType HighOrderCollisionTemplate<Face3P1, Face3P1>::type() const { return HighOrderCollisionType::FACE_FACE; }
+template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge3P1, Face3P1>::type() const { return HighOrderCollisionType::EDGE_FACE; }
+template <> HighOrderCollisionType HighOrderCollisionTemplate<Face3P1, Vertex3>::type() const { return HighOrderCollisionType::FACE_VERTEX; }
 // clang-format on
 
 // clang-format off
 template <> std::string HighOrderCollisionTemplate<Vertex2, Vertex2>::name() const { return "vv_2d"; }
 template <> std::string HighOrderCollisionTemplate<Edge2P1, Vertex2>::name() const { return "ve_2d"; }
 template <> std::string HighOrderCollisionTemplate<Edge2P1, Edge2P1>::name() const { return "ee_2d"; }
+
+template <> std::string HighOrderCollisionTemplate<Vertex3, Vertex3>::name() const { return "vv_3d"; }
+template <> std::string HighOrderCollisionTemplate<Edge3P1, Vertex3>::name() const { return "ev_3d"; }
+template <> std::string HighOrderCollisionTemplate<Edge3P1, Edge3P1>::name() const { return "ee_3d"; }
+template <> std::string HighOrderCollisionTemplate<Face3P1, Face3P1>::name() const { return "ff_3d"; }
+template <> std::string HighOrderCollisionTemplate<Edge3P1, Face3P1>::name() const { return "ef_3d"; }
+template <> std::string HighOrderCollisionTemplate<Face3P1, Vertex3>::name() const { return "fv_3d"; }
 // clang-format on
 
 Eigen::VectorXd HighOrderCollision::dof(Eigen::ConstRef<Eigen::MatrixXd> X) const
@@ -583,5 +597,12 @@ auto HighOrderCollisionTemplate<Vertex2, Vertex2>::hessian(
 template class HighOrderCollisionTemplate<Edge2P1, Vertex2>;
 template class HighOrderCollisionTemplate<Vertex2, Vertex2>;
 template class HighOrderCollisionTemplate<Edge2P1, Edge2P1>;
+
+template class HighOrderCollisionTemplate<Vertex3, Vertex3>;
+template class HighOrderCollisionTemplate<Edge3P1, Vertex3>;
+template class HighOrderCollisionTemplate<Edge3P1, Edge3P1>;
+template class HighOrderCollisionTemplate<Face3P1, Face3P1>;
+template class HighOrderCollisionTemplate<Edge3P1, Face3P1>;
+template class HighOrderCollisionTemplate<Face3P1, Vertex3>;
 
 } // namespace ipc

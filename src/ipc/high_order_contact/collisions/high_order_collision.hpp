@@ -12,6 +12,8 @@ enum class HighOrderCollisionType : uint8_t {
     VERTEX_VERTEX,
     FACE_VERTEX,
     EDGE_EDGE,
+    EDGE_FACE,
+    FACE_FACE
 };
 
 /// @brief Contact pair class for Geometric Contact Potential.
