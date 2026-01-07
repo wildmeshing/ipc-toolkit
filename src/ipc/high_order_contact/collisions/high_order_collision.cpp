@@ -288,6 +288,113 @@ T potential_VE(
 }
 
 // ----------------------------------------------------
+namespace alternating_contact_potential {
+    template <typename T>
+    T distance_VE(
+        const Eigen::Vector2<T> &e0,
+        const Eigen::Vector2<T> &e1,
+        const Eigen::Vector2<T> &v0
+    ) {
+        const Eigen::Vector2<T> edge = e1 - e0;
+        const T length = edge.norm();
+        const Eigen::Vector2<T> tangent = edge / length;
+        const Eigen::Vector2<T> vec = v0 - e0;
+        const T proj = vec.dot(tangent);
+
+        if (proj < 0) return vec.norm();
+        if (proj > length) return (v0 - e1).norm();
+
+        const Eigen::Vector2<T> normal(-tangent.y(), tangent.x());
+        using namespace std;
+        using namespace TinyAD;
+        return abs(vec.dot(normal));
+    }
+
+    template <typename T>
+    T barrier_func(
+        const T d,
+        const HighOrderContactParameters& params
+    ) {
+        const T denom = (abs(pow(d, params.r)));
+        if (denom <= 1e-12) return T(0);
+        return smoothed_offset_potential::h_epsilon(abs(d), params.dhat) / denom;
+    }
+
+    template <typename T>
+    T potential_EV(
+        Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>>
+            positions,
+        const HighOrderContactParameters& params)
+    {
+        Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
+            slice_positions<T, Eigen::Dynamic, 2>(positions);
+        const Eigen::Vector2<T> e0 = all_pos.row(0);
+        const Eigen::Vector2<T> e1 = all_pos.row(1);
+        const Eigen::Vector2<T> v0 = all_pos.row(2);
+        const T l = (e0 - e1).norm();
+        /* First order integration
+        return -l * barrier_func(distance_VE(e0,e1,v0), params);
+        */
+        /* Positive sums integration
+        return l * barrier_func(distance_VE(e0,e1,v0), params);
+        */
+        /* Second order integration */
+        const T d0 = (e0 - v0).norm();
+        const T d1 = (e1 - v0).norm();
+        return -0.5 * l * (barrier_func(d0, params) + barrier_func(d1, params));
+    }
+
+    template <typename T>
+    T potential_EE(
+        Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
+        const HighOrderContactParameters& params
+    ) {
+        const Eigen::Matrix<T, 4, 2> all_pos = slice_positions<T, 4, 2>(positions);
+        const Eigen::Vector2<T> ea0 = all_pos.row(0);
+        const Eigen::Vector2<T> ea1 = all_pos.row(1);
+        const Eigen::Vector2<T> eb0 = all_pos.row(2);
+        const Eigen::Vector2<T> eb1 = all_pos.row(3);
+        const T la = (ea0 - ea1).norm();
+        const T lb = (eb0 - eb1).norm();
+        /* First order integration
+        using namespace TinyAD;
+        using namespace std;
+        const T d = min({
+            distance_VE(eb0, eb1, ea0),
+            distance_VE(eb0, eb1, ea1),
+            distance_VE(ea0, ea1, eb0),
+            distance_VE(ea0, ea1, eb1)
+        });
+        return barrier_func(d, params) * (la + lb);
+        */
+        /* Positive sums integration
+        const T dvt =
+            barrier_func((ea0 - eb0).norm(), params) +
+            barrier_func((ea0 - eb1).norm(), params) +
+            barrier_func((ea1 - eb0).norm(), params) +
+            barrier_func((ea1 - eb1).norm(), params);
+        return 0.5 * (
+            la * ( -dvt +
+                barrier_func(distance_VE(eb0, eb1, ea0), params) +
+                barrier_func(distance_VE(eb0, eb1, ea1), params)
+            ) + lb * ( -dvt +
+                barrier_func(distance_VE(ea0, ea1, eb0), params) +
+                barrier_func(distance_VE(ea0, ea1, eb1), params)
+            )
+        ); */
+        /* Second order integration */
+        return 0.5 * (
+            la * (
+                barrier_func(distance_VE(eb0, eb1, ea0), params) +
+                barrier_func(distance_VE(eb0, eb1, ea1), params)
+            ) + lb * (
+                barrier_func(distance_VE(ea0, ea1, eb0), params) +
+                barrier_func(distance_VE(ea0, ea1, eb1), params)
+            )
+        );
+    }
+} // namespace alternating_contact_potential
+// ----------------------------------------------------
 
 template <typename T>
 T potential_EV(
@@ -297,6 +404,7 @@ T potential_EV(
     const size_t n_vertices_a,
     const size_t n_vertices_b)
 {
+    if (params.alpha == 0) return alternating_contact_potential::potential_EV<T>(positions, params);
     // No integration
     if (params.quad_points == 0) return potential_VE<T>(positions, params, n_vertices_a, n_vertices_b);
 
@@ -448,6 +556,7 @@ T potential_EE(
     Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params
 ) {
+    if (params.alpha == 0) return alternating_contact_potential::potential_EE<T>(positions, params);
     if (params.quad_points == 0) throw std::logic_error("Quad points = 0 in potential_EE");
 	Eigen::Matrix<T, 4, 2> all_pos = slice_positions<T, 4, 2>(positions);
     Eigen::Matrix<T, 2, 2> edge0_pos = all_pos.topRows(2);
