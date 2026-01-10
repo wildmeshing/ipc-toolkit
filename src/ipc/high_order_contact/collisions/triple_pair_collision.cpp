@@ -34,21 +34,17 @@ namespace ipc
 
         Eigen::VectorXd X = this->dof(V);
         dtype1 = PairDistance<PrimitiveA, PrimitiveB, double>::compute_distance_type(X.head<PairDistance<PrimitiveA, PrimitiveB, double>::N_DOFS>());
-        const double dist_sqr = PairDistance<PrimitiveA, PrimitiveB, double>::compute_distance(
-            X.head<PairDistance<PrimitiveA, PrimitiveB, double>::N_DOFS>(), dtype1);
-        if (dist_sqr >= dhat * dhat) {
-            m_is_active = false;
-        }
-        else {
-            const Eigen::Matrix<double, DIM, 2> closest_points = closest_point_pair_ab<double>(X);
 
-            Eigen::Vector<double, Eigen::Dynamic> Y(DIM + PrimitiveC::N_DOFS);
-            Y << closest_points.col(0), X.template tail<PrimitiveC::N_DOFS>();
-            dtype2 = PairDistance<Vertex3, PrimitiveC, double>::compute_distance_type(Y);
-            const double dist_sqr = PairDistance<Vertex3, PrimitiveC, double>::compute_distance(Y, dtype2);
-            if (dist_sqr >= dhat * dhat) {
-                m_is_active = false;
-            }
+        const Eigen::Matrix<double, DIM, 2> closest_points = closest_point_pair_ab<double>(X);
+
+        Eigen::Vector<double, Eigen::Dynamic> Y(DIM + PrimitiveC::N_DOFS);
+        Y << closest_points.col(0), X.template tail<PrimitiveC::N_DOFS>();
+
+        dtype2 = PairDistance<Vertex3, PrimitiveC, double>::compute_distance_type(Y);
+
+        const double dist_sqr_2 = PairDistance<Vertex3, PrimitiveC, double>::compute_distance(Y, dtype2);
+        if (dist_sqr_2 >= dhat * dhat) {
+            m_is_active = false;
         }
     }
 

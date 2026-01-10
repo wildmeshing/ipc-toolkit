@@ -73,9 +73,6 @@ public:
         const Eigen::MatrixXd& vertices,
         const std::vector<FaceVertexCandidate>& candidates,
         const HighOrderContactParameters& params,
-        const std::function<double(const index_t)>& vert_dhat,
-        const std::function<double(const index_t)>& edge_dhat,
-        const std::function<double(const index_t)>& face_dhat,
         const size_t start_i,
         const size_t end_i);
 
@@ -84,9 +81,6 @@ public:
         const Eigen::MatrixXd& vertices,
         const std::vector<EdgeVertexCandidate>& candidates,
         const HighOrderContactParameters& params,
-        const std::function<double(const index_t)>& vert_dhat,
-        const std::function<double(const index_t)>& edge_dhat,
-        const std::function<double(const index_t)>& face_dhat,
         const size_t start_i,
         const size_t end_i);
 
@@ -95,9 +89,6 @@ public:
         const Eigen::MatrixXd& vertices,
         const std::vector<VertexVertexCandidate>& candidates,
         const HighOrderContactParameters& params,
-        const std::function<double(const index_t)>& vert_dhat,
-        const std::function<double(const index_t)>& edge_dhat,
-        const std::function<double(const index_t)>& face_dhat,
         const size_t start_i,
         const size_t end_i);
 

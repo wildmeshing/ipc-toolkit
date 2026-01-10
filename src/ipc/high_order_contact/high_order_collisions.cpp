@@ -212,9 +212,6 @@ void HighOrderCollisions::build(
     auto edge_dhat = [&](const index_t e_id) {
         return this->get_edge_dhat(e_id);
     };
-    auto face_dhat = [&](const index_t f_id) {
-        return this->get_face_dhat(f_id);
-    };
 
     if (mesh.dim() == 2) {
         auto storage = create_thread_storage<HighOrderCollisionsBuilder<2>>(
@@ -260,8 +257,7 @@ void HighOrderCollisions::build(
                     HighOrderCollisionsBuilder<3>& local_storage =
                         get_local_thread_storage(storage, thread_id);
                     local_storage.add_face_vertex_collisions(
-                        mesh, vertices, candidates.fv_candidates, params, vert_dhat,
-                        edge_dhat, face_dhat, start, end);
+                        mesh, vertices, candidates.fv_candidates, params, start, end);
                 });
 
             // This for loop is an inefficient hack that we should get rid of
@@ -285,8 +281,7 @@ void HighOrderCollisions::build(
                         HighOrderCollisionsBuilder<3>& local_storage =
                             get_local_thread_storage(storage, thread_id);
                         local_storage.add_face_vertex_negative_edge_vertex_collisions(
-                            mesh, vertices, ev_candidates, params, vert_dhat,
-                            edge_dhat, face_dhat, start, end);
+                            mesh, vertices, ev_candidates, params, start, end);
                     });
 
                 // Convert face-vertex to vertex-vertex
@@ -300,8 +295,7 @@ void HighOrderCollisions::build(
                         HighOrderCollisionsBuilder<3>& local_storage =
                             get_local_thread_storage(storage, thread_id);
                         local_storage.add_face_vertex_positive_vertex_vertex_collisions(
-                            mesh, vertices, vv_candidates, params, vert_dhat,
-                            edge_dhat, face_dhat, start, end);
+                            mesh, vertices, vv_candidates, params, start, end);
                     });
             }
 

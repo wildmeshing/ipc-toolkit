@@ -119,6 +119,8 @@ public:
     int n_dofs() const override { return N_DOFS; }
     int num_vertices() const override { return N_POINTS; }
 
+    typename PairDistType<Vertex3, PrimitiveC>::type distance_type_2() const { return dtype2; }
+
     template <typename T>
     T evaluate(Eigen::ConstRef<Vector<T, N_DOFS>> positions,
         const HighOrderContactParameters& params) const;
@@ -147,8 +149,8 @@ private:
     PrimitiveB primitive_b;
     PrimitiveC primitive_c;
 
-    PairDistType<PrimitiveA, PrimitiveB>::type dtype1;
-    PairDistType<Vertex3, PrimitiveC>::type dtype2;
+    typename PairDistType<PrimitiveA, PrimitiveB>::type dtype1;
+    typename PairDistType<Vertex3, PrimitiveC>::type dtype2;
 };
 
 }
