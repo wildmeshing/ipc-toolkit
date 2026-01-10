@@ -89,7 +89,8 @@ PYBIND11_MODULE(ipctk, m)
     define_smooth_mu(m);
 
     define_smooth_potential(m);
-
+    define_high_order_potential(m);
+    
     // implicits
     define_plane_implicit(m);
 

@@ -2,6 +2,7 @@
 
 #include <ipc/collisions/normal/normal_collisions.hpp>
 #include <ipc/smooth_contact/smooth_collisions.hpp>
+#include <ipc/high_order_contact/high_order_collisions.hpp>
 
 using namespace ipc;
 
@@ -78,6 +79,72 @@ void define_smooth_collisions(py::module_& m, std::string name)
             py::arg("vertices"), py::arg("param"))
         .def(
             "n_candidates", &SmoothCollisions::n_candidates,
+            "Get the number of candidates.");
+}
+
+void define_high_order_collisions(py::module_& m)
+{
+    py::class_<HighOrderCollisions>(m, "HighOrderCollisions")
+        .def(py::init())
+        .def(
+            "build",
+            py::overload_cast<
+                const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
+                const HighOrderContactParameters, const bool,
+                const std::shared_ptr<BroadPhase>&>(&HighOrderCollisions::build),
+            R"ipc_Qu8mg5v7(
+            Initialize the set of collisions used to compute the potential.
+
+            Parameters:
+                mesh: The collision mesh.
+                vertices: Vertices of the collision mesh.
+                param: HighOrderContactParameters.
+                use_adaptive_dhat: If the adaptive dhat should be used.
+                broad_phase: Broad phase method.
+            )ipc_Qu8mg5v7",
+            py::arg("mesh"), py::arg("vertices"), py::arg("param"),
+            py::arg("use_adaptive_dhat") = false,
+            py::arg("broad_phase") = make_default_broad_phase())
+        .def(
+            "compute_minimum_distance",
+            &HighOrderCollisions::compute_minimum_distance,
+            R"ipc_Qu8mg5v7(
+            Computes the minimum distance between any non-adjacent elements.
+
+            Parameters:
+                mesh: The collision mesh.
+                vertices: Vertices of the collision mesh.
+
+            Returns:
+                The minimum distance between any non-adjacent elements.
+            )ipc_Qu8mg5v7",
+            py::arg("mesh"), py::arg("vertices"))
+        .def(
+            "__len__", &HighOrderCollisions::size, "Get the number of collisions.")
+        .def(
+            "empty", &HighOrderCollisions::empty,
+            "Get if the collision set is empty.")
+        .def("clear", &HighOrderCollisions::clear, "Clear the collision set.")
+        .def(
+            "__getitem__",
+            [](HighOrderCollisions& self, size_t i) ->
+            typename HighOrderCollisions::value_type& { return self[i]; },
+            py::return_value_policy::reference,
+            R"ipc_Qu8mg5v7(
+            Get a reference to collision at index i.
+
+            Parameters:
+                i: The index of the collision.
+
+            Returns:
+                A reference to the collision.
+            )ipc_Qu8mg5v7",
+            py::arg("i"))
+        .def(
+            "to_string", &HighOrderCollisions::to_string, py::arg("mesh"),
+            py::arg("vertices"), py::arg("param"))
+        .def(
+            "n_candidates", &HighOrderCollisions::n_candidates,
             "Get the number of candidates.");
 }
 
@@ -274,4 +341,6 @@ void define_normal_collisions(py::module_& m)
         m, "Point2Point2Collision");
 
     define_smooth_collisions(m, "SmoothCollisions");
+
+    define_high_order_collisions(m);
 }

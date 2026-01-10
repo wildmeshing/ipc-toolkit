@@ -2,6 +2,7 @@
 
 #include <ipc/potentials/barrier_potential.hpp>
 #include <ipc/smooth_contact/smooth_contact_potential.hpp>
+#include <ipc/high_order_contact/high_order_contact_potential.hpp>
 
 using namespace ipc;
 
@@ -186,5 +187,93 @@ void define_smooth_potential(py::module_& m)
                 The hessian of the potential.
             )ipc_Qu8mg5v7",
             py::arg("collision"), py::arg("x"),
+            py::arg("project_hessian_to_psd") = PSDProjectionMethod::NONE);
+}
+
+void define_high_order_potential(py::module &m)
+{
+    py::class_<HighOrderContactParameters>(m, "HighOrderContactParameters")
+        .def(
+            py::init<
+                const double, const double,
+                const int, const int>(),
+            R"ipc_Qu8mg5v7(
+            Construct parameter set for high-order contact.
+
+            Parameters:
+                dhat, alpha, r, quadrature points
+            )ipc_Qu8mg5v7",
+            py::arg("dhat"), py::arg("alpha"), py::arg("r"), py::arg("quad_points"))
+        .def_readonly("dhat", &HighOrderContactParameters::dhat)
+        .def_readonly("alpha", &HighOrderContactParameters::alpha)
+        .def_readonly("r", &HighOrderContactParameters::r)
+        .def_readonly("quad_points", &HighOrderContactParameters::quad_points);
+
+
+    py::class_<HighOrderContactPotential>(m, "HighOrderContactPotential")
+        .def(
+            py::init<const HighOrderContactParameters&>(),
+            R"ipc_Qu8mg5v7(
+            Construct a smooth barrier potential.
+
+            Parameters:
+                param: A set of parameters.
+            )ipc_Qu8mg5v7",
+            py::arg("param"))
+        .def(
+            "__call__",
+            py::overload_cast<
+                const HighOrderCollisions&, const CollisionMesh&,
+                Eigen::ConstRef<Eigen::MatrixXd>>(
+                &ipc::HighOrderContactPotential::operator(), py::const_),
+            R"ipc_Qu8mg5v7(
+            Compute the barrier potential for a set of collisions.
+
+            Parameters:
+                collisions: The set of collisions.
+                mesh: The collision mesh.
+                vertices: Vertices of the collision mesh.
+
+            Returns:
+                The sum of all barrier potentials (not scaled by the barrier stiffness).
+            )ipc_Qu8mg5v7",
+            py::arg("collisions"), py::arg("mesh"), py::arg("vertices"))
+        .def(
+            "gradient",
+            py::overload_cast<
+                const HighOrderCollisions&, const CollisionMesh&,
+                Eigen::ConstRef<Eigen::MatrixXd>>(
+                &ipc::HighOrderContactPotential::gradient, py::const_),
+            R"ipc_Qu8mg5v7(
+            Compute the gradient of the barrier potential.
+
+            Parameters:
+                collisions: The set of collisions.
+                mesh: The collision mesh.
+                vertices: Vertices of the collision mesh.
+
+            Returns:
+                The gradient of all barrier potentials (not scaled by the barrier stiffness). This will have a size of |vertices|.
+            )ipc_Qu8mg5v7",
+            py::arg("collisions"), py::arg("mesh"), py::arg("vertices"))
+        .def(
+            "hessian",
+            py::overload_cast<
+                const HighOrderCollisions&, const CollisionMesh&,
+                Eigen::ConstRef<Eigen::MatrixXd>, const PSDProjectionMethod>(
+                &ipc::HighOrderContactPotential::hessian, py::const_),
+            R"ipc_Qu8mg5v7(
+            Compute the hessian of the barrier potential.
+
+            Parameters:
+                collisions: The set of collisions.
+                mesh: The collision mesh.
+                vertices: Vertices of the collision mesh.
+                project_hessian_to_psd: Make sure the hessian is positive semi-definite.
+
+            Returns:
+                The hessian of all barrier potentials (not scaled by the barrier stiffness). This will have a size of |vertices|x|vertices|.
+            )ipc_Qu8mg5v7",
+            py::arg("collisions"), py::arg("mesh"), py::arg("vertices"),
             py::arg("project_hessian_to_psd") = PSDProjectionMethod::NONE);
 }
