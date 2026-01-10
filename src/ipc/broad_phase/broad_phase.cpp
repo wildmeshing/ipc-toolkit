@@ -71,6 +71,8 @@ void BroadPhase::detect_collision_candidates(
         // These are not needed for 2D
         detect_edge_edge_candidates(candidates.ee_candidates);
         detect_face_vertex_candidates(candidates.fv_candidates);
+
+        detect_edge_face_candidates(candidates.ef_candidates);
     }
 }
 

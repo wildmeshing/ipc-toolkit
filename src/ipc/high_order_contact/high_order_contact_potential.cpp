@@ -33,6 +33,16 @@ double HighOrderContactPotential::operator()(
             }
         });
 
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(size_t(0), collisions.triple_collisions.size()),
+        [&](const tbb::blocked_range<size_t>& r) {
+            auto& local_potential = storage.local();
+            for (size_t i = r.begin(); i < r.end(); i++) {
+                // Quadrature weight is premultiplied by local potential
+                local_potential += (*this)(*collisions.triple_collisions[i], collisions.triple_collisions[i]->dof(X));
+            }
+        });
+
     return storage.combine([](double a, double b) { return a + b; });
 }
 
@@ -57,6 +67,23 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
             for (size_t i = start; i < end; i++) {
                 const HighOrderCollision& collision = collisions[i];
+
+                const Eigen::VectorXd local_grad =
+                    this->gradient(collision, collision.dof(X));
+
+                const std::vector<index_t> vids = collision.vertex_ids();
+
+                local_gradient_to_global_gradient(
+                    local_grad, vids, dim, global_grad);
+            }
+        });
+
+    maybe_parallel_for(
+        collisions.triple_collisions.size(), [&](int start, int end, int thread_id) {
+            auto& global_grad = get_local_thread_storage(storage, thread_id);
+
+            for (size_t i = start; i < end; i++) {
+                const TriplePairCollision& collision = *collisions.triple_collisions[i];
 
                 const Eigen::VectorXd local_grad =
                     this->gradient(collision, collision.dof(X));
@@ -101,6 +128,23 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
             for (size_t i = start; i < end; i++) {
                 const HighOrderCollision& collision = collisions[i];
+
+                const Eigen::MatrixXd local_hess = this->hessian(
+                    collisions[i], collisions[i].dof(X),
+                    project_hessian_to_psd);
+
+                local_hessian_to_global_triplets(
+                    local_hess, collision.vertex_ids(), dim,
+                    *(hess_triplets.cache));
+            }
+        });
+
+    maybe_parallel_for(
+        collisions.triple_collisions.size(), [&](int start, int end, int thread_id) {
+            auto& hess_triplets = get_local_thread_storage(storage, thread_id);
+
+            for (size_t i = start; i < end; i++) {
+                const TriplePairCollision& collision = *collisions.triple_collisions[i];
 
                 const Eigen::MatrixXd local_hess = this->hessian(
                     collisions[i], collisions[i].dof(X),
@@ -209,6 +253,29 @@ Eigen::MatrixXd HighOrderContactPotential::hessian(
     const HighOrderCollision& collision,
     Eigen::ConstRef<Eigen::VectorXd> positions,
     const PSDProjectionMethod project_hessian_to_psd) const
+{
+    Eigen::MatrixXd hess = collision.weight * collision.hessian(positions, params);
+    return project_to_psd(hess, project_hessian_to_psd);
+}
+
+double HighOrderContactPotential::operator()(
+        const TriplePairCollision& collision,
+        Eigen::ConstRef<Eigen::VectorXd> positions) const
+{
+    return collision.weight * collision(positions, params);
+}
+
+    Eigen::VectorXd HighOrderContactPotential::gradient(
+        const TriplePairCollision& collision,
+        Eigen::ConstRef<Eigen::VectorXd> positions) const
+{
+    return collision.weight * collision.gradient(positions, params);
+}
+
+Eigen::MatrixXd HighOrderContactPotential::hessian(
+        const TriplePairCollision& collision,
+        Eigen::ConstRef<Eigen::VectorXd> positions,
+        const PSDProjectionMethod project_hessian_to_psd) const
 {
     Eigen::MatrixXd hess = collision.weight * collision.hessian(positions, params);
     return project_to_psd(hess, project_hessian_to_psd);

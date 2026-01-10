@@ -317,12 +317,15 @@ template class PointEdgeDistance<ADHessian<12>, 3>;
 template class PointEdgeDistance<ADGrad<13>, 3>;
 template class PointEdgeDistance<ADHessian<13>, 3>;
 
+template class PointEdgeDistance<ADGrad<18>, 3>;
+template class PointEdgeDistance<ADHessian<18>, 3>;
+
+template class PointEdgeDistance<ADGrad<21>, 3>;
+template class PointEdgeDistance<ADHessian<21>, 3>;
+
 #ifdef IPC_TOOLKIT_DEBUG_AUTODIFF
 template class PointEdgeDistance<ADGrad<15>, 3>;
 template class PointEdgeDistance<ADHessian<15>, 3>;
-
-template class PointEdgeDistance<ADGrad<18>, 3>;
-template class PointEdgeDistance<ADHessian<18>, 3>;
 #endif
 
 template class PointEdgeDistanceDerivatives<2>;

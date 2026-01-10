@@ -3,6 +3,7 @@
 #include <ipc/distance/point_point.hpp>
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/edge_edge.hpp>
+#include <ipc/distance/point_triangle.hpp>
 #include "smoothed_offset_potential_linear.h"
 #include "high_order_quadrature.hpp"
 
@@ -15,9 +16,6 @@ template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge2P1, Edge2P1>:
 
 template <> HighOrderCollisionType HighOrderCollisionTemplate<Vertex3, Vertex3>::type() const { return HighOrderCollisionType::VERTEX_VERTEX; }
 template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge3P1, Vertex3>::type() const { return HighOrderCollisionType::EDGE_VERTEX; }
-template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge3P1, Edge3P1>::type() const { return HighOrderCollisionType::EDGE_EDGE; }
-template <> HighOrderCollisionType HighOrderCollisionTemplate<Face3P1, Face3P1>::type() const { return HighOrderCollisionType::FACE_FACE; }
-template <> HighOrderCollisionType HighOrderCollisionTemplate<Edge3P1, Face3P1>::type() const { return HighOrderCollisionType::EDGE_FACE; }
 template <> HighOrderCollisionType HighOrderCollisionTemplate<Face3P1, Vertex3>::type() const { return HighOrderCollisionType::FACE_VERTEX; }
 // clang-format on
 
@@ -28,9 +26,6 @@ template <> std::string HighOrderCollisionTemplate<Edge2P1, Edge2P1>::name() con
 
 template <> std::string HighOrderCollisionTemplate<Vertex3, Vertex3>::name() const { return "vv_3d"; }
 template <> std::string HighOrderCollisionTemplate<Edge3P1, Vertex3>::name() const { return "ev_3d"; }
-template <> std::string HighOrderCollisionTemplate<Edge3P1, Edge3P1>::name() const { return "ee_3d"; }
-template <> std::string HighOrderCollisionTemplate<Face3P1, Face3P1>::name() const { return "ff_3d"; }
-template <> std::string HighOrderCollisionTemplate<Edge3P1, Face3P1>::name() const { return "ef_3d"; }
 template <> std::string HighOrderCollisionTemplate<Face3P1, Vertex3>::name() const { return "fv_3d"; }
 // clang-format on
 
@@ -632,6 +627,40 @@ double HighOrderCollisionTemplate<Vertex2, Vertex2>::operator()(
 }
 
 template <>
+double HighOrderCollisionTemplate<Vertex3, Vertex3>::operator()(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+{
+    const double dist = (positions.template head<3>() - positions.template segment<3>(3)).norm();
+    return Math<double>::inv_barrier(dist / params.dhat, params.r);
+}
+
+template <>
+double HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator()(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+{
+    const double dist = point_edge_distance(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3));
+    return Math<double>::inv_barrier(sqrt(dist) / params.dhat, params.r);
+}
+
+template <>
+double HighOrderCollisionTemplate<Face3P1, Vertex3>::operator()(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+{
+    const double dist = point_triangle_distance(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6));
+    return Math<double>::inv_barrier(sqrt(dist) / params.dhat, params.r);
+}
+
+template <>
 auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::gradient(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params) const
@@ -709,9 +738,6 @@ template class HighOrderCollisionTemplate<Edge2P1, Edge2P1>;
 
 template class HighOrderCollisionTemplate<Vertex3, Vertex3>;
 template class HighOrderCollisionTemplate<Edge3P1, Vertex3>;
-template class HighOrderCollisionTemplate<Edge3P1, Edge3P1>;
-template class HighOrderCollisionTemplate<Face3P1, Face3P1>;
-template class HighOrderCollisionTemplate<Edge3P1, Face3P1>;
 template class HighOrderCollisionTemplate<Face3P1, Vertex3>;
 
 } // namespace ipc

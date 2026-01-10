@@ -14,7 +14,181 @@
 #include <igl/readCSV.h>
 #include <ipc/ipc.hpp>
 
+#include "igl/read_triangle_mesh.h"
+#include "igl/write_triangle_mesh.h"
+
 using namespace ipc;
+
+TEST_CASE("Flat Integrated Potential", "[high_order_potential]")
+{
+    const auto method = make_default_broad_phase();
+    const bool adaptive_dhat = false;
+    const bool all_vertices_on_surface = true;
+    const double dhat = 0.1;
+
+    Eigen::MatrixXd vertices;
+    Eigen::MatrixXi edges, faces;
+
+    const double grid_scale = 5;
+    const int N = 6;
+    const double grid_h = grid_scale / (N - 1);
+    // construct mesh
+    {
+        // regular grid Z = 0
+
+        vertices.setZero(N * N, 3);
+        faces.setZero((N - 1) * (N - 1) * 2, 3);
+        for (int i = 0; i < N; i++)
+        {
+            for (int j = 0; j < N; j++)
+            {
+                vertices(i * N + j, 0) = i * grid_h;
+                vertices(i * N + j, 1) = j * grid_h;
+            }
+        }
+
+        auto vid_2d_to_1d = [](int i, int j) { return i * N + j; };
+
+        for (int i = 0; i < N - 1; i++)
+        {
+            for (int j = 0; j < N - 1; j++)
+            {
+                faces.row((i * (N - 1) + j) * 2 + 0) <<
+                    vid_2d_to_1d(i, j), vid_2d_to_1d(i + 1, j), vid_2d_to_1d(i + 1, j + 1);
+                faces.row((i * (N - 1) + j) * 2 + 1) <<
+                    vid_2d_to_1d(i + 1, j + 1), vid_2d_to_1d(i, j + 1), vid_2d_to_1d(i, j);
+            }
+        }
+
+        // plus a small tet above the grid
+        // Eigen::MatrixXd vertices_tet(4, 3);
+        // vertices_tet <<
+        //     0.0, 0.0, 0.0,
+        //     grid_h * 0.5, 0.0, 0.0,
+        //     0.0, grid_h * 0.5, 0.0,
+        //     0.0, 0.0, 2 * dhat;
+        //
+        // vertices_tet.rowwise() += Eigen::Vector3d(grid_scale / 2., grid_scale / 2., dhat / 5.).transpose();
+        //
+        // Eigen::MatrixXi faces_tet(4, 3);
+        // faces_tet << 0, 1, 2,
+        //             0, 1, 3,
+        //             0, 2, 3,
+        //             1, 2, 3;
+
+        Eigen::MatrixXd vertices_tet(1, 3);
+        vertices_tet << grid_scale / 2., grid_scale / 2., dhat / 5.;
+
+        // merge both meshes
+        Eigen::MatrixXd merged_vertices(vertices.rows() + vertices_tet.rows(), 3);
+        merged_vertices << vertices, vertices_tet;
+
+        // Eigen::MatrixXi merged_faces(faces.rows() + faces_tet.rows(), 3);
+        // merged_faces << faces, faces_tet.array() + vertices.rows();
+
+        std::swap(merged_vertices, vertices);
+        // std::swap(merged_faces, faces);
+
+        // extract edges
+        igl::edges(faces, edges);
+    }
+
+    CollisionMesh mesh;
+
+    if (all_vertices_on_surface) {
+        mesh = CollisionMesh(
+            std::vector<bool>(vertices.rows(), true),
+            std::vector<bool>(vertices.rows(), false), vertices, edges,
+            faces);
+    } else {
+        mesh = CollisionMesh(
+            ipc::CollisionMesh::construct_is_on_surface(vertices.rows(), edges),
+            std::vector<bool>(vertices.rows(), false), vertices, edges,
+            faces);
+
+        vertices = mesh.vertices(vertices);
+    }
+
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, vertices, params, adaptive_dhat, method);
+
+    CHECK(!collisions.empty());
+    CHECK(!has_intersections(mesh, vertices));
+
+    std::cout << collisions.to_string(mesh, vertices, params) << std::endl;
+
+    HighOrderContactPotential potential(params);
+    std::cout << "energy: " << potential(collisions, mesh, vertices) << "\n";
+
+    const double h = grid_h / 10;
+    for (int i = 0; i < 10; i++)
+    {
+        for (int j = 0; j < 10; j++)
+        {
+            Eigen::MatrixXd vertices_copy = vertices;
+            vertices_copy.bottomRows<4>().rowwise() += Eigen::Vector3d(i * h, j * h, 0.).transpose();
+
+            HighOrderCollisions collisions_copy;
+            collisions_copy.build(mesh, vertices_copy, params, adaptive_dhat, method);
+            std::cout << "energy: " << potential(collisions_copy, mesh, vertices_copy) << "\n";
+            if (potential(collisions_copy, mesh, vertices_copy) < 1e-3)
+            {
+                collisions_copy.build(mesh, vertices_copy, params, adaptive_dhat, method);
+                std::cout << collisions_copy.to_string(mesh, vertices_copy, params) << std::endl;
+            }
+
+            igl::write_triangle_mesh("debug_" + std::to_string(i) + "_" + std::to_string(j) + ".obj", vertices_copy, faces);
+        }
+    }
+}
+
+TEST_CASE("Zero Potential on Sphere", "[high_order_potential]")
+{
+    const auto method = make_default_broad_phase();
+    const bool adaptive_dhat = false;
+    const bool all_vertices_on_surface = true;
+    const double dhat = 0.3;
+
+    Eigen::MatrixXd vertices;
+    Eigen::MatrixXi edges, faces;
+
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/sphere.obj").string(), vertices, faces);
+
+    // extract edges
+    igl::edges(faces, edges);
+
+    CollisionMesh mesh;
+
+    if (all_vertices_on_surface) {
+        mesh = CollisionMesh(
+            std::vector<bool>(vertices.rows(), true),
+            std::vector<bool>(vertices.rows(), false), vertices, edges,
+            faces);
+    } else {
+        mesh = CollisionMesh(
+            ipc::CollisionMesh::construct_is_on_surface(vertices.rows(), edges),
+            std::vector<bool>(vertices.rows(), false), vertices, edges,
+            faces);
+
+        vertices = mesh.vertices(vertices);
+    }
+
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, vertices, params, adaptive_dhat, method);
+
+    // CHECK(!collisions.empty());
+    // CHECK(!has_intersections(mesh, vertices));
+
+    HighOrderContactPotential potential(params);
+    std::cout << "triple collisions: " << collisions.triple_collisions.size() << ", pair collisions: " << collisions.collisions.size() << std::endl;
+    std::cout << "energy: " << potential(collisions, mesh, vertices) << "\n";
+    std::cout << collisions.to_string(mesh, vertices, params) << std::endl;
+    REQUIRE(abs(potential(collisions, mesh, vertices)) < 1e-8);
+}
 
 /*
 TEST_CASE("High Order barrier potential codim", "[high_order_potential]")

@@ -142,6 +142,8 @@ public:
     std::vector<EdgeVertexCandidate> ev_candidates;
     std::vector<EdgeEdgeCandidate> ee_candidates;
     std::vector<FaceVertexCandidate> fv_candidates;
+
+    std::vector<EdgeFaceCandidate> ef_candidates;
 };
 
 } // namespace ipc

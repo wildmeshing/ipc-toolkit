@@ -40,7 +40,7 @@ template <> struct PrimitiveDistType<Face, Point3> {
 
 template <> struct PrimitiveDistType<Edge3, Edge3> {
     using type = EdgeEdgeDistanceType;
-    static constexpr std::string_view NAME = "EDGE_EDGE";
+    static constexpr std::string_view NAME = "EdgeEdge";
 };
 
 template <typename PrimitiveA, typename PrimitiveB, typename T>

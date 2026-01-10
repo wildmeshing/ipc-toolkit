@@ -78,6 +78,33 @@ public:
         const PSDProjectionMethod project_hessian_to_psd =
             PSDProjectionMethod::NONE) const;
 
+
+    /// @brief Compute the potential for a single collision.
+    /// @param collision The collision.
+    /// @param positions The collision stencil's positions.
+    /// @return The potential.
+    double operator()(
+        const TriplePairCollision& collision,
+        Eigen::ConstRef<Eigen::VectorXd> positions) const;
+
+    /// @brief Compute the gradient of the potential for a single collision.
+    /// @param collision The collision.
+    /// @param positions The collision stencil's positions.
+    /// @return The gradient of the potential.
+    Eigen::VectorXd gradient(
+        const TriplePairCollision& collision,
+        Eigen::ConstRef<Eigen::VectorXd> positions) const;
+
+    /// @brief Compute the hessian of the potential for a single collision.
+    /// @param collision The collision.
+    /// @param positions The collision stencil's positions.
+    /// @return The hessian of the potential.
+    Eigen::MatrixXd hessian(
+        const TriplePairCollision& collision,
+        Eigen::ConstRef<Eigen::VectorXd> positions,
+        const PSDProjectionMethod project_hessian_to_psd =
+            PSDProjectionMethod::NONE) const;
+
 protected:
     /// @brief GCP parameters for collision potential
     HighOrderContactParameters params;

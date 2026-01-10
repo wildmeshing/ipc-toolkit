@@ -87,7 +87,9 @@ namespace {
 class Vertex2 : public HighOrderPrimitive {
 public:
     static constexpr int N_CORE_POINTS = 1;
+    static constexpr int N_POINTS = 1;
     static constexpr int DIM = 2;
+    static constexpr int N_DOFS = N_POINTS * DIM;
 
     Vertex2(
         const index_t id,
@@ -109,7 +111,9 @@ public:
 class Edge2P1 : public HighOrderPrimitive {
 public:
     static constexpr int N_CORE_POINTS = 2;
+    static constexpr int N_POINTS = 2;
     static constexpr int DIM = 2;
+    static constexpr int N_DOFS = N_POINTS * DIM;
 
     Edge2P1(
         const index_t id,
@@ -127,7 +131,9 @@ public:
 class Vertex3 : public HighOrderPrimitive {
 public:
     static constexpr int N_CORE_POINTS = 1;
+    static constexpr int N_POINTS = 1;
     static constexpr int DIM = 3;
+    static constexpr int N_DOFS = N_POINTS * DIM;
 
     Vertex3(
         const index_t id,
@@ -136,10 +142,6 @@ public:
         : HighOrderPrimitive(id)
     {
         m_vertex_ids.push_back(id);
-        std::vector<index_t> neighbors = find_vertex_neighbors_3D(mesh, id);
-        for (const auto& neighbor_id : neighbors) {
-            m_vertex_ids.push_back(neighbor_id);
-        }
     }
 
     int n_vertices() const override { return m_vertex_ids.size(); }
@@ -149,7 +151,9 @@ public:
 class Edge3P1 : public HighOrderPrimitive {
 public:
     static constexpr int N_CORE_POINTS = 2;
+    static constexpr int N_POINTS = 2;
     static constexpr int DIM = 3;
+    static constexpr int N_DOFS = N_POINTS * DIM;
 
     Edge3P1(
         const index_t id,
@@ -167,7 +171,9 @@ public:
 class Face3P1 : public HighOrderPrimitive {
 public:
     static constexpr int N_CORE_POINTS = 3;
+    static constexpr int N_POINTS = 3;
     static constexpr int DIM = 3;
+    static constexpr int N_DOFS = N_POINTS * DIM;
 
     Face3P1(
         const index_t id,

@@ -17,11 +17,36 @@ namespace {
             cc_to_id,
         std::vector<std::shared_ptr<HighOrderCollision>>& collisions)
     {
-        if (pair->is_active()
-            && cc_to_id.find(pair->get_hash()) == cc_to_id.end()) { // filters dupes
-            // New collision, so add it to the end of collisions
-            cc_to_id.emplace(pair->get_hash(), pair);
-            collisions.push_back(pair);
+        if (pair->is_active()) { // filters dupes
+            auto found_item = cc_to_id.find(pair->get_hash());
+            if (found_item == cc_to_id.end()) {
+                // New collision, so add it to the end of collisions
+                cc_to_id.emplace(pair->get_hash(), pair);
+                collisions.push_back(pair);
+            }
+            else {
+                found_item->second->weight += pair->weight;
+            }
+        }
+    }
+
+    template <typename TCollision, typename THash>
+    void add_collision(
+        const std::shared_ptr<TCollision>& pair,
+        unordered_map<THash, index_t>& cc_to_id,
+        std::vector<std::shared_ptr<TCollision>>& collisions)
+    {
+        if (pair->is_active()) {
+            // filters dupes
+            auto found_item = cc_to_id.find(pair->get_hash());
+            if (found_item == cc_to_id.end()) {
+                // New collision, so add it to the end of collisions
+                cc_to_id.emplace(pair->get_hash(), collisions.size());
+                collisions.push_back(pair);
+            }
+            else {
+                collisions[found_item->second]->weight += pair->weight;
+            }
         }
     }
 } // namespace
@@ -138,63 +163,128 @@ void HighOrderCollisionsBuilder<2>::merge(
 // ============================================================================
 
 
-void HighOrderCollisionsBuilder<3>::add_edge_edge_collisions(
+void HighOrderCollisionsBuilder<3>::add_edge_edge_face_collisions(
     const CollisionMesh& mesh,
     const Eigen::MatrixXd& vertices,
-    const std::vector<EdgeEdgeCandidate>& candidates,
+    const std::vector<std::array<index_t, 3>>& candidates,
     const HighOrderContactParameters& params,
-    const std::function<double(const index_t)>& vert_dhat,
-    const std::function<double(const index_t)>& edge_dhat,
-    const std::function<double(const index_t)>& face_dhat,
+    const double dhat,
     const size_t start_i,
     const size_t end_i)
 {
     for (size_t i = start_i; i < end_i; i++) {
-        const auto& [ei, ej] = candidates[i];
-        const size_t vi0 = mesh.edges()(ei, 0);
-        const size_t vi1 = mesh.edges()(ei, 1);
-        const size_t vj0 = mesh.edges()(ej, 0);
-        const size_t vj1 = mesh.edges()(ej, 1);
-		const EdgeEdgeDistanceType pe_dtype = edge_edge_distance_type(
-			vertices.row(vi0), vertices.row(vi1),
-			vertices.row(vj0), vertices.row(vj1));
+        const auto& [ei, ej, fk] = candidates[i];
 
-        const double distance_sqr = edge_edge_distance(
-            vertices.row(vi0), vertices.row(vi1),
-            vertices.row(vj0), vertices.row(vj1), pe_dtype);
-        assert(distance_sqr >= 0);
-        const double dhat_EE = std::min(edge_dhat(ej), edge_dhat(ei));
-        if (params.quad_points == 0 && distance_sqr < dhat_EE * dhat_EE) {
-            add_collision(
-                std::make_shared<HighOrderCollisionTemplate<Edge3P1, Edge3P1>>(
-                    std::min<int>(ei, ej), std::max<int>(ei, ej), mesh, params, dhat_EE, vertices),
-                edge_edge_3_to_id, collisions);
+        const EdgeEdgeDistanceType dtype = edge_edge_distance_type(
+            vertices.row(mesh.edges()(ei, 0)),
+            vertices.row(mesh.edges()(ei, 1)),
+            vertices.row(mesh.edges()(ej, 0)),
+            vertices.row(mesh.edges()(ej, 1))
+        );
+
+        if (dtype != EdgeEdgeDistanceType::EA_EB) {
+            continue;
         }
 
-        if (params.quad_points != 0) {
-            // edge-face
-            const auto& edge_face_adj = mesh.edge_face_adjacencies();
+        const double dist_sqr = edge_edge_distance(
+            vertices.row(mesh.edges()(ei, 0)),
+            vertices.row(mesh.edges()(ei, 1)),
+            vertices.row(mesh.edges()(ej, 0)),
+            vertices.row(mesh.edges()(ej, 1)),
+            dtype
+        );
 
-            for (const int fi : edge_face_adj[ei]) {
-                const double dhat_EF = std::min(edge_dhat(ej), face_dhat(fi));
-                if (distance_sqr < dhat_EF * dhat_EF) {
-                    add_collision(
-                        std::make_shared<HighOrderCollisionTemplate<Edge3P1, Face3P1>>(
-                            ej, fi, mesh, params, dhat_EF, vertices),
-                        edge_face_3_to_id, collisions);
-                }
-            }
+        if (dist_sqr >= dhat * dhat)
+            continue;
 
-            for (const int fj : edge_face_adj[ej]) {
-                const double dhat_EF = std::min(edge_dhat(ei), face_dhat(fj));
-                if (distance_sqr < dhat_EF * dhat_EF) {
-                    add_collision(
-                        std::make_shared<HighOrderCollisionTemplate<Edge3P1, Face3P1>>(
-                            ei, fj, mesh, params, dhat_EF, vertices),
-                        edge_face_3_to_id, collisions);
-                }
-            }
-		}
+        add_collision<TriplePairCollision, std::array<index_t, 3>>(
+            std::make_shared<TriplePairCollisionTemplate<Edge3P1, Edge3P1, Face3P1>>(
+                ei, ej, fk, mesh, params, dhat, vertices),
+            eef_3_to_id, triple_collisions);
+    }
+}
+
+void HighOrderCollisionsBuilder<3>::add_edge_edge_vertex_collisions(
+    const CollisionMesh& mesh,
+    const Eigen::MatrixXd& vertices,
+    const std::vector<std::array<index_t, 3>>& candidates,
+    const HighOrderContactParameters& params,
+    const double dhat,
+    const size_t start_i,
+    const size_t end_i)
+{
+    for (size_t i = start_i; i < end_i; i++) {
+        const auto& [ei, ej, vk] = candidates[i];
+
+        const EdgeEdgeDistanceType dtype = edge_edge_distance_type(
+            vertices.row(mesh.edges()(ei, 0)),
+            vertices.row(mesh.edges()(ei, 1)),
+            vertices.row(mesh.edges()(ej, 0)),
+            vertices.row(mesh.edges()(ej, 1))
+        );
+
+        if (dtype != EdgeEdgeDistanceType::EA_EB) {
+            continue;
+        }
+
+        const double dist_sqr = edge_edge_distance(
+            vertices.row(mesh.edges()(ei, 0)),
+            vertices.row(mesh.edges()(ei, 1)),
+            vertices.row(mesh.edges()(ej, 0)),
+            vertices.row(mesh.edges()(ej, 1)),
+            dtype
+        );
+
+        if (dist_sqr >= dhat * dhat)
+            continue;
+
+        add_collision<TriplePairCollision, std::array<index_t, 3>>(
+            std::make_shared<TriplePairCollisionTemplate<Edge3P1, Edge3P1, Vertex3>>(
+                ei, ej, vk, mesh, params, dhat, vertices),
+            eev_3_to_id, triple_collisions);
+    }
+}
+
+void HighOrderCollisionsBuilder<3>::add_negative_edge_edge_edge_collisions(
+    const CollisionMesh& mesh,
+    const Eigen::MatrixXd& vertices,
+    const std::vector<std::array<index_t, 3>>& candidates,
+    const HighOrderContactParameters& params,
+    const double dhat,
+    const size_t start_i,
+    const size_t end_i)
+{
+    for (size_t i = start_i; i < end_i; i++) {
+        const auto& [ei, ej, ek] = candidates[i];
+
+        const EdgeEdgeDistanceType dtype = edge_edge_distance_type(
+            vertices.row(mesh.edges()(ei, 0)),
+            vertices.row(mesh.edges()(ei, 1)),
+            vertices.row(mesh.edges()(ej, 0)),
+            vertices.row(mesh.edges()(ej, 1))
+        );
+
+        if (dtype != EdgeEdgeDistanceType::EA_EB) {
+            continue;
+        }
+
+        const double dist_sqr = edge_edge_distance(
+            vertices.row(mesh.edges()(ei, 0)),
+            vertices.row(mesh.edges()(ei, 1)),
+            vertices.row(mesh.edges()(ej, 0)),
+            vertices.row(mesh.edges()(ej, 1)),
+            dtype
+        );
+
+        if (dist_sqr >= dhat * dhat)
+            continue;
+
+        auto triple = std::make_shared<TriplePairCollisionTemplate<Edge3P1, Edge3P1, Edge3P1>>(
+                ei, ej, ek, mesh, params, dhat, vertices);
+        triple->weight = -1;
+        add_collision<TriplePairCollision, std::array<index_t, 3>>(
+            triple,
+            eee_3_to_id, triple_collisions);
     }
 }
 
@@ -211,6 +301,7 @@ void HighOrderCollisionsBuilder<3>::add_face_vertex_collisions(
 {
     for (size_t i = start_i; i < end_i; i++) {
         const auto& [fi, vi] = candidates[i];
+        assert(mesh.faces()(fi, 0) != vi && mesh.faces()(fi, 1) != vi && mesh.faces()(fi, 2) != vi);
         const auto [v, f0, f1, f2] =
             candidates[i].vertices(vertices, mesh.edges(), mesh.faces());
 
@@ -223,22 +314,73 @@ void HighOrderCollisionsBuilder<3>::add_face_vertex_collisions(
         // vertex-face
         const double dhat_FV = std::min(face_dhat(fi), vert_dhat(vi));
         if (distance_sqr < dhat_FV * dhat_FV) {
-            add_collision(
+            add_collision<HighOrderCollision>(
                 std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(
                     fi, vi, mesh, params, dhat_FV, vertices),
                 vert_face_3_to_id, collisions);
         }
+    }
+}
 
-        // face-face
-        for (const int fj : mesh.vertices_to_faces()[vi]) {
-            const double dhat_FF = std::min(face_dhat(fi), face_dhat(fj));
-            if (distance_sqr < dhat_FF * dhat_FF) {
-                add_collision(
-                    std::make_shared<HighOrderCollisionTemplate<Face3P1, Face3P1>>(
-                        std::min(fi, fj), std::max(fi, fj), mesh, params, dhat_FF, vertices),
-                    face_face_3_to_id, collisions);
-            }
+void HighOrderCollisionsBuilder<3>::add_face_vertex_negative_edge_vertex_collisions(
+    const CollisionMesh& mesh,
+    const Eigen::MatrixXd& vertices,
+    const std::vector<EdgeVertexCandidate>& candidates,
+    const HighOrderContactParameters& params,
+    const std::function<double(const index_t)>& vert_dhat,
+    const std::function<double(const index_t)>& edge_dhat,
+    const std::function<double(const index_t)>& face_dhat,
+    const size_t start_i,
+    const size_t end_i)
+{
+    for (size_t i = start_i; i < end_i; i++) {
+        const auto& [ei, vi] = candidates[i];
+        assert(mesh.edges()(ei, 0) != vi && mesh.edges()(ei, 1) != vi);
+        const auto [v, e0, e1, _] =
+            candidates[i].vertices(vertices, mesh.edges(), mesh.faces());
+
+        // Compute distance type
+        const PointEdgeDistanceType dtype =
+            point_edge_distance_type(v, e0, e1);
+        const double distance_sqr =
+            point_edge_distance(v, e0, e1, dtype);
+
+        // vertex-edge
+        const double dhat_EV = std::min(edge_dhat(ei), vert_dhat(vi));
+        if (distance_sqr < dhat_EV * dhat_EV) {
+            auto pair = std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
+                    ei, vi, mesh, params, dhat_EV, vertices);
+            pair->weight = -1;
+            add_collision<HighOrderCollision>(
+                pair,
+                vert_edge_3_to_id, collisions);
         }
+    }
+}
+
+void HighOrderCollisionsBuilder<3>::add_face_vertex_positive_vertex_vertex_collisions(
+    const CollisionMesh& mesh,
+    const Eigen::MatrixXd& vertices,
+    const std::vector<VertexVertexCandidate>& candidates,
+    const HighOrderContactParameters& params,
+    const std::function<double(const index_t)>& vert_dhat,
+    const std::function<double(const index_t)>& edge_dhat,
+    const std::function<double(const index_t)>& face_dhat,
+    const size_t start_i,
+    const size_t end_i)
+{
+    for (size_t i = start_i; i < end_i; i++) {
+        const auto& [vi, vj] = candidates[i];
+        assert(vi != vj);
+
+        // vertex-vertex
+        const double dhat_VV = std::min(vert_dhat(vj), vert_dhat(vi));
+        auto pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                std::min(vi, vj), std::max(vi, vj), mesh, params, dhat_VV, vertices);
+        pair->weight = 1;
+        add_collision<HighOrderCollision>(
+            pair,
+            vert_vert_3_to_id, collisions);
     }
 }
 
@@ -246,30 +388,9 @@ void HighOrderCollisionsBuilder<3>::merge(
     const ParallelCacheType<HighOrderCollisionsBuilder<3>>& local_storage,
     HighOrderCollisions& merged_collisions)
 {
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Vertex3, Vertex3>>>
-        vert_vert_3_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge3P1, Vertex3>>>
-        vert_edge_3_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Face3P1, Vertex3>>>
-        vert_face_3_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge3P1, Edge3P1>>>
-        edge_edge_3_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge3P1, Face3P1>>>
-        edge_face_3_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Face3P1, Face3P1>>>
-        face_face_3_to_id;
+    unordered_map<std::pair<index_t, index_t>, index_t> vert_vert_3_to_id;
+    unordered_map<std::pair<index_t, index_t>, index_t> vert_edge_3_to_id;
+    unordered_map<std::pair<index_t, index_t>, index_t> vert_face_3_to_id;
 
     // size up the hash items
     size_t total = 0;
@@ -281,48 +402,66 @@ void HighOrderCollisionsBuilder<3>::merge(
 
     // merge
     for (const auto& builder : local_storage) {
-        vert_vert_3_to_id.insert(
-            builder.vert_vert_3_to_id.begin(), builder.vert_vert_3_to_id.end());
-        vert_edge_3_to_id.insert(
-            builder.vert_edge_3_to_id.begin(), builder.vert_edge_3_to_id.end());
-        vert_face_3_to_id.insert(
-            builder.vert_face_3_to_id.begin(), builder.vert_face_3_to_id.end());
-        edge_edge_3_to_id.insert(
-        builder.edge_edge_3_to_id.begin(), builder.edge_edge_3_to_id.end());
-        edge_face_3_to_id.insert(
-            builder.edge_face_3_to_id.begin(), builder.edge_face_3_to_id.end());
-        face_face_3_to_id.insert(
-            builder.face_face_3_to_id.begin(), builder.face_face_3_to_id.end());
+        for (const auto& vv : builder.vert_vert_3_to_id) {
+            add_collision<HighOrderCollision>(builder.collisions[vv.second], vert_vert_3_to_id, merged_collisions.collisions);
+        }
+        for (const auto& ve : builder.vert_edge_3_to_id) {
+            add_collision<HighOrderCollision>(builder.collisions[ve.second], vert_edge_3_to_id, merged_collisions.collisions);
+        }
+        for (const auto& vf : builder.vert_face_3_to_id) {
+            add_collision<HighOrderCollision>(builder.collisions[vf.second], vert_face_3_to_id, merged_collisions.collisions);
+        }
     }
+
     int vert_vert_count = vert_vert_3_to_id.size();
     int vert_edge_count = vert_edge_3_to_id.size();
     int vert_face_count = vert_face_3_to_id.size();
-    int edge_edge_count = edge_edge_3_to_id.size();
-    int edge_face_count = edge_face_3_to_id.size();
-    int face_face_count = face_face_3_to_id.size();
-
-    for (const auto& [key, val] : vert_vert_3_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
-    for (const auto& [key, val] : vert_edge_3_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
-    for (const auto& [key, val] : vert_face_3_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
-    for (const auto& [key, val] : edge_edge_3_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
-    for (const auto& [key, val] : edge_face_3_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
-    for (const auto& [key, val] : face_face_3_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
 
     logger().trace(
-        "VV pairs: {}; VE pairs: {}; EE pairs: {}; VF pairs: {}; EF pairs: {}; FF pairs: {}.",
-        vert_vert_count, vert_edge_count, edge_edge_count, vert_face_count, edge_face_count, face_face_count);
+        "VV pairs: {}; VE pairs: {}; VF pairs: {}.",
+        vert_vert_count, vert_edge_count, vert_face_count);
+
+
+    unordered_map<std::array<index_t, 3>, index_t> eev_3_to_id;
+    unordered_map<std::array<index_t, 3>, index_t> eee_3_to_id;
+    unordered_map<std::array<index_t, 3>, index_t> eef_3_to_id;
+
+    // size up the hash items
+    total = 0;
+    for (const auto& storage : local_storage) {
+        total += storage.triple_collisions.size();
+    }
+
+    merged_collisions.triple_collisions.reserve(total);
+
+    // merge
+    for (const auto& builder : local_storage) {
+        for (const auto& eev : builder.eev_3_to_id) {
+            add_collision<TriplePairCollision>(builder.triple_collisions[eev.second], eev_3_to_id, merged_collisions.triple_collisions);
+        }
+        for (const auto& eee : builder.eee_3_to_id) {
+            add_collision<TriplePairCollision>(builder.triple_collisions[eee.second], eee_3_to_id, merged_collisions.triple_collisions);
+        }
+        for (const auto& eef : builder.eef_3_to_id) {
+            add_collision<TriplePairCollision>(builder.triple_collisions[eef.second], eef_3_to_id, merged_collisions.triple_collisions);
+        }
+    }
+
+    merged_collisions.triple_collisions.erase(
+    std::remove_if(
+        merged_collisions.triple_collisions.begin(), merged_collisions.triple_collisions.end(),
+        [&](std::shared_ptr<TriplePairCollision> cc) {
+            return cc->weight == 0;
+        }),
+    merged_collisions.triple_collisions.end());
+
+    int eev_count = eev_3_to_id.size();
+    int eee_count = eee_3_to_id.size();
+    int eef_count = eef_3_to_id.size();
+
+    logger().trace(
+        "EEV pairs: {}; EEE pairs: {}; EEF pairs: {}.",
+        eev_count, eee_count, eef_count);
 }
 
 } // namespace ipc
