@@ -67,21 +67,6 @@ namespace {
         }
         return neighbors_ordered;
     }
-
-    // Helper function to find the vertices adjacent to a given vertex in a 3D mesh.
-    std::vector<index_t> find_vertex_neighbors_3D(const CollisionMesh& mesh, const index_t v_id)
-    {
-        assert (mesh.dim() == 3);
-        std::vector<index_t> neighbors;
-        for (int eid : mesh.vertices_to_edges()[v_id]) {
-            index_t neighbor_id = mesh.edges()(eid, 0) == v_id
-                ? mesh.edges()(eid, 1)
-                : mesh.edges()(eid, 0);
-
-            neighbors.push_back(neighbor_id);
-        }
-        return neighbors;
-    }
 }
 
 class Vertex2 : public HighOrderPrimitive {

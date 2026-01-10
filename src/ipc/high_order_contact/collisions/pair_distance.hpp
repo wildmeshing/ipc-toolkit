@@ -38,8 +38,8 @@ public:
     static constexpr int N_DOFS =
         PrimitiveA::N_POINTS * PrimitiveA::DIM
         + PrimitiveB::N_POINTS * PrimitiveB::DIM;
-    static PairDistType<PrimitiveA, PrimitiveB>::type compute_distance_type(Eigen::ConstRef<Eigen::Vector<T, N_DOFS>> X);
-    static T compute_distance(Eigen::ConstRef<Eigen::Vector<T, N_DOFS>> X, PairDistType<PrimitiveA, PrimitiveB>::type dtype);
+    static typename PairDistType<PrimitiveA, PrimitiveB>::type compute_distance_type(Eigen::ConstRef<Eigen::Vector<T, N_DOFS>> X);
+    static T compute_distance(Eigen::ConstRef<Eigen::Vector<T, N_DOFS>> X, typename PairDistType<PrimitiveA, PrimitiveB>::type dtype);
 };
 }
 
