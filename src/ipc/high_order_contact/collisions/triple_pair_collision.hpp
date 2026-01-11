@@ -142,7 +142,18 @@ public:
 
     /// @brief Compute the closest point pair between primitive A and B, for now only supports edge-edge
     template <typename T>
-    Eigen::Matrix<T, DIM, 2> closest_point_pair_ab(Eigen::ConstRef<Vector<T, -1, ELEMENT_SIZE>> positions) const;
+    Eigen::Matrix<T, DIM, 2> closest_point_pair_ab(Eigen::ConstRef<Vector<T, -1, ELEMENT_SIZE>> positions) const
+    {
+        static_assert(std::is_same_v<PrimitiveA, Edge3P1>);
+        static_assert(std::is_same_v<PrimitiveB, Edge3P1>);
+
+        assert(dtype1 == EdgeEdgeDistanceType::EA_EB);
+        return line_line_closest_point_pairs<T>(
+            positions.template segment<DIM>(0),
+            positions.template segment<DIM>(DIM),
+            positions.template segment<DIM>(2 * DIM),
+            positions.template segment<DIM>(3 * DIM));
+    }
 
 private:
     PrimitiveA primitive_a;

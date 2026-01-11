@@ -50,23 +50,6 @@ namespace ipc
 
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
     template <typename T>
-    Eigen::Matrix<T, TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::DIM, 2>
-    TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::closest_point_pair_ab(
-        Eigen::ConstRef<Vector<T, -1, ELEMENT_SIZE>> positions) const
-    {
-        static_assert(std::is_same_v<PrimitiveA, Edge3P1>);
-        static_assert(std::is_same_v<PrimitiveB, Edge3P1>);
-
-        assert(dtype1 == EdgeEdgeDistanceType::EA_EB);
-        return line_line_closest_point_pairs<T>(
-            positions.template segment<DIM>(0),
-            positions.template segment<DIM>(DIM),
-            positions.template segment<DIM>(2 * DIM),
-            positions.template segment<DIM>(3 * DIM));
-    }
-
-    template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
-    template <typename T>
     T TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::evaluate(
         Eigen::ConstRef<Vector<T, N_DOFS>> positions,
         const HighOrderContactParameters& params) const
