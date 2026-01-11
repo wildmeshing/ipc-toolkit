@@ -73,6 +73,24 @@ HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::HighOrderCollisionTemplate(
     primitive_a = std::make_unique<PrimitiveA>(_primitive0, mesh, V);
     primitive_b = std::make_unique<PrimitiveB>(_primitive1, mesh, V);
         
+    auto is_obstacle = [&](const auto& primitive) {
+        bool any_obstacle = false;
+        bool all_obstacle = true;
+        for (const index_t vid : primitive->vertex_ids()) {
+            if (mesh.is_obstacle_vertex(vid)) {
+                any_obstacle = true;
+            } else {
+                all_obstacle = false;
+            }
+        }
+        if (any_obstacle && !all_obstacle) {
+            throw std::logic_error("Primitive has mixed obstacle and non-obstacle vertices!");
+        }
+        return all_obstacle;
+    };
+    m_is_obstacle0 = is_obstacle(primitive_a);
+    m_is_obstacle1 = is_obstacle(primitive_b);
+
     if ((primitive_a->n_vertices() + primitive_b->n_vertices()) * DIM
         > ELEMENT_SIZE) {
         logger().error(
@@ -342,7 +360,9 @@ namespace alternating_contact_potential {
     template <typename T>
     T potential_EE(
         Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params
+        const HighOrderContactParameters& params,
+        const bool is_obstacleA,
+        const bool is_obstacleB
     ) {
         const Eigen::Matrix<T, 4, 2> all_pos = slice_positions<T, 4, 2>(positions);
         const Eigen::Vector2<T> ea0 = all_pos.row(0);
@@ -378,15 +398,20 @@ namespace alternating_contact_potential {
             )
         ); */
         /* Second order integration */
-        return 0.5 * (
-            la * (
+        T pot = 0.0;
+        if (!is_obstacleA) { // integrate on primitive A
+            pot += la * (
                 barrier_func(distance_VE(eb0, eb1, ea0), params) +
                 barrier_func(distance_VE(eb0, eb1, ea1), params)
-            ) + lb * (
+            );
+        }
+        if (!is_obstacleB) { // integrate on primitive B
+            pot += lb * (
                 barrier_func(distance_VE(ea0, ea1, eb0), params) +
                 barrier_func(distance_VE(ea0, ea1, eb1), params)
-            )
-        );
+            );
+        }
+        return 0.5 * pot;
     }
 } // namespace alternating_contact_potential
 // ----------------------------------------------------
@@ -549,9 +574,11 @@ T potential_EE_onesided(
 template <typename T>
 T potential_EE(
     Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params
+    const HighOrderContactParameters& params,
+    const bool is_obstacleA,
+    const bool is_obstacleB
 ) {
-    if (params.alpha == 0) return alternating_contact_potential::potential_EE<T>(positions, params);
+    if (params.alpha == 0) return alternating_contact_potential::potential_EE<T>(positions, params, is_obstacleA, is_obstacleB);
     if (params.quad_points == 0) throw std::logic_error("Quad points = 0 in potential_EE");
 	Eigen::Matrix<T, 4, 2> all_pos = slice_positions<T, 4, 2>(positions);
     Eigen::Matrix<T, 2, 2> edge0_pos = all_pos.topRows(2);
@@ -605,7 +632,7 @@ double HighOrderCollisionTemplate<Edge2P1, Edge2P1>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params) const
 {
-    return potential_EE<double>(positions, params);
+    return potential_EE<double>(positions, params, is_obstacle0(), is_obstacle1());
 }
 
 template <>
@@ -613,7 +640,7 @@ double HighOrderCollisionTemplate<Edge2P1, Vertex2>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params) const
 {
-    return potential_EV<double>(
+    return is_obstacle0() ? 0.0 : potential_EV<double>(
         positions, params, primitive_a->n_vertices(), primitive_b->n_vertices());
 }
 
@@ -666,7 +693,7 @@ auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::gradient(
     const HighOrderContactParameters& params) const
     -> Vector<double, -1, ELEMENT_SIZE>
 {
-	return potential_EE<ADGrad<N_CORE_DOFS>>(positions, params).grad;
+	return potential_EE<ADGrad<N_CORE_DOFS>>(positions, params, is_obstacle0(), is_obstacle1()).grad;
 }
 
 template <>
@@ -675,6 +702,7 @@ auto HighOrderCollisionTemplate<Edge2P1, Vertex2>::gradient(
     const HighOrderContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
+    if (is_obstacle0()) return Vector<double, -1, ELEMENT_SIZE>::Zero(n_dofs());
     return potential_EV<ADGrad<-1>>(
                positions, params, primitive_a->n_vertices(), primitive_b->n_vertices())
         .grad;
@@ -707,7 +735,7 @@ auto HighOrderCollisionTemplate<Edge2P1, Edge2P1>::hessian(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
-	return potential_EE<ADHessian<N_CORE_DOFS>>(positions, params).Hess;
+	return potential_EE<ADHessian<N_CORE_DOFS>>(positions, params, is_obstacle0(), is_obstacle1()).Hess;
 }
 
 template <>
@@ -716,6 +744,7 @@ auto HighOrderCollisionTemplate<Edge2P1, Vertex2>::hessian(
     const HighOrderContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
+    if (is_obstacle0()) return MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n_dofs(), n_dofs());
     return potential_EV<ADHessian<-1>>(
                positions, params, primitive_a->n_vertices(), primitive_b->n_vertices())
         .Hess;

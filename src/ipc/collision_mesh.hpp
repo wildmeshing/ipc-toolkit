@@ -38,6 +38,33 @@ public:
         Eigen::ConstRef<Eigen::MatrixXi> edges = Eigen::MatrixXi(),
         Eigen::ConstRef<Eigen::MatrixXi> faces = Eigen::MatrixXi(),
         const Eigen::SparseMatrix<double>& displacement_map =
+            Eigen::SparseMatrix<double>()) :
+        CollisionMesh(
+            include_vertex,
+            orient_vertex,
+            std::vector<bool>(full_rest_positions.rows(), false),
+            full_rest_positions,
+            edges,
+            faces,
+            displacement_map)
+    {};
+
+    /// @brief Construct a new Collision Mesh object from a full mesh vertices.
+    /// @param include_vertex Vector of bools indicating whether each vertex should be included in the collision mesh.
+    /// @param orient_vertex Vector of bools indicating whether each vertex is orientable.
+    /// @param obstacle_vertex Vector of bools indicating whether each vertex comes from an obstacle.
+    /// @param full_rest_positions The vertices of the full mesh at rest (|V| × dim).
+    /// @param edges The edges of the collision mesh indexed into the full mesh vertices (|E| × 2).
+    /// @param faces The faces of the collision mesh indexed into the full mesh vertices (|F| × 3).
+    /// @param displacement_map The displacement mapping from displacements on the full mesh to the collision mesh.
+    CollisionMesh(
+        const std::vector<bool>& include_vertex,
+        const std::vector<bool>& orient_vertex,
+        const std::vector<bool>& obstacle_vertex,
+        Eigen::ConstRef<Eigen::MatrixXd> full_rest_positions,
+        Eigen::ConstRef<Eigen::MatrixXi> edges = Eigen::MatrixXi(),
+        Eigen::ConstRef<Eigen::MatrixXi> faces = Eigen::MatrixXi(),
+        const Eigen::SparseMatrix<double>& displacement_map =
             Eigen::SparseMatrix<double>());
 
     /// @brief Helper function that automatically builds include_vertex using construct_is_on_surface.
@@ -107,6 +134,12 @@ public:
     bool is_orient_vertex(const index_t i) const
     {
         return m_is_orient_vertex[i];
+    }
+
+    /// @brief Check if vertex i is orientable.
+    bool is_obstacle_vertex(const index_t i) const
+    {
+        return m_is_obstacle_vertex[i];
     }
 
     /// @brief Get the indices of codimensional edges of the collision mesh (|CE| × 1).
@@ -354,6 +387,8 @@ protected:
     std::vector<bool> m_is_codim_vertex;
     /// @brief The mask of orientable vertices (|V|).
     std::vector<bool> m_is_orient_vertex;
+    /// @brief The mask of obstacle vertices (|V|).
+    std::vector<bool> m_is_obstacle_vertex;
     /// @brief The indices of codimensional vertices (|CV| × 1).
     Eigen::VectorXi m_codim_vertices;
     /// @brief The mask of codimensional edges (|E|).

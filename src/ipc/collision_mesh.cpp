@@ -28,6 +28,7 @@ CollisionMesh::CollisionMesh(
 CollisionMesh::CollisionMesh(
     const std::vector<bool>& include_vertex,
     const std::vector<bool>& orient_vertex,
+    const std::vector<bool>& obstacle_vertex,
     Eigen::ConstRef<Eigen::MatrixXd> full_rest_positions,
     Eigen::ConstRef<Eigen::MatrixXi> edges,
     Eigen::ConstRef<Eigen::MatrixXi> faces,
@@ -92,6 +93,12 @@ CollisionMesh::CollisionMesh(
     m_is_orient_vertex.assign(m_rest_positions.rows(), false);
     for (int i = 0; i < m_is_orient_vertex.size(); i++) {
         m_is_orient_vertex[i] = orient_vertex[m_vertex_to_full_vertex[i]];
+    }
+
+    assert(obstacle_vertex.size() == full_rest_positions.rows());
+    m_is_obstacle_vertex.assign(m_rest_positions.rows(), false);
+    for (int i = 0; i < m_is_obstacle_vertex.size(); i++) {
+        m_is_obstacle_vertex[i] = obstacle_vertex[m_vertex_to_full_vertex[i]];
     }
 
     // Map faces and edges to only included vertices

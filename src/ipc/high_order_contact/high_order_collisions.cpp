@@ -393,15 +393,15 @@ void HighOrderCollisions::build(
                 const index_t other_e = candidate1.edge0_id == hack_id ? candidate1.edge1_id : candidate1.edge0_id;
 
                 for (index_t vi : vids) {
-                    triplets_eev.push_back(std::array<index_t, 3>{hack_id, other_e, vi});
+                    triplets_eev.push_back(std::array<index_t, 3>{{hack_id, other_e, vi}});
                 }
 
                 for (index_t ei : eids) {
-                    triplets_eee.push_back(std::array<index_t, 3>{hack_id, other_e, ei});
+                    triplets_eee.push_back(std::array<index_t, 3>{{hack_id, other_e, ei}});
                 }
 
                 for (index_t fi : fids) {
-                    triplets_eef.push_back(std::array<index_t, 3>{hack_id, other_e, fi});
+                    triplets_eef.push_back(std::array<index_t, 3>{{hack_id, other_e, fi}});
                 }
             }
 

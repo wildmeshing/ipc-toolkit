@@ -53,7 +53,6 @@ void SmoothCollisionsBuilder<2>::add_edge_vertex_collisions(
             vertices.row(vi), vertices.row(mesh.edges()(ei, 0)),
             vertices.row(mesh.edges()(ei, 1)));
 
-		// TODO get rid of this
         if (pe_dtype == PointEdgeDistanceType::P_E) {
             add_collision<2, SmoothCollisionTemplate<Edge2, Point2>>(
                 std::make_shared<SmoothCollisionTemplate<Edge2, Point2>>(
@@ -63,7 +62,6 @@ void SmoothCollisionsBuilder<2>::add_edge_vertex_collisions(
         }
 
 		// loops over endpoints
-		// TODO add connected edges
         for (int j : { 0, 1 }) {
             const auto& vj = mesh.edges()(ei, j);
             const double dhat = std::min(vert_dhat(vi), vert_dhat(vj));
@@ -72,10 +70,9 @@ void SmoothCollisionsBuilder<2>::add_edge_vertex_collisions(
             }
             add_collision<2, SmoothCollisionTemplate<Point2, Point2>>(
                 std::make_shared<SmoothCollisionTemplate<Point2, Point2>>(
-                    std::min<index_t>(vi, vj), std::max<index_t>(vi, vj), //TODO make order independent
+                    std::min<index_t>(vi, vj), std::max<index_t>(vi, vj),
                     PointPointDistanceType::P_P, mesh, params, dhat, vertices),
                 vert_vert_2_to_id, collisions);
-			// TODO push edge-edge
         }
     }
 }

@@ -60,7 +60,7 @@ public:
 
     std::array<index_t, 3> get_hash() const
     {
-        return {primitive0, primitive1, primitive2};
+        return {{primitive0, primitive1, primitive2}};
     }
 
     // pure virtual functions

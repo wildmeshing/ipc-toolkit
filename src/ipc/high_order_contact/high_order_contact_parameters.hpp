@@ -8,11 +8,14 @@ struct HighOrderContactParameters {
         const double _dhat,
         const double _alpha,
         const int _r,
-        const int _quad_points) :
+        const int _quad_points,
+        const bool _skip_obstacle = true
+    ) :
         dhat(_dhat),
         alpha(_alpha),
         r(_r),
-        quad_points(_quad_points)
+        quad_points(_quad_points),
+        skip_obstacle(_skip_obstacle)
     {
         if (abs(alpha) > 1) {
             logger().error(
@@ -20,10 +23,11 @@ struct HighOrderContactParameters {
         }
     }
 
-    double dhat = 1;
-    double alpha = 1;
-    int r = 2;
-    int quad_points = 20;
+    double dhat;
+    double alpha;
+    int r;
+    int quad_points;
+    bool skip_obstacle;
 
 
     double adaptive_dhat_ratio() const { return m_adaptive_dhat_ratio; }
