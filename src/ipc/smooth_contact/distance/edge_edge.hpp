@@ -65,6 +65,25 @@ Eigen::Matrix<T, 3, 2> line_line_closest_point_pairs(
     return out;
 }
 
+template <typename T>
+Eigen::Vector<T, 2> line_line_closest_point_pairs_uv(
+    Eigen::ConstRef<Eigen::Vector3<T>> ea0,
+    Eigen::ConstRef<Eigen::Vector3<T>> ea1,
+    Eigen::ConstRef<Eigen::Vector3<T>> eb0,
+    Eigen::ConstRef<Eigen::Vector3<T>> eb1)
+{
+    const Eigen::Vector3<T> ta = ea1 - ea0;
+    const Eigen::Vector3<T> tb = eb1 - eb0;
+    const T la = ta.squaredNorm();
+    const T lb = tb.squaredNorm();
+    const T lab = ta.dot(tb);
+    const Eigen::Vector3<T> d = eb0 - ea0;
+
+    const T fac = la * lb - pow(lab, 2);
+    return Eigen::Vector<T, 2>(lb * ta.dot(d) - lab * tb.dot(d),
+        lab * ta.dot(d) - la * tb.dot(d)) / fac;
+}
+
 std::tuple<Vector6d, Eigen::Matrix<double, 6, 12>>
 line_line_closest_point_pairs_gradient(
     Eigen::ConstRef<Eigen::Vector3d> ea0,
