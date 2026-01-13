@@ -344,19 +344,54 @@ namespace alternating_contact_potential {
         const Eigen::Vector2<T> e0 = all_pos.row(0);
         const Eigen::Vector2<T> e1 = all_pos.row(1);
         const Eigen::Vector2<T> v0 = all_pos.row(2);
-        const T l = (e0 - e1).norm();
-        /* First order integration
-        return -l * barrier_func(distance_VE(e0,e1,v0), params);
-        */
-        /* Positive sums integration
-        return l * barrier_func(distance_VE(e0,e1,v0), params);
-        */
-        /* Second order integration */
-        const T d0 = (e0 - v0).norm();
-        const T d1 = (e1 - v0).norm();
-        return -0.5 * l * (barrier_func(d0, params) + barrier_func(d1, params));
+
+        int qord = params.quad_points;
+        if (qord < 2) {
+            qord = 2;
+        }
+
+        std::vector<double> nodes, weights;
+        std::tie(nodes, weights) = GaussLobatto::get_rule(qord);
+
+        T integral = 0.0;
+        for (int i = 0; i < qord; ++i) {
+            const double t_d = (nodes[i] + 1.0) / 2.0;
+            const T t(t_d);
+            const Eigen::Vector2<T> p = (1.0 - t) * e0 + t * e1;
+            integral += weights[i] * barrier_func((p - v0).norm(), params);
+        }
+
+        const T length = (e0 - e1).norm();
+        return -0.5 * length * integral;
     }
 
+    template <typename T>
+    T potential_EE_onesided(
+        const Eigen::Vector2<T>& e0,
+        const Eigen::Vector2<T>& e1,
+        const Eigen::Vector2<T>& other0,
+        const Eigen::Vector2<T>& other1,
+        const HighOrderContactParameters& params)
+    {
+        int qord = params.quad_points;
+        if (qord < 2) {
+            qord = 2;
+        }
+
+        std::vector<double> nodes, weights;
+        std::tie(nodes, weights) = GaussLobatto::get_rule(qord);
+
+        T integral = 0.0;
+        for (int i = 0; i < qord; ++i) {
+            const double t_d = (nodes[i] + 1.0) / 2.0;
+            const T t(t_d);
+            const Eigen::Vector2<T> p = (1.0 - t) * e0 + t * e1;
+            integral += weights[i] * barrier_func(distance_VE(other0, other1, p), params);
+        }
+
+        const T length = (e0 - e1).norm();
+        return 0.5 * length * integral;
+    }
     template <typename T>
     T potential_EE(
         Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
@@ -369,49 +404,15 @@ namespace alternating_contact_potential {
         const Eigen::Vector2<T> ea1 = all_pos.row(1);
         const Eigen::Vector2<T> eb0 = all_pos.row(2);
         const Eigen::Vector2<T> eb1 = all_pos.row(3);
-        const T la = (ea0 - ea1).norm();
-        const T lb = (eb0 - eb1).norm();
-        /* First order integration
-        using namespace TinyAD;
-        using namespace std;
-        const T d = min({
-            distance_VE(eb0, eb1, ea0),
-            distance_VE(eb0, eb1, ea1),
-            distance_VE(ea0, ea1, eb0),
-            distance_VE(ea0, ea1, eb1)
-        });
-        return barrier_func(d, params) * (la + lb);
-        */
-        /* Positive sums integration
-        const T dvt =
-            barrier_func((ea0 - eb0).norm(), params) +
-            barrier_func((ea0 - eb1).norm(), params) +
-            barrier_func((ea1 - eb0).norm(), params) +
-            barrier_func((ea1 - eb1).norm(), params);
-        return 0.5 * (
-            la * ( -dvt +
-                barrier_func(distance_VE(eb0, eb1, ea0), params) +
-                barrier_func(distance_VE(eb0, eb1, ea1), params)
-            ) + lb * ( -dvt +
-                barrier_func(distance_VE(ea0, ea1, eb0), params) +
-                barrier_func(distance_VE(ea0, ea1, eb1), params)
-            )
-        ); */
-        /* Second order integration */
+
         T pot = 0.0;
         if (!is_obstacleA) { // integrate on primitive A
-            pot += la * (
-                barrier_func(distance_VE(eb0, eb1, ea0), params) +
-                barrier_func(distance_VE(eb0, eb1, ea1), params)
-            );
+            pot += potential_EE_onesided(ea0, ea1, eb0, eb1, params);
         }
         if (!is_obstacleB) { // integrate on primitive B
-            pot += lb * (
-                barrier_func(distance_VE(ea0, ea1, eb0), params) +
-                barrier_func(distance_VE(ea0, ea1, eb1), params)
-            );
+            pot += potential_EE_onesided(eb0, eb1, ea0, ea1, params);
         }
-        return 0.5 * pot;
+        return pot;
     }
 } // namespace alternating_contact_potential
 // ----------------------------------------------------

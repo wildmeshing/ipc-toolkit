@@ -8,6 +8,60 @@
 
 namespace offset_potential {
 
+namespace other_barrier {
+    /**
+    * @brief Smoothed p.w. cubic Heaviside, with 0 -> 1 transition on -1 to 1.
+    *
+    * @tparam F The floating point type.
+    * @param t The input value.
+    * @return The smoothed Heaviside value.
+    */
+    template <typename F>
+    F H(F t) {
+        if (t < -1.0) {
+            return 0.0;
+        }
+        if (t > 1.0) {
+            return 1.0;
+        }
+        return ((2.0 - t) * (t + 1.0) * (t + 1.0)) / 4.0;
+    }
+
+    template <typename F>
+    F cubic_bspline(F v) {
+        using namespace std;
+        using namespace TinyAD;
+        F abs_v = abs(v);
+        if (abs_v < 1.0) {
+            return (2.0 / 3.0) - abs_v * abs_v + 0.5 * abs_v * abs_v * abs_v;
+        }
+        if (abs_v < 2.0) {
+            F diff = 2.0 - abs_v;
+            return (1.0 / 6.0) * diff * diff * diff;
+        }
+        return 0.0;
+    }
+
+    template <typename F>
+    F h_epsilon(F value, double epsilon) {
+        if (value <= 0.0) {
+            return 0.0;
+        }
+        return 2.0 * cubic_bspline(2.0 * value / epsilon);
+    }
+
+    template <typename T>
+    T barrier_func(
+        const T d,
+        const double dhat
+    ) {
+        const T denom = (abs(pow(d, 2)));
+        if (denom <= 1e-12) return T(0);
+        return h_epsilon(abs(d), dhat) / denom;
+    }
+}
+
+
 /**
  * @brief Heaviside function, with 0 -> 1 transition on -1 to 1.
  *
@@ -27,16 +81,14 @@ inline F sqr(F x) { return x * x; }
 template <typename F>
 F activation_function(F d, const double r) {
     // quadratic-logrithmic 2 stage function taken from the GAIA implementation
-    constexpr double CORRECTION = 1.; // 1 = as defined in GAIA, 2 = correct C2 implementation?
     constexpr double k = 1; // Stiffness, fixed to 1 as we already have stiffness implemented.
 	F pd = r - d;
     const double tau = r * 0.5;
-    if (d < tau && d > 0)
+    if (pd < tau && pd > 0)
     {
         const double k2 = 0.5 * sqr(tau) * k;
-        // Here I add two factors to make the function C1 (double typo? check) 
-        const double b = k2 / (CORRECTION*r) + k2 * log(tau);
-        return CORRECTION*(-log(d) * k2 + b);
+        const double b = k2 / r + k2 * log(tau);
+        return -log(pd) * k2 + b;
     }
     else {
         return 0.5 * k * sqr(pd);
@@ -100,8 +152,8 @@ F polyline_edge_potential(
 
     F denom = pow(abs(r_q), power);
     if (denom > 1e-12) {
-        //F r = abs(r_q);
-        F r = max(0.0, r_q); // Only offset in the normal direction? check
+        F r = abs(r_q);
+        return other_barrier::barrier_func(r, epsilon) * H0(phi_start) * H0(-phi_end);
         return activation_function(r, epsilon) * H0(phi_start) * H0(-phi_end) / denom;
     }
     else return 0.0;
@@ -144,6 +196,7 @@ F polyline_vertex_potential(
 
     F dist_to_vertex = hypot(point[0] - vertex_pt[0], point[1] - vertex_pt[1]);
     if (abs(dist_to_vertex) > 1e-12) {
+        return other_barrier::barrier_func(dist_to_vertex, epsilon) * term;
         return activation_function(dist_to_vertex, epsilon) * term / pow(dist_to_vertex, power);
     }
     else return 0.0;

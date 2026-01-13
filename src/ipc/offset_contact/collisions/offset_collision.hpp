@@ -179,6 +179,9 @@ public:
     size_t n_vertices_a() const override { return primitive_a->n_vertices(); }
     size_t n_vertices_b() const override { return primitive_b->n_vertices(); }
 
+    bool is_obstacle0() const { return m_is_obstacle0; }
+    bool is_obstacle1() const { return m_is_obstacle1; }
+
     template <typename T>
     Vector<T, N_CORE_DOFS> core_dof(const Eigen::MatrixX<T>& X) const
     {
@@ -222,6 +225,8 @@ private:
     std::unique_ptr<PrimitiveA> primitive_a;
     /// @brief The second primitive in the contact pair
     std::unique_ptr<PrimitiveB> primitive_b;
+    bool m_is_obstacle0;
+    bool m_is_obstacle1;
 };
 
 } // namespace ipc

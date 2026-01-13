@@ -60,6 +60,25 @@ OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::OffsetCollisionTemplate(
 {
     primitive_a = std::make_unique<PrimitiveA>(_primitive0, mesh, V);
     primitive_b = std::make_unique<PrimitiveB>(_primitive1, mesh, V);
+
+    auto is_obstacle = [&](const auto& primitive) {
+        bool any_obstacle = false;
+        bool all_obstacle = true;
+        for (const index_t vid : primitive->vertex_ids()) {
+            if (mesh.is_obstacle_vertex(vid)) {
+                any_obstacle = true;
+            } else {
+                all_obstacle = false;
+            }
+        }
+        if (any_obstacle && !all_obstacle) {
+            throw std::logic_error(
+                "Primitive has mixed obstacle and non-obstacle vertices!");
+        }
+        return all_obstacle;
+    };
+    m_is_obstacle0 = is_obstacle(primitive_a);
+    m_is_obstacle1 = is_obstacle(primitive_b);
         
     if ((primitive_a->n_vertices() + primitive_b->n_vertices()) * DIM
         > ELEMENT_SIZE) {
@@ -173,15 +192,22 @@ T potential_VV(
         positions,
     const OffsetContactParameters& params,
     const size_t n_vertices_a,
-    const size_t n_vertices_b)
+    const size_t n_vertices_b,
+    const bool obst_a,
+    const bool obst_b)
 {
     Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
         slice_positions<T, Eigen::Dynamic, 2>(positions);
     const Eigen::Matrix<T, Eigen::Dynamic, 2> v_a = all_pos.topRows(n_vertices_a);
     const Eigen::Matrix<T, Eigen::Dynamic, 2> v_b = all_pos.bottomRows(n_vertices_b);
-
-    return potential_VV_onesided<T>(v_a, v_b, params)
-         + potential_VV_onesided<T>(v_b, v_a, params);
+    T pot = 0;
+    if (!obst_a) {
+        pot += potential_VV_onesided<T>(v_b, v_a, params);
+    }
+    if (!obst_b) {
+        pot += potential_VV_onesided<T>(v_a, v_b, params);
+    }
+    return pot;
 }
 
 // ----------------------------------------------------
@@ -264,6 +290,7 @@ double OffsetCollisionTemplate<ogcEdge2, ogcVert2>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
 {
+    if (is_obstacle1()) return 0.0;
     return potential_VE<double>(
         positions, params, primitive_a->n_vertices(), primitive_b->n_vertices());
 }
@@ -274,6 +301,7 @@ auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::gradient(
     const OffsetContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
+    if (is_obstacle1()) return Vector<double, -1, ELEMENT_SIZE>::Zero(n_dofs());
     return potential_VE<ADGrad<-1>>(
                positions, params, primitive_a->n_vertices(), primitive_b->n_vertices())
         .grad;
@@ -297,6 +325,7 @@ auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::hessian(
     const OffsetContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
+    if (is_obstacle1()) return MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n_dofs(), n_dofs());
     return potential_VE<ADHessian<-1>>(
                positions, params, primitive_a->n_vertices(), primitive_b->n_vertices())
         .Hess;
@@ -308,7 +337,7 @@ double OffsetCollisionTemplate<ogcVert2, ogcVert2>::operator()(
     const OffsetContactParameters& params) const
 {
     return potential_VV<double>(
-        positions, params, primitive_a->n_vertices(), primitive_b->n_vertices());
+        positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), is_obstacle0(), is_obstacle1());
 }
 
 template <>
@@ -318,7 +347,7 @@ auto OffsetCollisionTemplate<ogcVert2, ogcVert2>::gradient(
 {
     ScalarBase::setVariableCount(positions.rows());
     return potential_VV<ADGrad<-1>>(
-               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices()).grad;
+               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), is_obstacle0(), is_obstacle1()).grad;
 }
 
 template <>
@@ -328,7 +357,7 @@ auto OffsetCollisionTemplate<ogcVert2, ogcVert2>::hessian(
 {
     ScalarBase::setVariableCount(positions.rows());
     return potential_VV<ADHessian<-1>>(
-               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices()).Hess;
+               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), is_obstacle0(), is_obstacle1()).Hess;
 }
 
 // Note: Primitive pair order cannot change
