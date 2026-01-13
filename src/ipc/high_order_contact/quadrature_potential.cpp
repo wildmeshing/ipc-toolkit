@@ -483,7 +483,7 @@ namespace ipc
 
                 assert(closest_points_uv(0) > 0 && closest_points_uv(0) < 1);
 
-                std::array<HeavisideType, 4> mtypes{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT};
+                std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
                 double mollifier = Math<double>::cubic_spline(dist / dhat) * 1.5;
                 mollifier *= edge_edge_mollifier<double>(
                         V.row(ea), V.row(eb),

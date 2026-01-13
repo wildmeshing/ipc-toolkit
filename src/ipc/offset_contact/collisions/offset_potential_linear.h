@@ -53,9 +53,10 @@ namespace other_barrier {
     template <typename T>
     T barrier_func(
         const T d,
-        const double dhat
+        const double dhat,
+        const int power
     ) {
-        const T denom = (abs(pow(d, 2)));
+        const T denom = (abs(pow(d, power)));
         if (denom <= 1e-12) return T(0);
         return h_epsilon(abs(d), dhat) / denom;
     }
@@ -153,7 +154,7 @@ F polyline_edge_potential(
     F denom = pow(abs(r_q), power);
     if (denom > 1e-12) {
         F r = abs(r_q);
-        return other_barrier::barrier_func(r, epsilon) * H0(phi_start) * H0(-phi_end);
+        return other_barrier::barrier_func(r, epsilon, power) * H0(phi_start) * H0(-phi_end);
         return activation_function(r, epsilon) * H0(phi_start) * H0(-phi_end) / denom;
     }
     else return 0.0;
@@ -196,10 +197,10 @@ F polyline_vertex_potential(
 
     F dist_to_vertex = hypot(point[0] - vertex_pt[0], point[1] - vertex_pt[1]);
     if (abs(dist_to_vertex) > 1e-12) {
-        return other_barrier::barrier_func(dist_to_vertex, epsilon) * term;
+        return other_barrier::barrier_func(dist_to_vertex, epsilon, power) * term;
         return activation_function(dist_to_vertex, epsilon) * term / pow(dist_to_vertex, power);
     }
     else return 0.0;
 }
 
-}  // ed_offset_potential
+}  // namespace offset_potential
