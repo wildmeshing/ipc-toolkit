@@ -31,10 +31,25 @@ namespace ipc
         {
         }
 
+        unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>
+        build_collisions_at_vertex(
+            const Eigen::MatrixXd& V,
+            const index_t vid) const;
+
         /// @brief Evaluate P(q) at a vertex vid
         double evaluate_potential_at_vertex(
             const Eigen::MatrixXd& V,
             const index_t vid) const;
+
+        Eigen::SparseMatrix<double> evaluate_potential_gradient_at_vertex(
+            const Eigen::MatrixXd& V,
+            const index_t vid) const;
+
+        unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>
+        build_collisions_at_edge_edge_closest_point(
+        const Eigen::MatrixXd& V,
+            const index_t e0,
+            const index_t e1) const;
 
         /// @brief Evaluate P(q) at the point on edge e0 that is closest to edge e1
         double evaluate_potential_at_edge_edge_closest_point(
@@ -42,7 +57,21 @@ namespace ipc
             const index_t e0,
             const index_t e1) const;
 
+        Eigen::SparseMatrix<double> evaluate_potential_gradient_at_edge_edge_closest_point(
+            const Eigen::MatrixXd& V,
+            const index_t e0,
+            const index_t e1) const;
+
+        unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>
+        build_collisions_at_face_center(
+        const Eigen::MatrixXd& V,
+            const index_t fid) const;
+
         double evaluate_potential_at_face_center(
+            const Eigen::MatrixXd& V,
+            const index_t fid) const;
+
+        Eigen::SparseMatrix<double> evaluate_potential_gradient_at_face_center(
             const Eigen::MatrixXd& V,
             const index_t fid) const;
 

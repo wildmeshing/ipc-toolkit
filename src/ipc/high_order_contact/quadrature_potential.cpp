@@ -40,9 +40,10 @@ namespace ipc
         point_potential = std::make_unique<PointPotential>(mesh, collisions, params);
     }
 
-    double PointPotential::evaluate_potential_at_vertex(
-        const Eigen::MatrixXd& V,
-        const index_t vid) const
+    unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>
+        PointPotential::build_collisions_at_vertex(
+            const Eigen::MatrixXd& V,
+            const index_t vid) const
     {
         unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>> pairs;
 
@@ -54,7 +55,7 @@ namespace ipc
             if (std::shared_ptr<HighOrderCollision> pair = HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
                 FaceVertexCandidate(other_f, vid),
                 params, mesh, V); pair->is_active()) {
-                    insert_pair(pairs, pair);
+                insert_pair(pairs, pair);
                 }
         }
 
@@ -62,8 +63,8 @@ namespace ipc
             if (std::shared_ptr<HighOrderCollision> pair = HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
                 EdgeVertexCandidate(other_e, vid),
                 params, mesh, V); pair->is_active()) {
-                    pair->weight = -1;
-                    insert_pair(pairs, pair);
+                pair->weight = -1;
+                insert_pair(pairs, pair);
                 }
         }
 
@@ -76,15 +77,50 @@ namespace ipc
             }
         }
 
+        return pairs;
+    }
+
+    double PointPotential::evaluate_potential_at_vertex(
+        const Eigen::MatrixXd& V,
+        const index_t vid) const
+    {
+        const auto pairs = build_collisions_at_vertex(V, vid);
+
         double potential = 0;
-        for (const auto& cc : pairs) {
-            potential += cc.second->weight * (*(cc.second))(cc.second->dof(V), params);
+        for (const auto& pair : pairs) {
+            const auto& cc = pair.second;
+            potential += cc->weight * (*cc)(cc->dof(V), params);
         }
 
         return potential;
     }
 
-    double PointPotential::evaluate_potential_at_edge_edge_closest_point(
+    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_gradient_at_vertex(
+            const Eigen::MatrixXd& V,
+            const index_t vid) const
+    {
+        const auto pairs = build_collisions_at_vertex(V, vid);
+
+        std::vector<Eigen::Triplet<double>> triplets;
+        for (const auto& pair : pairs) {
+            const auto& cc = pair.second;
+            Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V), params);
+            assert(g.size() == cc->vertex_ids().size() * 3);
+            for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+                for (index_t d = 0; d < 3; d++) {
+                    triplets.emplace_back(3 * cc->vertex_ids()[i] + d, 0, g(3 * i + d));
+                }
+            }
+        }
+
+        Eigen::SparseMatrix<double> grad(V.size(), 1);
+        grad.setFromTriplets(triplets.begin(), triplets.end());
+
+        return grad;
+    }
+
+    unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>
+    PointPotential::build_collisions_at_edge_edge_closest_point(
         const Eigen::MatrixXd& V,
         const index_t e0,
         const index_t e1) const
@@ -110,7 +146,7 @@ namespace ipc
 
         if (edge_edge_distance(V.row(e00), V.row(e01),
                                V.row(e10), V.row(e11), dtype) >= params.dhat * params.dhat)
-            return 0.;
+            return pairs;
 
         const Eigen::Vector2d closest_uvs = line_line_closest_point_pairs_uv<double>(
             V.row(e00), V.row(e01),
@@ -227,6 +263,16 @@ namespace ipc
             }
         }
 
+        return pairs;
+    }
+
+    double PointPotential::evaluate_potential_at_edge_edge_closest_point(
+        const Eigen::MatrixXd& V,
+        const index_t e0,
+        const index_t e1) const
+    {
+        const auto pairs = build_collisions_at_edge_edge_closest_point(V, e0, e1);
+
         double potential = 0;
         for (const auto& pair : pairs) {
             const auto& cc = pair.second;
@@ -236,6 +282,123 @@ namespace ipc
         }
 
         return potential;
+    }
+
+    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_gradient_at_edge_edge_closest_point(
+        const Eigen::MatrixXd& V,
+        const index_t e0,
+        const index_t e1) const
+    {
+        const auto pairs = build_collisions_at_edge_edge_closest_point(V, e0, e1);
+
+        std::vector<Eigen::Triplet<double>> triplets;
+        for (const auto& pair : pairs) {
+            const auto& cc = pair.second;
+            Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V), params);
+            for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+                for (index_t d = 0; d < 3; d++) {
+                    triplets.emplace_back(3 * cc->vertex_ids()[i] + d, 0, g(3 * i + d));
+                }
+            }
+        }
+
+        Eigen::SparseMatrix<double> grad(V.size(), 1);
+        grad.setFromTriplets(triplets.begin(), triplets.end());
+
+        return grad;
+    }
+
+    unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>
+    PointPotential::build_collisions_at_face_center(
+        const Eigen::MatrixXd& V_,
+        const index_t fid) const
+    {
+        // the fake vertex id
+        const index_t vid = V_.rows() - 1;
+
+        const index_t t0 = mesh.faces()(fid, 0);
+        const index_t t1 = mesh.faces()(fid, 1);
+        const index_t t2 = mesh.faces()(fid, 2);
+
+        unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>> pairs;
+
+        const auto& v_set = collisions.m_candidates.fv_set(fid);
+        const auto& e_set = collisions.m_candidates.fe_set(fid);
+        const auto& f_set = collisions.m_candidates.ff_set(fid);
+
+        for (const auto& other_f : f_set) {
+            assert(other_f != fid);
+            if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
+                FaceVertexCandidate(other_f, vid),
+                params, mesh, V_); pair->is_active()) {
+                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+                }
+        }
+
+        for (const auto& other_e : e_set) {
+            if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
+                EdgeVertexCandidate(other_e, vid),
+                params, mesh, V_); pair->is_active()) {
+                pair->weight = -1;
+                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+                }
+        }
+
+        for (const auto& other_v : v_set) {
+            auto pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                std::min(vid, other_v), std::max(vid, other_v),
+                mesh, params, params.dhat, V_);
+            if (pair->is_active()) {
+                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+            }
+        }
+
+        return pairs;
+    }
+
+    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_gradient_at_face_center(
+        const Eigen::MatrixXd& V,
+        const index_t fid) const
+    {
+        const index_t t0 = mesh.faces()(fid, 0);
+        const index_t t1 = mesh.faces()(fid, 1);
+        const index_t t2 = mesh.faces()(fid, 2);
+
+        // Create a virtual vertex as the face center
+
+        Eigen::MatrixXd V_(V.rows() + 1, 3);
+        V_.topRows(V.rows()) = V;
+        V_.row(V.rows()) = (V.row(t0) + V.row(t1) + V.row(t2)) / 3.0;
+
+        const auto pairs = build_collisions_at_face_center(V_, fid);
+
+        std::vector<Eigen::Triplet<double>> triplets;
+        for (const auto& pair : pairs) {
+            const auto& cc = pair.second;
+            Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V), params);
+            for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+                const index_t global_id = cc->vertex_ids()[i];
+                if (global_id == V.rows()) {
+                    // distribute grad wrt virtual vertex to real face vertices
+                    for (index_t d = 0; d < 3; d++) {
+                        triplets.emplace_back(t0 * 3 + d, 0, g(3 * i + d) / 3.);
+                        triplets.emplace_back(t1 * 3 + d, 0, g(3 * i + d) / 3.);
+                        triplets.emplace_back(t2 * 3 + d, 0, g(3 * i + d) / 3.);
+                    }
+                }
+                else {
+                    assert(global_id < V.rows());
+                    for (index_t d = 0; d < 3; d++) {
+                        triplets.emplace_back(3 * global_id + d, 0, g(3 * i + d));
+                    }
+                }
+            }
+        }
+
+        Eigen::SparseMatrix<double> grad(V.size(), 1);
+        grad.setFromTriplets(triplets.begin(), triplets.end());
+
+        return grad;
     }
 
     double PointPotential::evaluate_potential_at_face_center(
@@ -251,40 +414,8 @@ namespace ipc
         Eigen::MatrixXd V_(V.rows() + 1, 3);
         V_.topRows(V.rows()) = V;
         V_.row(V.rows()) = (V.row(t0) + V.row(t1) + V.row(t2)) / 3.0;
-        const index_t vid = V.rows();
 
-        unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>> pairs;
-
-        const auto& v_set = collisions.m_candidates.fv_set(fid);
-        const auto& e_set = collisions.m_candidates.fe_set(fid);
-        const auto& f_set = collisions.m_candidates.ff_set(fid);
-
-        for (const auto& other_f : f_set) {
-            assert(other_f != fid);
-            if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
-                FaceVertexCandidate(other_f, vid),
-                params, mesh, V_); pair->is_active()) {
-                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
-            }
-        }
-
-        for (const auto& other_e : e_set) {
-            if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
-                EdgeVertexCandidate(other_e, vid),
-                params, mesh, V_); pair->is_active()) {
-                pair->weight = -1;
-                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
-            }
-        }
-
-        for (const auto& other_v : v_set) {
-            auto pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
-                std::min(vid, other_v), std::max(vid, other_v),
-                mesh, params, params.dhat, V_);
-            if (pair->is_active()) {
-                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
-            }
-        }
+        const auto pairs = build_collisions_at_face_center(V_, fid);
 
         double potential = 0;
         for (const auto& pair : pairs) {
