@@ -5,7 +5,7 @@ namespace ipc {
 
 struct OffsetContactParameters {
     double dhat = 1;
-    int r = 2;
+    int r = 1;
 
     OffsetContactParameters(
         const double _dhat) :

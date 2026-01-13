@@ -187,6 +187,19 @@ T potential_VV_onesided(
 }
 
 template <typename T>
+T compute_vertex_weight(const Eigen::Matrix<T, Eigen::Dynamic, 2>& v)
+{
+    if (v.rows() != 3) {
+        throw std::logic_error(
+            "Vertex stencil must have exactly 2 neighbors in 2D!");
+    }
+    const Eigen::Vector2<T> p = v.row(0);
+    const Eigen::Vector2<T> n1 = v.row(1);
+    const Eigen::Vector2<T> n2 = v.row(2);
+    return 0.5 * ((n1 - p).norm() + (n2 - p).norm());
+}
+
+template <typename T>
 T potential_VV(
     Eigen::ConstRef<Vector<double, -1, OffsetCollision::ELEMENT_SIZE>>
         positions,
@@ -202,10 +215,10 @@ T potential_VV(
     const Eigen::Matrix<T, Eigen::Dynamic, 2> v_b = all_pos.bottomRows(n_vertices_b);
     T pot = 0;
     if (!obst_a) {
-        pot += potential_VV_onesided<T>(v_b, v_a, params);
+        pot += potential_VV_onesided<T>(v_b, v_a, params) * compute_vertex_weight(v_a);
     }
     if (!obst_b) {
-        pot += potential_VV_onesided<T>(v_a, v_b, params);
+        pot += potential_VV_onesided<T>(v_a, v_b, params) * compute_vertex_weight(v_b);
     }
     return pot;
 }
@@ -242,7 +255,7 @@ T potential_VE(
     return offset_potential::polyline_edge_potential(
         vertex_pt, p0_arr, t_arr, n_arr, len,
         params.r, params.dhat,
-        phi_start, phi_end);
+        phi_start, phi_end) * compute_vertex_weight(vertex_stencil);
 }
 
 // ----------------------------------------------------

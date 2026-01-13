@@ -25,7 +25,9 @@ namespace {
                 collisions.push_back(pair);
             }
             else {
-                found_item->second->weight += pair->weight;
+                if constexpr (TCollision::DIM == 3) {
+                    found_item->second->weight += pair->weight;
+                }
             }
         }
     }
@@ -385,104 +387,6 @@ void HighOrderCollisionsBuilder<3>::add_negative_edge_edge_edge_collisions(
                 assert(false);
                 break;
         }
-    }
-}
-
-std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
-    const FaceVertexCandidate& candidate,
-    const HighOrderContactParameters& params,
-    const CollisionMesh& mesh,
-    const Eigen::MatrixXd& vertices,
-    PointTriangleDistanceType dtype)
-{
-    const index_t vi = candidate.vertex_id;
-    const index_t fi = candidate.face_id;
-
-    const index_t t0 = mesh.faces()(fi, 0);
-    const index_t t1 = mesh.faces()(fi, 1);
-    const index_t t2 = mesh.faces()(fi, 2);
-
-    const index_t e0 = mesh.faces_to_edges()(fi, 0);
-    const index_t e1 = mesh.faces_to_edges()(fi, 1);
-    const index_t e2 = mesh.faces_to_edges()(fi, 2);
-
-    if (dtype == PointTriangleDistanceType::AUTO) {
-        dtype = point_triangle_distance_type(vertices.row(vi),
-            vertices.row(t0),
-            vertices.row(t1),
-            vertices.row(t2));
-    }
-
-    switch (dtype) {
-    case PointTriangleDistanceType::P_T0:
-        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
-            std::min(t0, vi), std::max(t0, vi), mesh, params, params.dhat, vertices);
-
-    case PointTriangleDistanceType::P_T1:
-        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
-            std::min(t1, vi), std::max(t1, vi), mesh, params, params.dhat, vertices);
-
-    case PointTriangleDistanceType::P_T2:
-        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
-            std::min(t2, vi), std::max(t2, vi), mesh, params, params.dhat, vertices);
-
-    case PointTriangleDistanceType::P_E0:
-        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
-            e0, vi, mesh, params, params.dhat, vertices);
-
-    case PointTriangleDistanceType::P_E1:
-        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
-            e1, vi, mesh, params, params.dhat, vertices);
-
-    case PointTriangleDistanceType::P_E2:
-        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
-            e2, vi, mesh, params, params.dhat, vertices);
-
-    case PointTriangleDistanceType::P_T:
-        return std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(
-            fi, vi, mesh, params, params.dhat, vertices);
-
-    case PointTriangleDistanceType::AUTO:
-    default:
-        assert(false);
-        return std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(
-            fi, vi, mesh, params, params.dhat, vertices);
-    }
-}
-
-std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
-    const EdgeVertexCandidate& candidate,
-    const HighOrderContactParameters& params,
-    const CollisionMesh& mesh,
-    const Eigen::MatrixXd& vertices,
-    PointEdgeDistanceType dtype)
-{
-    const index_t vi = candidate.vertex_id;
-    const index_t ei = candidate.edge_id;
-
-    const index_t t0 = mesh.edges()(ei, 0);
-    const index_t t1 = mesh.edges()(ei, 1);
-
-    if (dtype == PointEdgeDistanceType::AUTO) {
-        dtype = point_edge_distance_type(vertices.row(vi),
-            vertices.row(t0),
-            vertices.row(t1));
-    }
-
-    switch (dtype) {
-    case PointEdgeDistanceType::P_E0:
-        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
-            std::min(t0, vi), std::max(t0, vi), mesh, params, params.dhat, vertices);
-    case PointEdgeDistanceType::P_E1:
-        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
-            std::min(t1, vi), std::max(t1, vi), mesh, params, params.dhat, vertices);
-    case PointEdgeDistanceType::P_E:
-        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
-            ei, vi, mesh, params, params.dhat, vertices);
-    default:
-        assert(false);
-        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
-            ei, vi, mesh, params, params.dhat, vertices);
     }
 }
 
