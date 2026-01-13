@@ -48,7 +48,7 @@ Eigen::Matrix<T, 3, 2> line_line_closest_point_pairs(
     Eigen::ConstRef<Eigen::Vector3<T>> ea0,
     Eigen::ConstRef<Eigen::Vector3<T>> ea1,
     Eigen::ConstRef<Eigen::Vector3<T>> eb0,
-    Eigen::ConstRef<Eigen::Vector3<T>> eb1)
+Eigen::ConstRef<Eigen::Vector3<T>> eb1)
 {
     const Eigen::Vector3<T> ta = ea1 - ea0;
     const Eigen::Vector3<T> tb = eb1 - eb0;

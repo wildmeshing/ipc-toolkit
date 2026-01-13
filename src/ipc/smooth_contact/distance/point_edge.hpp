@@ -17,18 +17,45 @@ public:
 
     static scalar point_point_sqr_distance(
         Eigen::ConstRef<Vector<scalar, dim>> a,
-        Eigen::ConstRef<Vector<scalar, dim>> b);
+        Eigen::ConstRef<Vector<scalar, dim>> b)
+    {
+        return (a - b).squaredNorm();
+    }
 
     static scalar point_line_sqr_distance(
         Eigen::ConstRef<Vector<scalar, dim>> p,
         Eigen::ConstRef<Vector<scalar, dim>> e0,
-        Eigen::ConstRef<Vector<scalar, dim>> e1);
+        Eigen::ConstRef<Vector<scalar, dim>> e1)
+    {
+        if constexpr (dim == 2) {
+            return Math<scalar>::sqr(Math<scalar>::cross2(e0 - p, e1 - p))
+                / (e1 - e0).squaredNorm();
+        } else {
+            return (e0 - p).cross(e1 - p).squaredNorm() / (e1 - e0).squaredNorm();
+        }
+    }
 
     static scalar point_edge_sqr_distance(
         Eigen::ConstRef<Vector<scalar, dim>> p,
         Eigen::ConstRef<Vector<scalar, dim>> e0,
         Eigen::ConstRef<Vector<scalar, dim>> e1,
-        const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
+        const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO)
+    {
+        switch (dtype) {
+        case PointEdgeDistanceType::P_E:
+            return point_line_sqr_distance(p, e0, e1);
+        case PointEdgeDistanceType::P_E0:
+            return point_point_sqr_distance(p, e0);
+        case PointEdgeDistanceType::P_E1:
+            return point_point_sqr_distance(p, e1);
+        case PointEdgeDistanceType::AUTO:
+        default:
+            const Vector<scalar, dim> t = e1 - e0;
+            const Vector<scalar, dim> pos = p - e0;
+            const scalar s = pos.dot(t) / t.squaredNorm();
+            return (pos - Math<scalar>::l_ns(s) * t).squaredNorm();
+        }
+    }
 
     static Vector<scalar, dim> point_line_closest_point_direction(
         Eigen::ConstRef<Vector<scalar, dim>> p,
