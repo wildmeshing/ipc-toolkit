@@ -78,6 +78,26 @@ PointTriangleDistanceType point_triangle_distance_type(
     }
 }
 
+bool is_parallel_edge_edge(
+    Eigen::ConstRef<Eigen::Vector3d> ea0,
+    Eigen::ConstRef<Eigen::Vector3d> ea1,
+    Eigen::ConstRef<Eigen::Vector3d> eb0,
+    Eigen::ConstRef<Eigen::Vector3d> eb1)
+{
+    constexpr double PARALLEL_THRESHOLD = 1.0e-20;
+
+    const Eigen::Vector3d u = ea1 - ea0;
+    const Eigen::Vector3d v = eb1 - eb0;
+    const Eigen::Vector3d w = ea0 - eb0;
+
+    const double a = u.squaredNorm(); // always ≥ 0
+    const double c = v.squaredNorm(); // always ≥ 0
+
+    // Special handling for parallel edges
+    const double parallel_tolerance = PARALLEL_THRESHOLD * std::max(1.0, a * c);
+    return (u.cross(v).squaredNorm() < parallel_tolerance);
+}
+
 // A more robust implementation of http://geomalgorithms.com/a07-_distance.html
 EdgeEdgeDistanceType edge_edge_distance_type(
     Eigen::ConstRef<Eigen::Vector3d> ea0,

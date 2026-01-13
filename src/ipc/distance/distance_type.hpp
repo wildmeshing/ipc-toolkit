@@ -88,6 +88,12 @@ EdgeEdgeDistanceType edge_edge_distance_type(
     Eigen::ConstRef<Eigen::Vector3d> eb0,
     Eigen::ConstRef<Eigen::Vector3d> eb1);
 
+bool is_parallel_edge_edge(
+    Eigen::ConstRef<Eigen::Vector3d> ea0,
+    Eigen::ConstRef<Eigen::Vector3d> ea1,
+    Eigen::ConstRef<Eigen::Vector3d> eb0,
+    Eigen::ConstRef<Eigen::Vector3d> eb1);
+
 /// @brief Determine the closest pair between two parallel edges.
 /// @param ea0 The first vertex of the first edge.
 /// @param ea1 The second vertex of the first edge.
