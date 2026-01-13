@@ -51,11 +51,17 @@ TEST_CASE("Good Quadrature", "[high_order_potential]")
     for (int vid = 0; vid < V.rows(); ++vid) {
         double x = potential.point_potential->evaluate_potential_at_vertex(V, vid);
         REQUIRE(abs(x) < 1e-12);
+
+        auto g = potential.point_potential->evaluate_potential_gradient_at_vertex(V, vid);
+        REQUIRE(g.norm() < 1e-8);
     }
 
     for (int fid = 0; fid < F.rows(); ++fid) {
         double x = potential.point_potential->evaluate_potential_at_face_center(V, fid);
         REQUIRE(abs(x) < 1e-12);
+
+        auto g = potential.point_potential->evaluate_potential_gradient_at_face_center(V, fid);
+        REQUIRE(g.norm() < 1e-8);
     }
 
     for (const auto &ee : potential.point_potential->collisions.m_candidates.ee_candidates) {
