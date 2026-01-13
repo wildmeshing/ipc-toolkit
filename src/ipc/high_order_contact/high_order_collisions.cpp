@@ -98,7 +98,8 @@ void HighOrderCollisions::compute_adaptive_dhat(
     double inflation_radius = dhat / 2;
 
     // Candidates m_candidates;
-    m_candidates.build(mesh, vertices, inflation_radius, broad_phase);
+    m_candidates.build(mesh, vertices, inflation_radius, broad_phase, true);
+    m_candidates.convert_candidates_to_sets();
     this->build(
         m_candidates, mesh, vertices, params,
         false /*disable adaptive dhat to compute true pairs*/);
@@ -453,7 +454,8 @@ void HighOrderCollisions::build(
     double inflation_radius = params.dhat / 2;
 
     // Candidates m_candidates;
-    m_candidates.build(mesh, vertices, inflation_radius, broad_phase);
+    m_candidates.build(mesh, vertices, inflation_radius, broad_phase, true);
+    m_candidates.convert_candidates_to_sets();
     this->build(m_candidates, mesh, vertices, params, use_adaptive_dhat);
 }
 

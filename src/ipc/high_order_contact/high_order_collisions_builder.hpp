@@ -57,6 +57,20 @@ template <> class HighOrderCollisionsBuilder<3> {
 public:
     HighOrderCollisionsBuilder() { }
 
+    static std::shared_ptr<HighOrderCollision> reduce_point_triangle_collision(
+        const FaceVertexCandidate& candidate,
+        const HighOrderContactParameters& params,
+        const CollisionMesh& mesh,
+        const Eigen::MatrixXd& vertices,
+        PointTriangleDistanceType dtype = PointTriangleDistanceType::AUTO);
+
+    static std::shared_ptr<HighOrderCollision> reduce_point_edge_collision(
+        const EdgeVertexCandidate& candidate,
+        const HighOrderContactParameters& params,
+        const CollisionMesh& mesh,
+        const Eigen::MatrixXd& vertices,
+        PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
+
     void add_edge_edge_collisions(
         const CollisionMesh& mesh,
         const Eigen::MatrixXd& vertices,

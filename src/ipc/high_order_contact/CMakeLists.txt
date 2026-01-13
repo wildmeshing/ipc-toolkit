@@ -5,6 +5,8 @@ set(SOURCES
   high_order_collisions_builder.hpp
   high_order_contact_potential.hpp
   high_order_contact_potential.cpp
+  quadrature_potential.cpp
+  quadrature_potential.hpp
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "Source Files" FILES ${SOURCES})

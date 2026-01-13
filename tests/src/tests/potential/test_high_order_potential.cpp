@@ -16,8 +16,76 @@
 
 #include "igl/read_triangle_mesh.h"
 #include "igl/write_triangle_mesh.h"
+#include "ipc/distance/edge_edge.hpp"
+
+#include "ipc/high_order_contact/quadrature_potential.hpp"
 
 using namespace ipc;
+
+TEST_CASE("Good Quadrature", "[high_order_potential]")
+{
+    // Eigen::MatrixXd V(4, 3);
+    // V <<
+    //     0, 0, 0,
+    //     2, 0, 0,
+    //     1, -1, 1,
+    //     1, 1, 1;
+    //
+    // Eigen::MatrixXi F(4, 3), E;
+    // F <<
+    //     0, 1, 2,
+    //     1, 2, 3,
+    //     0, 1, 3,
+    //     0, 2, 3;
+
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/sphere.obj").string(), V, F);
+
+    igl::edges(F, E);
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.2;
+    QuadraturePotential potential(mesh, V, dhat);
+
+    for (int vid = 0; vid < V.rows(); ++vid) {
+        double x = potential.point_potential->evaluate_potential_at_vertex(V, vid);
+        REQUIRE(abs(x) < 1e-12);
+    }
+
+    for (int fid = 0; fid < F.rows(); ++fid) {
+        double x = potential.point_potential->evaluate_potential_at_face_center(V, fid);
+        REQUIRE(abs(x) < 1e-12);
+    }
+
+    for (const auto &ee : potential.point_potential->collisions.m_candidates.ee_candidates) {
+        auto dtype = edge_edge_distance_type(
+            V.row(mesh.edges()(ee.edge0_id, 0)),
+            V.row(mesh.edges()(ee.edge0_id, 1)),
+            V.row(mesh.edges()(ee.edge1_id, 0)),
+            V.row(mesh.edges()(ee.edge1_id, 1)));
+        if (dtype != EdgeEdgeDistanceType::EA_EB)
+            continue;
+
+        double mollifier = Math<double>::cubic_spline(sqrt(edge_edge_distance(
+            V.row(mesh.edges()(ee.edge0_id, 0)),
+            V.row(mesh.edges()(ee.edge0_id, 1)),
+            V.row(mesh.edges()(ee.edge1_id, 0)),
+            V.row(mesh.edges()(ee.edge1_id, 1)), dtype)) / dhat) * 1.5;
+
+        double x = potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
+            V, ee.edge0_id, ee.edge1_id) * mollifier;
+        REQUIRE(abs(x) < 1e-12);
+    }
+
+    for (int face_id = 0; face_id < F.rows(); face_id++) {
+        double x = potential.evaluate_per_face(V, face_id);
+        // Eigen::VectorXd g = potential.evaluate_per_face_gradient(V, face_id);
+
+        REQUIRE(abs(x) < 1e-12);
+        // REQUIRE(g.norm() < 1e-6);
+    }
+}
 
 TEST_CASE("Flat Integrated Potential", "[high_order_potential]")
 {

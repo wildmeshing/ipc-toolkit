@@ -36,17 +36,19 @@ void Candidates::build(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
     const double inflation_radius,
-    const std::shared_ptr<BroadPhase>& broad_phase)
+    const std::shared_ptr<BroadPhase>& broad_phase,
+    const bool all_types)
 {
     assert(broad_phase != nullptr);
 
     const int dim = vertices.cols();
+    mesh_ = mesh;
 
     clear();
 
     broad_phase->can_vertices_collide = mesh.can_collide;
     broad_phase->build(vertices, mesh.edges(), mesh.faces(), inflation_radius);
-    broad_phase->detect_collision_candidates(dim, *this);
+    broad_phase->detect_collision_candidates(dim, *this, all_types);
 
     // Codim. vertices to codim. vertices:
     if (mesh.num_codim_vertices()) {
@@ -108,11 +110,13 @@ void Candidates::build(
     Eigen::ConstRef<Eigen::MatrixXd> vertices_t0,
     Eigen::ConstRef<Eigen::MatrixXd> vertices_t1,
     const double inflation_radius,
-    const std::shared_ptr<BroadPhase>& broad_phase)
+    const std::shared_ptr<BroadPhase>& broad_phase,
+    const bool all_types)
 {
     assert(broad_phase != nullptr);
 
     const int dim = vertices_t0.cols();
+    mesh_ = mesh;
 
     clear();
 
@@ -401,6 +405,144 @@ bool Candidates::save_obj(
     v_offset += ee_candidates.size() * 4;
     ipc::save_obj(obj, vertices, faces, faces, fv_candidates, v_offset);
     return true;
+}
+
+void Candidates::convert_candidates_to_sets()
+{
+    for (const auto& vv : vv_candidates) {
+        m_vv_set[vv.vertex0_id].insert(vv.vertex1_id);
+        m_vv_set[vv.vertex1_id].insert(vv.vertex0_id);
+    }
+    for (const auto& ee : ee_candidates) {
+        m_ee_set[ee.edge0_id].insert(ee.edge1_id);
+        m_ee_set[ee.edge1_id].insert(ee.edge0_id);
+    }
+    for (const auto& ff : ff_candidates) {
+        m_ff_set[ff.face0_id].insert(ff.face1_id);
+        m_ff_set[ff.face1_id].insert(ff.face0_id);
+    }
+    for (const auto& ev : ev_candidates) {
+        m_ev_set[ev.edge_id].insert(ev.vertex_id);
+        m_ve_set[ev.vertex_id].insert(ev.edge_id);
+    }
+    for (const auto& fv : fv_candidates) {
+        m_fv_set[fv.face_id].insert(fv.vertex_id);
+        m_vf_set[fv.vertex_id].insert(fv.face_id);
+    }
+    for (const auto& ef : ef_candidates) {
+        m_ef_set[ef.edge_id].insert(ef.face_id);
+        m_fe_set[ef.face_id].insert(ef.edge_id);
+    }
+}
+
+std::set<index_t> Candidates::vv_set(index_t id) const
+{
+    if (auto iter = m_vv_set.find(id); iter != m_vv_set.end()) {
+        return iter->second;
+    }
+    return {};
+}
+std::set<index_t> Candidates::ve_set(index_t id) const
+{
+    if (auto iter = m_ve_set.find(id); iter != m_ve_set.end()) {
+        return iter->second;
+    }
+    return {};
+}
+std::set<index_t> Candidates::vf_set(index_t id) const
+{
+    if (auto iter = m_vf_set.find(id); iter != m_vf_set.end()) {
+        return iter->second;
+    }
+    return {};
+}
+
+std::set<index_t> Candidates::ev_set(index_t id) const
+{
+    assert(mesh_.num_vertices());
+    std::set<index_t> out;
+    if (auto iter = m_ev_set.find(id); iter != m_ev_set.end()) {
+        out = iter->second;
+    }
+    for (index_t lv = 0; lv < 2; ++lv) {
+        out.insert(mesh_.edges()(id, lv));
+    }
+    return out;
+}
+std::set<index_t> Candidates::ee_set(index_t id) const
+{
+    assert(mesh_.num_vertices());
+    std::set<index_t> out;
+    if (auto iter = m_ee_set.find(id); iter != m_ee_set.end()) {
+        out = iter->second;
+    }
+    for (index_t lv = 0; lv < 2; ++lv) {
+        for (index_t eid : mesh_.vertices_to_edges()[mesh_.edges()(id, lv)]) {
+            out.insert(eid);
+        }
+    }
+    out.erase(id);
+    return out;
+}
+std::set<index_t> Candidates::ef_set(index_t id) const
+{
+    assert(mesh_.num_vertices());
+    std::set<index_t> out;
+    if (auto iter = m_ef_set.find(id); iter != m_ef_set.end()) {
+        out = iter->second;
+    }
+    for (index_t lv = 0; lv < 2; ++lv) {
+        const auto& faces = mesh_.vertices_to_faces()[mesh_.edges()(id, lv)];
+        for (int fid : faces) {
+            out.insert(fid);
+        }
+    }
+    out.erase(mesh_.edges_to_faces()(id, 0));
+    out.erase(mesh_.edges_to_faces()(id, 1));
+    return out;
+}
+
+std::set<index_t> Candidates::fv_set(index_t id) const
+{
+    assert(mesh_.num_vertices());
+    std::set<index_t> out;
+    if (auto iter = m_fv_set.find(id); iter != m_fv_set.end()) {
+        out = iter->second;
+    }
+    for (index_t lv = 0; lv < 3; ++lv) {
+        out.insert(mesh_.faces()(id, lv));
+    }
+    return out;
+}
+std::set<index_t> Candidates::fe_set(index_t id) const
+{
+    assert(mesh_.num_vertices());
+    std::set<index_t> out;
+    if (auto iter = m_fe_set.find(id); iter != m_fe_set.end()) {
+        out = iter->second;
+    }
+    for (index_t lv = 0; lv < 3; ++lv) {
+        for (index_t eid : mesh_.vertices_to_edges()[mesh_.faces()(id, lv)]) {
+            out.insert(eid);
+        }
+    }
+    return out;
+}
+std::set<index_t> Candidates::ff_set(index_t id) const
+{
+    assert(mesh_.num_vertices());
+    std::set<index_t> out;
+    if (auto iter = m_ff_set.find(id); iter != m_ff_set.end()) {
+        out = iter->second;
+    }
+    for (index_t lv = 0; lv < 3; ++lv) {
+        const index_t vid = mesh_.faces()(id, lv);
+        for (index_t fid : mesh_.vertices_to_faces()[vid]) {
+            out.insert(fid);
+        }
+    }
+    out.erase(id);
+    return out;
 }
 
 } // namespace ipc
