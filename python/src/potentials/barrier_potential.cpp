@@ -3,6 +3,7 @@
 #include <ipc/potentials/barrier_potential.hpp>
 #include <ipc/smooth_contact/smooth_contact_potential.hpp>
 #include <ipc/high_order_contact/high_order_contact_potential.hpp>
+#include <ipc/high_order_contact/quadrature_potential.hpp>
 
 using namespace ipc;
 
@@ -276,4 +277,42 @@ void define_high_order_potential(py::module &m)
             )ipc_Qu8mg5v7",
             py::arg("collisions"), py::arg("mesh"), py::arg("vertices"),
             py::arg("project_hessian_to_psd") = PSDProjectionMethod::NONE);
+
+
+    py::class_<QuadraturePotential>(m, "QuadraturePotential")
+        .def(
+            py::init<const CollisionMesh&,
+            const Eigen::MatrixXd&,
+            const double>(),
+            R"ipc_Qu8mg5v7(
+            Construct a quadrature barrier potential.
+
+            Parameters:
+                mesh, V, dhat
+            )ipc_Qu8mg5v7",
+            py::arg("mesh"), py::arg("V"), py::arg("dhat"))
+        .def(
+            "evaluate_per_face",
+            py::overload_cast<
+                const Eigen::MatrixXd&, const int>(
+                &ipc::QuadraturePotential::evaluate_per_face, py::const_),
+            R"ipc_Qu8mg5v7(
+            Compute the barrier potential for a face.
+
+            Parameters:
+                V, face_id
+            )ipc_Qu8mg5v7",
+            py::arg("V"), py::arg("face_id"))
+        .def(
+            "evaluate_per_face_gradient",
+            py::overload_cast<
+            const Eigen::MatrixXd&, const int>(
+                &ipc::QuadraturePotential::evaluate_per_face_gradient, py::const_),
+            R"ipc_Qu8mg5v7(
+            Compute the barrier potential gradient for a face.
+
+            Parameters:
+                V, face_id
+            )ipc_Qu8mg5v7",
+            py::arg("V"), py::arg("face_id"));
 }

@@ -35,9 +35,12 @@ namespace ipc
         const double _dhat) : mesh(_mesh), dhat(_dhat)
     {
         HighOrderContactParameters params(dhat, 0., 2, 0);
-        collisions.build(mesh, V, params, false, make_default_broad_phase());
 
-        point_potential = std::make_unique<PointPotential>(mesh, collisions, params);
+        double inflation_radius = dhat / 2;
+        candidates.build(mesh, V, inflation_radius, make_default_broad_phase(), true);
+        candidates.convert_candidates_to_sets();
+
+        point_potential = std::make_unique<PointPotential>(mesh, candidates, params);
     }
 
     unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>
@@ -47,9 +50,9 @@ namespace ipc
     {
         unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>> pairs;
 
-        const auto& v_set = collisions.m_candidates.vv_set(vid);
-        const auto& e_set = collisions.m_candidates.ve_set(vid);
-        const auto& f_set = collisions.m_candidates.vf_set(vid);
+        const auto& v_set = candidates.vv_set(vid);
+        const auto& e_set = candidates.ve_set(vid);
+        const auto& f_set = candidates.vf_set(vid);
 
         for (const auto& other_f : f_set) {
             if (std::shared_ptr<HighOrderCollision> pair = HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
@@ -127,9 +130,9 @@ namespace ipc
     {
         unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>> pairs;
 
-        const auto& v_set = collisions.m_candidates.ev_set(e0);
-        const auto& e_set = collisions.m_candidates.ee_set(e0);
-        const auto& f_set = collisions.m_candidates.ef_set(e0);
+        const auto& v_set = candidates.ev_set(e0);
+        const auto& e_set = candidates.ee_set(e0);
+        const auto& f_set = candidates.ef_set(e0);
 
         // Compute closest point
         const index_t e00 = mesh.edges()(e0, 0);
@@ -318,9 +321,9 @@ namespace ipc
 
         unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>> pairs;
 
-        const auto& v_set = collisions.m_candidates.fv_set(fid);
-        const auto& e_set = collisions.m_candidates.fe_set(fid);
-        const auto& f_set = collisions.m_candidates.ff_set(fid);
+        const auto& v_set = candidates.fv_set(fid);
+        const auto& e_set = candidates.fe_set(fid);
+        const auto& f_set = candidates.ff_set(fid);
 
         for (const auto& other_f : f_set) {
             assert(other_f != fid);
@@ -371,7 +374,7 @@ namespace ipc
         std::vector<Eigen::Triplet<double>> triplets;
         for (const auto& pair : pairs) {
             const auto& cc = pair.second;
-            Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V), params);
+            Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V_), params);
             for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
                 const index_t global_id = cc->vertex_ids()[i];
                 if (global_id == V.rows()) {
@@ -439,9 +442,9 @@ namespace ipc
             const index_t ea = mesh.edges()(edge_id, 0);
             const index_t eb = mesh.edges()(edge_id, 1);
 
-            const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
+            const std::set<index_t> close_edges = candidates.ee_set(edge_id);
 
-            std::vector<EdgePairClosestPoint> points = {
+            std::vector<EdgePairClosestPoint<double>> points = {
                 EdgePairClosestPoint(0.), EdgePairClosestPoint(1.)
             };
             for (index_t other_edge_id : close_edges) {
@@ -497,7 +500,7 @@ namespace ipc
 
             // sort uv from small to large
             std::sort(points.begin(), points.end(),
-                      [](const EdgePairClosestPoint& a, const EdgePairClosestPoint& b) {
+                      [](const EdgePairClosestPoint<double>& a, const EdgePairClosestPoint<double>& b) {
                           return a.uv0 < b.uv0;
                       });
 
@@ -573,14 +576,21 @@ namespace ipc
             const index_t ea = mesh.edges()(edge_id, 0);
             const index_t eb = mesh.edges()(edge_id, 1);
 
-            const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
+            const std::set<index_t> close_edges = candidates.ee_set(edge_id);
 
-            std::vector<EdgePairClosestPoint> points = {
-                EdgePairClosestPoint(0.), EdgePairClosestPoint(1.)
+            using T = ADGrad<12>;
+
+            std::vector<EdgePairClosestPoint<T>> points = {
+                EdgePairClosestPoint(T(0.)), EdgePairClosestPoint(T(1.))
             };
             for (index_t other_edge_id : close_edges) {
                 const index_t ec = mesh.edges()(other_edge_id, 0);
                 const index_t ed = mesh.edges()(other_edge_id, 1);
+
+                Eigen::Vector<double, 12> positions;
+                positions << V.row(ea).transpose(), V.row(eb).transpose(), V.row(ec).transpose(), V.row(ed).transpose();
+
+                Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(positions);
 
                 // Skip adjacent edges
                 if (ea == ec || ea == ed || eb == ec || eb == ed) {
@@ -601,45 +611,37 @@ namespace ipc
                     continue;
                 }
 
-                const double dist = sqrt(edge_edge_distance(
-                    V.row(ea), V.row(eb),
-                    V.row(ec), V.row(ed)));
+                const T dist = sqrt(line_line_sqr_distance<T>(
+                    positionsT.row(0), positionsT.row(1),
+                    positionsT.row(2), positionsT.row(3)));
 
                 if (dist >= dhat) {
                     continue;
                 }
 
-                Eigen::Vector<double, 2> closest_points_uv = line_line_closest_point_pairs_uv<double>(
-                    V.row(ea), V.row(eb),
-                    V.row(ec), V.row(ed));
-
-                assert(closest_points_uv(0) > 0 && closest_points_uv(0) < 1);
+                Eigen::Vector<T, 2> closest_points_uv = line_line_closest_point_pairs_uv<T>(
+                    positionsT.row(0), positionsT.row(1),
+                    positionsT.row(2), positionsT.row(3));
 
                 std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
-                double mollifier = Math<double>::cubic_spline(dist / dhat) * 1.5;
-                mollifier *= edge_edge_mollifier<double>(
-                        V.row(ea), V.row(eb),
-                        V.row(ec), V.row(ed),
+                T mollifier = Math<T>::cubic_spline(dist / dhat) * 1.5;
+                mollifier *= edge_edge_mollifier<T>(
+                positionsT.row(0), positionsT.row(1),
+                positionsT.row(2), positionsT.row(3),
                         mtypes, dist * dist);
 
-                if (mollifier == 0) {
+                if (mollifier == 0.) {
                     continue;
                 }
 
-                points.push_back(EdgePairClosestPoint(closest_points_uv(0), other_edge_id, mollifier));
+                points.push_back(EdgePairClosestPoint<T>(closest_points_uv(0), other_edge_id, mollifier));
             }
 
             // sort uv from small to large
             std::sort(points.begin(), points.end(),
-                      [](const EdgePairClosestPoint& a, const EdgePairClosestPoint& b) {
-                          return a.uv0 < b.uv0;
+                      [](const EdgePairClosestPoint<T>& a, const EdgePairClosestPoint<T>& b) {
+                          return a.uv0.val < b.uv0.val;
                       });
-
-            assert(points.front().uv0 == 0.);
-            assert(points.back().uv0 == 1.);
-
-            assert(points[0].beta == 0.);
-            assert(points.back().beta == 1.);
 
             // fancy quadrature
             // double norm_fac = 0.;
@@ -653,39 +655,56 @@ namespace ipc
             //     pts.beta /= norm_fac;
             // }
 
-            auto P_q_center = point_potential->evaluate_potential_gradient_at_face_center(V, face_id);
-            assert(P_q_center.cols() == 1 && P_q_center.rows() == V.size());
+            auto P_q_center_grad = point_potential->evaluate_potential_gradient_at_face_center(V, face_id);
+            assert(P_q_center_grad.cols() == 1 && P_q_center_grad.rows() == V.size());
 
-            std::vector<Eigen::SparseMatrix<double>> P_q_i(points.size());
+            std::vector<double> P_q_i_values(points.size());
+            std::vector<Eigen::SparseMatrix<double>> P_q_i_grad(points.size());
             {
                 assert(points[0].uv0 == 0.);
-                P_q_i[0] = point_potential->evaluate_potential_gradient_at_vertex(
+                P_q_i_grad[0] = point_potential->evaluate_potential_gradient_at_vertex(
+                    V, mesh.edges()(edge_id, 0));
+                P_q_i_values[0] = point_potential->evaluate_potential_at_vertex(
                     V, mesh.edges()(edge_id, 0));
             }
             {
-                assert(points[P_q_i.size() - 1].uv0 == 1.);
-                P_q_i.back() = point_potential->evaluate_potential_gradient_at_vertex(
+                assert(points[P_q_i_grad.size() - 1].uv0 == 1.);
+                P_q_i_grad.back() = point_potential->evaluate_potential_gradient_at_vertex(
+                    V, mesh.edges()(edge_id, 1));
+                P_q_i_values.back() = point_potential->evaluate_potential_at_vertex(
                     V, mesh.edges()(edge_id, 1));
             }
-            for (index_t i = 1; i < P_q_i.size() - 1; i++) {
+            for (index_t i = 1; i < P_q_i_grad.size() - 1; i++) {
                     assert(points[i].uv0 < 1.);
                     assert(points[i].uv0 > 0.);
                     assert(points[i].e1 >= 0);
-                    P_q_i[i] = point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
+                    P_q_i_grad[i] = point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
+                        V, edge_id, points[i].e1);
+                    P_q_i_values[i] = point_potential->evaluate_potential_at_edge_edge_closest_point(
                         V, edge_id, points[i].e1);
             }
 
-            Eigen::SparseMatrix<double> cur_val(P_q_i[0].rows(), P_q_i[0].cols());
-            for (index_t i = 1; i < P_q_i.size() - 1; i++) {
-                cur_val += P_q_i[i] * points[i].mollifier;
+            Eigen::SparseMatrix<double> cur_grad(P_q_i_grad[0].rows(), P_q_i_grad[0].cols());
+            for (index_t i = 1; i < P_q_i_grad.size() - 1; i++) {
+                cur_grad += P_q_i_grad[i] * points[i].mollifier.val;
+
+                Vector12d cur_grad_2 = P_q_i_values[i] * points[i].mollifier.grad;
+                for (int d = 0; d < 3; d++) {
+                    cur_grad.coeffRef(ea * 3 + d, 0) += cur_grad_2(d + 0);
+                    cur_grad.coeffRef(eb * 3 + d, 0) += cur_grad_2(d + 3);
+
+                    cur_grad.coeffRef(mesh.edges()(points[i].e1, 0) * 3 + d, 0) += cur_grad_2(d + 6);
+                    cur_grad.coeffRef(mesh.edges()(points[i].e1, 1) * 3 + d, 0) += cur_grad_2(d + 9);
+                }
             }
 
-            // two vertices do not need mollifier
-            cur_val += P_q_i[0] + P_q_i.back();
-            // cur_val += P_q_i[0] * (points[1].beta - points[0].beta) + P_q_i.back() * (points.back().beta - points[points.size() - 2].beta);
 
-            cur_val += P_q_center;
-            grad += cur_val * (area / 9.);
+            // two vertices do not need mollifier
+            cur_grad += P_q_i_grad[0] + P_q_i_grad.back();
+            // cur_grad += P_q_i[0] * (points[1].beta - points[0].beta) + P_q_i.back() * (points.back().beta - points[points.size() - 2].beta);
+
+            cur_grad += P_q_center_grad;
+            grad += cur_grad * (area / 9.);
         }
 
         return grad;

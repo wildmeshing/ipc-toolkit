@@ -23,10 +23,10 @@ namespace ipc
 
         PointPotential(
             const CollisionMesh& mesh_,
-            const HighOrderCollisions& collisions_,
+            const Candidates& candidates_,
             const HighOrderContactParameters params_)
                 : mesh(mesh_),
-                  collisions(collisions_),
+                  candidates(candidates_),
                   params(params_)
         {
         }
@@ -76,7 +76,7 @@ namespace ipc
             const index_t fid) const;
 
         const CollisionMesh& mesh;
-        const HighOrderCollisions& collisions;
+        const Candidates& candidates;
         const HighOrderContactParameters params;
     };
 
@@ -116,35 +116,34 @@ namespace ipc
         const CollisionMesh mesh;
         const double dhat;
 
-        HighOrderCollisions collisions;
+        Candidates candidates;
         std::unique_ptr<PointPotential> point_potential;
 
+        template <typename T = double>
         struct EdgePairClosestPoint
         {
-            EdgePairClosestPoint(double uv0_, index_t e1_, double mollifier_)
+            EdgePairClosestPoint(T uv0_, index_t e1_, T mollifier_)
             {
                 uv0 = uv0_;
                 e1 = e1_;
 
                 mollifier = mollifier_;
                 beta = mollified_identity(uv0);
-                assert(std::isfinite(beta));
             }
 
-            EdgePairClosestPoint(double uv0_)
+            EdgePairClosestPoint(T uv0_)
             {
                 uv0 = uv0_;
                 e1 = -1;
 
                 mollifier = 1.;
                 beta = mollified_identity(uv0);
-                assert(std::isfinite(beta));
             }
 
-            double uv0;
+            T uv0;
             index_t e1;
-            double mollifier = 0.;
-            double beta = 0.;
+            T mollifier;
+            T beta;
         };
     };
 }

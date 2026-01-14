@@ -6,6 +6,7 @@
 #include <ipc/distance/point_triangle.hpp>
 #include "smoothed_offset_potential_linear.h"
 #include "high_order_quadrature.hpp"
+#include "ipc/smooth_contact/distance/point_edge.hpp"
 
 namespace ipc {
 
@@ -717,6 +718,89 @@ auto HighOrderCollisionTemplate<Vertex2, Vertex2>::gradient(
     ScalarBase::setVariableCount(positions.rows());
     return potential_VV<ADGrad<-1>>(
                positions, params, primitive_a->n_vertices(), primitive_b->n_vertices()).grad;
+}
+
+template <>
+auto HighOrderCollisionTemplate<Vertex3, Vertex3>::gradient(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+    -> Vector<double, -1, ELEMENT_SIZE>
+{
+    assert(positions.size() == 6);
+    const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
+    double deriv = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
+    deriv *= 1. / params.dhat / dist / 2.;
+
+    Vector6d grad = deriv * point_point_distance_gradient(positions.template head<3>(), positions.template tail<3>());
+
+    return grad;
+}
+
+template <>
+auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::gradient(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+    -> Vector<double, -1, ELEMENT_SIZE>
+{
+    assert(positions.size() == 9);
+
+    auto dtype = point_edge_distance_type(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3));
+
+    const double dist = sqrt(point_edge_distance(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype));
+
+    double deriv = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
+    deriv *= 1. / params.dhat / dist / 2.;
+
+    Vector9d grad = point_edge_distance_gradient(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype);
+    grad *= deriv;
+
+    grad = grad({3,4,5,6,7,8,0,1,2}).eval();
+
+    return grad;
+}
+
+template <>
+auto HighOrderCollisionTemplate<Face3P1, Vertex3>::gradient(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+    -> Vector<double, -1, ELEMENT_SIZE>
+{
+    assert(positions.size() == 12);
+
+    auto dtype = point_triangle_distance_type(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6));
+
+    const double dist = sqrt(point_triangle_distance(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype));
+
+    double deriv = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
+    deriv *= 1. / params.dhat / dist / 2.;
+
+    Vector12d grad = point_triangle_distance_gradient(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype);
+    grad *= deriv;
+
+    grad = grad({3,4,5,6,7,8,9,10,11,0,1,2}).eval();
+
+    return grad;
 }
 
 template <typename PrimitiveA, typename PrimitiveB>
