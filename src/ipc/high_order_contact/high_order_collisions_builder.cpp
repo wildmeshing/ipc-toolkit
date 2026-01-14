@@ -81,6 +81,15 @@ void HighOrderCollisionsBuilder<2>::add_edge_vertex_collisions(
                 vert_edge_2_to_id, collisions);
         }
 
+        // need to add EV pairs with endpoints
+        for (int j = 0; j < 2; j++) {
+            const index_t vj = mesh.edges()(ei, j);
+            add_collision(
+                std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
+                    ei, vj, mesh, params, dhat_EV, vertices),
+                vert_edge_2_to_id, collisions);
+        }
+
         if (params.quad_points == 0) {
             // vertex-vertex
             for (int j = 0; j < 2; j++) {
