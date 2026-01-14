@@ -52,7 +52,7 @@ TEST_CASE("Good Quadrature", "[high_order_potential]")
         double x = potential.point_potential->evaluate_potential_at_vertex(V, vid);
         REQUIRE(abs(x) < 1e-12);
 
-        auto g = potential.point_potential->evaluate_potential_gradient_at_vertex(V, vid);
+        Eigen::MatrixXd g = potential.point_potential->evaluate_potential_gradient_at_vertex(V, vid);
         REQUIRE(g.norm() < 1e-8);
     }
 
@@ -60,7 +60,7 @@ TEST_CASE("Good Quadrature", "[high_order_potential]")
         double x = potential.point_potential->evaluate_potential_at_face_center(V, fid);
         REQUIRE(abs(x) < 1e-12);
 
-        auto g = potential.point_potential->evaluate_potential_gradient_at_face_center(V, fid);
+        Eigen::MatrixXd g = potential.point_potential->evaluate_potential_gradient_at_face_center(V, fid);
         REQUIRE(g.norm() < 1e-8);
     }
 
@@ -81,15 +81,23 @@ TEST_CASE("Good Quadrature", "[high_order_potential]")
 
         double x = potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
             V, ee.edge0_id, ee.edge1_id) * mollifier;
+
         REQUIRE(abs(x) < 1e-12);
+
+        Eigen::MatrixXd g = potential.point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
+            V, ee.edge0_id, ee.edge1_id) * mollifier;
+
+        REQUIRE(g.norm() < 1e-8);
     }
 
     for (int face_id = 0; face_id < F.rows(); face_id++) {
         double x = potential.evaluate_per_face(V, face_id);
-        // Eigen::VectorXd g = potential.evaluate_per_face_gradient(V, face_id);
+        Eigen::SparseMatrix<double> g = potential.evaluate_per_face_gradient(V, face_id);
+
+        std::cout << g.nonZeros() << " ";
 
         REQUIRE(abs(x) < 1e-12);
-        // REQUIRE(g.norm() < 1e-6);
+        REQUIRE(g.norm() < 1e-8);
     }
 }
 

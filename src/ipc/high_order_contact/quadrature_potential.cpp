@@ -316,10 +316,6 @@ namespace ipc
         // the fake vertex id
         const index_t vid = V_.rows() - 1;
 
-        const index_t t0 = mesh.faces()(fid, 0);
-        const index_t t1 = mesh.faces()(fid, 1);
-        const index_t t2 = mesh.faces()(fid, 2);
-
         unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>> pairs;
 
         const auto& v_set = collisions.m_candidates.fv_set(fid);
@@ -428,11 +424,13 @@ namespace ipc
 
     double QuadraturePotential::evaluate_per_face(
         const Eigen::MatrixXd& V,
-        const index_t face_id)
+        const index_t face_id) const
     {
-        const Eigen::Vector3d f0 = V.row(mesh.faces()(face_id, 0));
-        const Eigen::Vector3d f1 = V.row(mesh.faces()(face_id, 1));
-        const Eigen::Vector3d f2 = V.row(mesh.faces()(face_id, 2));
+        const Eigen::MatrixXd& rest_V = mesh.rest_positions();
+
+        const Eigen::Vector3d f0 = rest_V.row(mesh.faces()(face_id, 0));
+        const Eigen::Vector3d f1 = rest_V.row(mesh.faces()(face_id, 1));
+        const Eigen::Vector3d f2 = rest_V.row(mesh.faces()(face_id, 2));
         const double area = 0.5 * (f1 - f0).cross(f2 - f0).norm();
 
         double total = 0.;
@@ -509,16 +507,17 @@ namespace ipc
             assert(points[0].beta == 0.);
             assert(points.back().beta == 1.);
 
-            double norm_fac = 0.;
-            for (index_t i = 0; i < points.size() - 1; i++) {
-                const auto& pts_a = points[i];
-                const auto& pts_b = points[i + 1];
-                norm_fac += (pts_b.beta - pts_a.beta) * (pts_b.uv0 * pts_b.mollifier + pts_a.uv0 * pts_a.mollifier);
-            }
-
-            for (auto& pts : points) {
-                pts.beta /= norm_fac;
-            }
+            // fancy quadrature
+            // double norm_fac = 0.;
+            // for (index_t i = 0; i < points.size() - 1; i++) {
+            //     const auto& pts_a = points[i];
+            //     const auto& pts_b = points[i + 1];
+            //     norm_fac += (pts_b.beta - pts_a.beta) * (pts_b.uv0 * pts_b.mollifier + pts_a.uv0 * pts_a.mollifier);
+            // }
+            //
+            // for (auto& pts : points) {
+            //     pts.beta /= norm_fac;
+            // }
 
             const double P_q_center = point_potential->evaluate_potential_at_face_center(V, face_id);
 
@@ -543,11 +542,12 @@ namespace ipc
 
             double cur_val = 0.;
             for (index_t i = 1; i < P_q_i.size() - 1; i++) {
-                cur_val += P_q_i[i] * (points[i + 1].beta - points[i - 1].beta) * points[i].mollifier;
+                cur_val += P_q_i[i] * points[i].mollifier;
             }
 
             // two vertices do not need mollifier
-            cur_val += P_q_i[0] * (points[1].beta - points[0].beta) + P_q_i.back() * (points.back().beta - points[points.size() - 2].beta);
+            cur_val += P_q_i[0] + P_q_i.back();
+            // cur_val += P_q_i[0] * (points[1].beta - points[0].beta) + P_q_i.back() * (points.back().beta - points[points.size() - 2].beta);
 
             cur_val += P_q_center;
             total += cur_val * area / 9.;
@@ -556,12 +556,138 @@ namespace ipc
         return total;
     }
 
-    Eigen::VectorXd QuadraturePotential::evaluate_per_face_gradient(
+    Eigen::SparseMatrix<double> QuadraturePotential::evaluate_per_face_gradient(
         const Eigen::MatrixXd& V,
-        const index_t face_id)
+        const index_t face_id) const
     {
-        log_and_throw_error("Not implemented");
-        Eigen::VectorXd grad = Eigen::VectorXd::Zero(3 * mesh.num_vertices());
+        Eigen::SparseMatrix<double> grad(3 * mesh.num_vertices(), 1);
+        const Eigen::MatrixXd& rest_V = mesh.rest_positions();
+
+        const Eigen::Vector3d f0 = rest_V.row(mesh.faces()(face_id, 0));
+        const Eigen::Vector3d f1 = rest_V.row(mesh.faces()(face_id, 1));
+        const Eigen::Vector3d f2 = rest_V.row(mesh.faces()(face_id, 2));
+        const double area = 0.5 * (f1 - f0).cross(f2 - f0).norm();
+
+        for (index_t le = 0; le < 3; le++) {
+            const index_t edge_id = mesh.faces_to_edges()(face_id, le);
+            const index_t ea = mesh.edges()(edge_id, 0);
+            const index_t eb = mesh.edges()(edge_id, 1);
+
+            const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
+
+            std::vector<EdgePairClosestPoint> points = {
+                EdgePairClosestPoint(0.), EdgePairClosestPoint(1.)
+            };
+            for (index_t other_edge_id : close_edges) {
+                const index_t ec = mesh.edges()(other_edge_id, 0);
+                const index_t ed = mesh.edges()(other_edge_id, 1);
+
+                // Skip adjacent edges
+                if (ea == ec || ea == ed || eb == ec || eb == ed) {
+                    continue;
+                }
+
+                const auto dtype = edge_edge_distance_type(
+                    V.row(ea), V.row(eb),
+                    V.row(ec), V.row(ed));
+
+                if (dtype != EdgeEdgeDistanceType::EA_EB) {
+                    continue;
+                }
+
+                if (is_parallel_edge_edge(
+                    V.row(ea), V.row(eb),
+                    V.row(ec), V.row(ed))) {
+                    continue;
+                }
+
+                const double dist = sqrt(edge_edge_distance(
+                    V.row(ea), V.row(eb),
+                    V.row(ec), V.row(ed)));
+
+                if (dist >= dhat) {
+                    continue;
+                }
+
+                Eigen::Vector<double, 2> closest_points_uv = line_line_closest_point_pairs_uv<double>(
+                    V.row(ea), V.row(eb),
+                    V.row(ec), V.row(ed));
+
+                assert(closest_points_uv(0) > 0 && closest_points_uv(0) < 1);
+
+                std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
+                double mollifier = Math<double>::cubic_spline(dist / dhat) * 1.5;
+                mollifier *= edge_edge_mollifier<double>(
+                        V.row(ea), V.row(eb),
+                        V.row(ec), V.row(ed),
+                        mtypes, dist * dist);
+
+                if (mollifier == 0) {
+                    continue;
+                }
+
+                points.push_back(EdgePairClosestPoint(closest_points_uv(0), other_edge_id, mollifier));
+            }
+
+            // sort uv from small to large
+            std::sort(points.begin(), points.end(),
+                      [](const EdgePairClosestPoint& a, const EdgePairClosestPoint& b) {
+                          return a.uv0 < b.uv0;
+                      });
+
+            assert(points.front().uv0 == 0.);
+            assert(points.back().uv0 == 1.);
+
+            assert(points[0].beta == 0.);
+            assert(points.back().beta == 1.);
+
+            // fancy quadrature
+            // double norm_fac = 0.;
+            // for (index_t i = 0; i < points.size() - 1; i++) {
+            //     const auto& pts_a = points[i];
+            //     const auto& pts_b = points[i + 1];
+            //     norm_fac += (pts_b.beta - pts_a.beta) * (pts_b.uv0 * pts_b.mollifier + pts_a.uv0 * pts_a.mollifier);
+            // }
+            //
+            // for (auto& pts : points) {
+            //     pts.beta /= norm_fac;
+            // }
+
+            auto P_q_center = point_potential->evaluate_potential_gradient_at_face_center(V, face_id);
+            assert(P_q_center.cols() == 1 && P_q_center.rows() == V.size());
+
+            std::vector<Eigen::SparseMatrix<double>> P_q_i(points.size());
+            {
+                assert(points[0].uv0 == 0.);
+                P_q_i[0] = point_potential->evaluate_potential_gradient_at_vertex(
+                    V, mesh.edges()(edge_id, 0));
+            }
+            {
+                assert(points[P_q_i.size() - 1].uv0 == 1.);
+                P_q_i.back() = point_potential->evaluate_potential_gradient_at_vertex(
+                    V, mesh.edges()(edge_id, 1));
+            }
+            for (index_t i = 1; i < P_q_i.size() - 1; i++) {
+                    assert(points[i].uv0 < 1.);
+                    assert(points[i].uv0 > 0.);
+                    assert(points[i].e1 >= 0);
+                    P_q_i[i] = point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
+                        V, edge_id, points[i].e1);
+            }
+
+            Eigen::SparseMatrix<double> cur_val(P_q_i[0].rows(), P_q_i[0].cols());
+            for (index_t i = 1; i < P_q_i.size() - 1; i++) {
+                cur_val += P_q_i[i] * points[i].mollifier;
+            }
+
+            // two vertices do not need mollifier
+            cur_val += P_q_i[0] + P_q_i.back();
+            // cur_val += P_q_i[0] * (points[1].beta - points[0].beta) + P_q_i.back() * (points.back().beta - points[points.size() - 2].beta);
+
+            cur_val += P_q_center;
+            grad += cur_val * (area / 9.);
+        }
+
         return grad;
     }
 }

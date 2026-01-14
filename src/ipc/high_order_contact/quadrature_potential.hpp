@@ -107,11 +107,11 @@ namespace ipc
 
         double evaluate_per_face(
             const Eigen::MatrixXd& V,
-            const index_t face_id);
+            const index_t face_id) const;
 
-        Eigen::VectorXd evaluate_per_face_gradient(
+        Eigen::SparseMatrix<double> evaluate_per_face_gradient(
             const Eigen::MatrixXd& V,
-            const index_t face_id);
+            const index_t face_id) const;
 
         const CollisionMesh mesh;
         const double dhat;
