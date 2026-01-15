@@ -179,8 +179,11 @@ public:
     size_t n_vertices_a() const override { return primitive_a->n_vertices(); }
     size_t n_vertices_b() const override { return primitive_b->n_vertices(); }
 
-    bool is_obstacle0() const { return m_is_obstacle0; }
-    bool is_obstacle1() const { return m_is_obstacle1; }
+    bool is_obstacle_a() const { return m_is_obstacle_a; }
+    bool is_obstacle_b() const { return m_is_obstacle_b; }
+
+    double area_a() const { return m_area_a; }
+    double area_b() const { return m_area_b; }
 
     template <typename T>
     Vector<T, N_CORE_DOFS> core_dof(const Eigen::MatrixX<T>& X) const
@@ -225,8 +228,10 @@ private:
     std::unique_ptr<PrimitiveA> primitive_a;
     /// @brief The second primitive in the contact pair
     std::unique_ptr<PrimitiveB> primitive_b;
-    bool m_is_obstacle0;
-    bool m_is_obstacle1;
+    bool m_is_obstacle_a = false;
+    bool m_is_obstacle_b = false;
+    double m_area_a = 0;
+    double m_area_b = 0;
 };
 
 } // namespace ipc

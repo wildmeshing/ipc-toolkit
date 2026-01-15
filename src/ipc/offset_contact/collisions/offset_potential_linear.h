@@ -54,7 +54,7 @@ namespace other_barrier {
     T barrier_func(
         const T d,
         const double dhat,
-        const int power
+        const double power
     ) {
         const T denom = (abs(pow(d, power)));
         if (denom <= 1e-12) return T(0);

@@ -61,6 +61,14 @@ OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::OffsetCollisionTemplate(
     primitive_a = std::make_unique<PrimitiveA>(_primitive0, mesh, V);
     primitive_b = std::make_unique<PrimitiveB>(_primitive1, mesh, V);
 
+    if constexpr (std::is_same_v<PrimitiveA, ogcVert2>) {
+        m_area_a = mesh.vertex_area(_primitive0);
+    }
+
+    if constexpr (std::is_same_v<PrimitiveB, ogcVert2>) {
+        m_area_b = mesh.vertex_area(_primitive1);
+    }
+
     auto is_obstacle = [&](const auto& primitive) {
         bool any_obstacle = false;
         bool all_obstacle = true;
@@ -77,8 +85,8 @@ OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::OffsetCollisionTemplate(
         }
         return all_obstacle;
     };
-    m_is_obstacle0 = is_obstacle(primitive_a);
-    m_is_obstacle1 = is_obstacle(primitive_b);
+    m_is_obstacle_a = is_obstacle(primitive_a);
+    m_is_obstacle_b = is_obstacle(primitive_b);
         
     if ((primitive_a->n_vertices() + primitive_b->n_vertices()) * DIM
         > ELEMENT_SIZE) {
@@ -207,7 +215,9 @@ T potential_VV(
     const size_t n_vertices_a,
     const size_t n_vertices_b,
     const bool obst_a,
-    const bool obst_b)
+    const bool obst_b,
+    const double area_a = -1.0,
+    const double area_b = -1.0)
 {
     Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
         slice_positions<T, Eigen::Dynamic, 2>(positions);
@@ -215,10 +225,12 @@ T potential_VV(
     const Eigen::Matrix<T, Eigen::Dynamic, 2> v_b = all_pos.bottomRows(n_vertices_b);
     T pot = 0;
     if (!obst_a) {
-        pot += potential_VV_onesided<T>(v_b, v_a, params) * compute_vertex_weight(v_a);
+        const T w = (area_a < 0) ? compute_vertex_weight(v_a) : area_a;
+        pot += w * potential_VV_onesided<T>(v_b, v_a, params);
     }
     if (!obst_b) {
-        pot += potential_VV_onesided<T>(v_a, v_b, params) * compute_vertex_weight(v_b);
+        const T w = (area_b < 0) ? compute_vertex_weight(v_b) : area_b;
+        pot += w * potential_VV_onesided<T>(v_a, v_b, params);
     }
     return pot;
 }
@@ -231,8 +243,11 @@ T potential_VE(
         positions,
     const OffsetContactParameters& params,
     const size_t n_vertices_a,
-    const size_t n_vertices_b)
+    const size_t n_vertices_b,
+    const double area_v = -1.0
+)
 {
+    if (area_v == 0) throw std::logic_error("zero area"); 
     Eigen::Matrix<T, Eigen::Dynamic, 2> all_pos =
         slice_positions<T, Eigen::Dynamic, 2>(positions);
     const Eigen::Matrix<T, 2, 2> edge_pos = all_pos.topRows(n_vertices_a);
@@ -252,10 +267,11 @@ T potential_VE(
     const std::array<T, 2> n_arr = {{n_hat.x(), n_hat.y()}};
 
     T phi_start, phi_end;
-    return offset_potential::polyline_edge_potential(
+    const T w = (area_v < 0) ? compute_vertex_weight(vertex_stencil) : area_v;
+    return w * offset_potential::polyline_edge_potential(
         vertex_pt, p0_arr, t_arr, n_arr, len,
         params.r, params.dhat,
-        phi_start, phi_end) * compute_vertex_weight(vertex_stencil);
+        phi_start, phi_end);
 }
 
 // ----------------------------------------------------
@@ -303,9 +319,9 @@ double OffsetCollisionTemplate<ogcEdge2, ogcVert2>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
 {
-    if (is_obstacle1()) return 0.0;
+    if (is_obstacle_b()) return 0.0;
     return potential_VE<double>(
-        positions, params, primitive_a->n_vertices(), primitive_b->n_vertices());
+        positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), area_b());
 }
 
 template <>
@@ -314,9 +330,9 @@ auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::gradient(
     const OffsetContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
-    if (is_obstacle1()) return Vector<double, -1, ELEMENT_SIZE>::Zero(n_dofs());
+    if (is_obstacle_b()) return Vector<double, -1, ELEMENT_SIZE>::Zero(n_dofs());
     return potential_VE<ADGrad<-1>>(
-               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices())
+               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), area_b())
         .grad;
 }
 
@@ -338,9 +354,9 @@ auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::hessian(
     const OffsetContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
-    if (is_obstacle1()) return MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n_dofs(), n_dofs());
+    if (is_obstacle_b()) return MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n_dofs(), n_dofs());
     return potential_VE<ADHessian<-1>>(
-               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices())
+               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), area_b())
         .Hess;
 }
 
@@ -350,7 +366,7 @@ double OffsetCollisionTemplate<ogcVert2, ogcVert2>::operator()(
     const OffsetContactParameters& params) const
 {
     return potential_VV<double>(
-        positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), is_obstacle0(), is_obstacle1());
+        positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), is_obstacle_a(), is_obstacle_b(), area_a(), area_b());
 }
 
 template <>
@@ -360,7 +376,7 @@ auto OffsetCollisionTemplate<ogcVert2, ogcVert2>::gradient(
 {
     ScalarBase::setVariableCount(positions.rows());
     return potential_VV<ADGrad<-1>>(
-               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), is_obstacle0(), is_obstacle1()).grad;
+               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), is_obstacle_a(), is_obstacle_b(), area_a(), area_b()).grad;
 }
 
 template <>
@@ -370,7 +386,7 @@ auto OffsetCollisionTemplate<ogcVert2, ogcVert2>::hessian(
 {
     ScalarBase::setVariableCount(positions.rows());
     return potential_VV<ADHessian<-1>>(
-               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), is_obstacle0(), is_obstacle1()).Hess;
+               positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), is_obstacle_a(), is_obstacle_b(), area_a(), area_b()).Hess;
 }
 
 // Note: Primitive pair order cannot change

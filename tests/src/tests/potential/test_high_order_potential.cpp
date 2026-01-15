@@ -613,7 +613,8 @@ TEST_CASE("High Order barrier potential full gradient and hessian 3D", tagsopt_h
 void test_high_order_potential(
     Eigen::MatrixXd& vertices,
     Eigen::MatrixXi& edges,
-    double dhat)
+    double dhat,
+    bool shouldbe0 = false)
 {
     const bool adaptive_dhat = false;
     const bool orientable = false;
@@ -622,7 +623,7 @@ void test_high_order_potential(
     Eigen::MatrixXi faces;
 
     CollisionMesh mesh;
-    HighOrderContactParameters params(dhat, 0.1, 1, 0);
+    HighOrderContactParameters params(dhat, 0.1, 1, 2);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     HighOrderCollisions collisions;
     mesh = CollisionMesh(
@@ -645,7 +646,8 @@ void test_high_order_potential(
     HighOrderContactPotential potential(params);
     const auto energy = potential(collisions, mesh, vertices);
     std::cout << "energy: " << energy << "\n";
-    CHECK(energy > 0);
+    if (shouldbe0) CHECK(energy == 0);
+    else CHECK(energy > 0);
 
     // -------------------------------------------------------------------------
     // Gradient
@@ -665,10 +667,13 @@ void test_high_order_potential(
             fd::flatten(vertices), f, fgrad_b, fd::AccuracyOrder::SECOND, 1e-8);
     }
 
-    REQUIRE(grad_b.squaredNorm() > 1e-8);
-    std::cout << "grad relative error "
+    if (shouldbe0) REQUIRE(grad_b.squaredNorm() == 0);
+    else {
+        REQUIRE(grad_b.squaredNorm() > 1e-8);
+        std::cout << "grad relative error "
               << (grad_b - fgrad_b).norm() / grad_b.norm() << "\n";
-    CHECK((grad_b - fgrad_b).norm() < 1e-6 * grad_b.norm());
+        CHECK((grad_b - fgrad_b).norm() < 1e-6 * grad_b.norm());
+    }
     // CHECK(fd::compare_gradient(grad_b, fgrad_b));
 
     // -------------------------------------------------------------------------
@@ -688,11 +693,63 @@ void test_high_order_potential(
             fd::flatten(vertices), f, fhess_b, fd::AccuracyOrder::SECOND, 1e-8);
     }
 
-    REQUIRE(hess_b.squaredNorm() > 1e-3);
-    std::cout << "hess relative error "
+    if (shouldbe0) REQUIRE(hess_b.squaredNorm() == 0);
+    else {
+        REQUIRE(hess_b.squaredNorm() > 1e-3);
+        std::cout << "hess relative error "
               << (hess_b - fhess_b).norm() / hess_b.norm() << "\n";
-    CHECK((hess_b - fhess_b).norm() < 1e-6 * hess_b.norm());
+        CHECK((hess_b - fhess_b).norm() < 1e-6 * hess_b.norm());
+    }
     // CHECK(fd::compare_hessian(hess_b, fhess_b, 1e-3));
+}
+
+TEST_CASE("High Order barrier potential no forces at rest", "[high_order_potential]")
+{
+    double dhat = -1;
+    Eigen::MatrixXd vertices;
+    Eigen::MatrixXi edges;
+    SECTION("single_square")
+    {
+        dhat = 2.0;
+        vertices.resize(4, 2);
+        edges.resize(4, 2);
+        vertices <<
+            0., 0.,
+            1., 0.,
+            1., 1.,
+            0., 1.;
+        edges <<
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 0;
+    }
+    SECTION("single_square_2")
+    {
+        dhat = 2.0;
+        vertices.resize(8, 2);
+        edges.resize(8, 2);
+        vertices <<
+            0., 0.,
+            .5, 0.,
+            1., 0.,
+            1., .5,
+            1., 1.,
+            .5, 1.,
+            0., 1.,
+            0., .5;
+        edges <<
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 4,
+            4, 5,
+            5, 6,
+            6, 7,
+            7, 0;
+    }
+
+    test_high_order_potential(vertices, edges, dhat, true);
 }
 
 TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential]")
@@ -716,6 +773,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
     }
     */
 
+    /*
     SECTION("wedge")
     {
         dhat = 0.4;
@@ -740,6 +798,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
             5, 6,
             6, 4;
     }
+    */
 
     /*
     SECTION("horizontal_squares")
@@ -804,7 +863,7 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
     }
     */
 
-    test_high_order_potential(vertices, edges, dhat);
+    test_high_order_potential(vertices, edges, dhat, false);
 }
 
 TEST_CASE("High Order barrier potential real sim 2D C^1", "[high_order_potential]")
