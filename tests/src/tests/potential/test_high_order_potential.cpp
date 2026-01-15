@@ -22,6 +22,173 @@
 
 using namespace ipc;
 
+TEST_CASE("Good Quadrature Hessian Integrated", "[high_order_potential]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
+
+    igl::edges(F, E);
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.15;
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    HighOrderContactPotential potential(params);
+
+    Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
+
+    Eigen::MatrixXd fh;
+    fd::finite_jacobian(
+        fd::flatten(V), [&](const Eigen::VectorXd& y) {
+            return potential.gradient(collisions, mesh, fd::unflatten(y, 3));
+        }, fh, fd::AccuracyOrder::SECOND, 1e-8);
+
+    REQUIRE((fh - h).norm() < fh.norm() * 1e-4);
+}
+
+TEST_CASE("Good Quadrature Gradient Integrated", "[high_order_potential]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
+
+    igl::edges(F, E);
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.15;
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    HighOrderContactPotential potential(params);
+
+    Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
+
+    Eigen::VectorXd fg;
+    fd::finite_gradient(
+        fd::flatten(V), [&](const Eigen::VectorXd& y) {
+            return potential(collisions, mesh, fd::unflatten(y, 3));
+        }, fg, fd::AccuracyOrder::SECOND, 1e-8);
+
+    REQUIRE((fg - g).norm() < fg.norm() * 1e-6);
+}
+
+TEST_CASE("Good Quadrature Integrated", "[high_order_potential]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/sphere.obj").string(), V, F);
+
+    igl::edges(F, E);
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.2;
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    HighOrderContactPotential potential(params);
+    double val = potential(collisions, mesh, V);
+    REQUIRE(abs(val) < 1e-12);
+
+    auto g = potential.gradient(collisions, mesh, V);
+    REQUIRE(g.norm() < 1e-8);
+
+    auto H = potential.hessian(collisions, mesh, V);
+    REQUIRE(H.norm() < 1e-8);
+}
+
+TEST_CASE("Good Quadrature Hessian", "[high_order_potential]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
+
+    igl::edges(F, E);
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.2;
+    QuadraturePotential potential(mesh, V, dhat);
+
+    for (int vid = 0; vid < V.rows(); ++vid) {
+        double x = potential.point_potential->evaluate_potential_at_vertex(V, vid);
+        Eigen::MatrixXd h = potential.point_potential->evaluate_potential_hessian_at_vertex(V, vid);
+
+        if (abs(x) < 1e-12) {
+            continue;
+        }
+
+        Eigen::MatrixXd fh;
+        fd::finite_jacobian(
+            fd::flatten(V), [&](const Eigen::VectorXd& y) {
+                return potential.point_potential->evaluate_potential_gradient_at_vertex(fd::unflatten(y, 3), vid);
+            }, fh, fd::AccuracyOrder::SECOND, 1e-8);
+
+        REQUIRE((h - fh).norm() < 1e-6 * std::max({h.norm(), fh.norm(), 1e-8}));
+    }
+
+    for (int fid = 0; fid < F.rows(); ++fid) {
+        double x = potential.point_potential->evaluate_potential_at_face_center(V, fid);
+        Eigen::MatrixXd g = potential.point_potential->evaluate_potential_hessian_at_face_center(V, fid);
+
+        if (abs(x) < 1e-12) {
+            continue;
+        }
+
+        Eigen::MatrixXd fg;
+        fd::finite_jacobian(
+            fd::flatten(V), [&](const Eigen::VectorXd& y) {
+                return potential.point_potential->evaluate_potential_gradient_at_face_center(fd::unflatten(y, 3), fid);
+            }, fg, fd::AccuracyOrder::SECOND, 1e-8);
+
+        // std::cout << (g - fg).norm() << " " << g.norm() << std::endl;
+        REQUIRE((g - fg).norm() < 1e-6 * std::max({g.norm(), fg.norm(), 1e-8}));
+    }
+
+    for (const auto &ee : potential.point_potential->candidates.ee_candidates) {
+        auto dtype = edge_edge_distance_type(
+            V.row(mesh.edges()(ee.edge0_id, 0)),
+            V.row(mesh.edges()(ee.edge0_id, 1)),
+            V.row(mesh.edges()(ee.edge1_id, 0)),
+            V.row(mesh.edges()(ee.edge1_id, 1)));
+        if (dtype != EdgeEdgeDistanceType::EA_EB)
+            continue;
+
+        double mollifier = Math<double>::cubic_spline(sqrt(edge_edge_distance(
+            V.row(mesh.edges()(ee.edge0_id, 0)),
+            V.row(mesh.edges()(ee.edge0_id, 1)),
+            V.row(mesh.edges()(ee.edge1_id, 0)),
+            V.row(mesh.edges()(ee.edge1_id, 1)), dtype)) / dhat) * 1.5;
+
+        double x = potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
+            V, ee.edge0_id, ee.edge1_id) * mollifier;
+
+        Eigen::MatrixXd g = potential.point_potential->evaluate_potential_hessian_at_edge_edge_closest_point(
+            V, ee.edge0_id, ee.edge1_id) * mollifier;
+
+        if (abs(x) < 1e-12) {
+            continue;
+        }
+
+        Eigen::MatrixXd fg;
+        fd::finite_jacobian(
+            fd::flatten(V), [&](const Eigen::VectorXd& y) {
+                return potential.point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
+                    fd::unflatten(y, 3), ee.edge0_id, ee.edge1_id);
+            }, fg, fd::AccuracyOrder::SECOND, 1e-8);
+        fg *= mollifier;
+
+        // std::cout << (g - fg).norm() << " " << g.norm() << std::endl;
+        REQUIRE((g - fg).norm() < 1e-4 * std::max({g.norm(), fg.norm(), 1e-8}));
+    }
+}
+
 TEST_CASE("Good Quadrature Gradient", "[high_order_potential]")
 {
     Eigen::MatrixXd V;
@@ -70,7 +237,7 @@ TEST_CASE("Good Quadrature Gradient", "[high_order_potential]")
         REQUIRE((g - fg).norm() < 1e-6 * std::max({g.norm(), fg.norm(), 1e-8}));
     }
 
-    for (const auto &ee : potential.point_potential->collisions.m_candidates.ee_candidates) {
+    for (const auto &ee : potential.point_potential->candidates.ee_candidates) {
         auto dtype = edge_edge_distance_type(
             V.row(mesh.edges()(ee.edge0_id, 0)),
             V.row(mesh.edges()(ee.edge0_id, 1)),
@@ -154,7 +321,7 @@ TEST_CASE("Good Quadrature", "[high_order_potential]")
         REQUIRE(g.norm() < 1e-8);
     }
 
-    for (const auto &ee : potential.point_potential->collisions.m_candidates.ee_candidates) {
+    for (const auto &ee : potential.point_potential->candidates.ee_candidates) {
         auto dtype = edge_edge_distance_type(
             V.row(mesh.edges()(ee.edge0_id, 0)),
             V.row(mesh.edges()(ee.edge0_id, 1)),
@@ -186,131 +353,6 @@ TEST_CASE("Good Quadrature", "[high_order_potential]")
 
         REQUIRE(abs(x) < 1e-12);
         REQUIRE(g.norm() < 1e-8);
-    }
-}
-
-TEST_CASE("Flat Integrated Potential", "[high_order_potential]")
-{
-    const auto method = make_default_broad_phase();
-    const bool adaptive_dhat = false;
-    const bool all_vertices_on_surface = true;
-    const double dhat = 0.1;
-
-    Eigen::MatrixXd vertices;
-    Eigen::MatrixXi edges, faces;
-
-    const double grid_scale = 5;
-    const int N = 6;
-    const double grid_h = grid_scale / (N - 1);
-    // construct mesh
-    {
-        // regular grid Z = 0
-
-        vertices.setZero(N * N, 3);
-        faces.setZero((N - 1) * (N - 1) * 2, 3);
-        for (int i = 0; i < N; i++)
-        {
-            for (int j = 0; j < N; j++)
-            {
-                vertices(i * N + j, 0) = i * grid_h;
-                vertices(i * N + j, 1) = j * grid_h;
-            }
-        }
-
-        auto vid_2d_to_1d = [](int i, int j) { return i * N + j; };
-
-        for (int i = 0; i < N - 1; i++)
-        {
-            for (int j = 0; j < N - 1; j++)
-            {
-                faces.row((i * (N - 1) + j) * 2 + 0) <<
-                    vid_2d_to_1d(i, j), vid_2d_to_1d(i + 1, j), vid_2d_to_1d(i + 1, j + 1);
-                faces.row((i * (N - 1) + j) * 2 + 1) <<
-                    vid_2d_to_1d(i + 1, j + 1), vid_2d_to_1d(i, j + 1), vid_2d_to_1d(i, j);
-            }
-        }
-
-        // plus a small tet above the grid
-        // Eigen::MatrixXd vertices_tet(4, 3);
-        // vertices_tet <<
-        //     0.0, 0.0, 0.0,
-        //     grid_h * 0.5, 0.0, 0.0,
-        //     0.0, grid_h * 0.5, 0.0,
-        //     0.0, 0.0, 2 * dhat;
-        //
-        // vertices_tet.rowwise() += Eigen::Vector3d(grid_scale / 2., grid_scale / 2., dhat / 5.).transpose();
-        //
-        // Eigen::MatrixXi faces_tet(4, 3);
-        // faces_tet << 0, 1, 2,
-        //             0, 1, 3,
-        //             0, 2, 3,
-        //             1, 2, 3;
-
-        Eigen::MatrixXd vertices_tet(1, 3);
-        vertices_tet << grid_scale / 2., grid_scale / 2., dhat / 5.;
-
-        // merge both meshes
-        Eigen::MatrixXd merged_vertices(vertices.rows() + vertices_tet.rows(), 3);
-        merged_vertices << vertices, vertices_tet;
-
-        // Eigen::MatrixXi merged_faces(faces.rows() + faces_tet.rows(), 3);
-        // merged_faces << faces, faces_tet.array() + vertices.rows();
-
-        std::swap(merged_vertices, vertices);
-        // std::swap(merged_faces, faces);
-
-        // extract edges
-        igl::edges(faces, edges);
-    }
-
-    CollisionMesh mesh;
-
-    if (all_vertices_on_surface) {
-        mesh = CollisionMesh(
-            std::vector<bool>(vertices.rows(), true),
-            std::vector<bool>(vertices.rows(), false), vertices, edges,
-            faces);
-    } else {
-        mesh = CollisionMesh(
-            ipc::CollisionMesh::construct_is_on_surface(vertices.rows(), edges),
-            std::vector<bool>(vertices.rows(), false), vertices, edges,
-            faces);
-
-        vertices = mesh.vertices(vertices);
-    }
-
-    HighOrderContactParameters params(dhat, 0., 2, 0);
-
-    HighOrderCollisions collisions;
-    collisions.build(mesh, vertices, params, adaptive_dhat, method);
-
-    CHECK(!collisions.empty());
-    CHECK(!has_intersections(mesh, vertices));
-
-    std::cout << collisions.to_string(mesh, vertices, params) << std::endl;
-
-    HighOrderContactPotential potential(params);
-    std::cout << "energy: " << potential(collisions, mesh, vertices) << "\n";
-
-    const double h = grid_h / 10;
-    for (int i = 0; i < 10; i++)
-    {
-        for (int j = 0; j < 10; j++)
-        {
-            Eigen::MatrixXd vertices_copy = vertices;
-            vertices_copy.bottomRows<4>().rowwise() += Eigen::Vector3d(i * h, j * h, 0.).transpose();
-
-            HighOrderCollisions collisions_copy;
-            collisions_copy.build(mesh, vertices_copy, params, adaptive_dhat, method);
-            std::cout << "energy: " << potential(collisions_copy, mesh, vertices_copy) << "\n";
-            if (potential(collisions_copy, mesh, vertices_copy) < 1e-3)
-            {
-                collisions_copy.build(mesh, vertices_copy, params, adaptive_dhat, method);
-                std::cout << collisions_copy.to_string(mesh, vertices_copy, params) << std::endl;
-            }
-
-            igl::write_triangle_mesh("debug_" + std::to_string(i) + "_" + std::to_string(j) + ".obj", vertices_copy, faces);
-        }
     }
 }
 

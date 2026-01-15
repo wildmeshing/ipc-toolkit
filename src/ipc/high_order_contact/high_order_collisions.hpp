@@ -17,6 +17,8 @@ public:
     /// @brief The type of the collisions.
     using value_type = HighOrderCollision;
 
+    constexpr static bool use_quadrature = true;
+
 public:
     HighOrderCollisions() = default;
     virtual ~HighOrderCollisions() = default;
@@ -149,5 +151,15 @@ public:
 
     /// @brief Collision candidates
     Candidates m_candidates;
+
+
+    /// @brief collision sets for 3D quadrature
+
+    // vertex_collisions[vi] provides the contact set for vertex vi
+    unordered_map<index_t, unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>> vertex_collisions;
+    // edge_edge_collisions[(ei, ej)] provides the contact set for the closest point on ei, between edge ei and ej.
+    unordered_map<std::pair<index_t, index_t>, unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>> edge_edge_collisions;
+    // face_collisions[fi] provides the contact set for center of face fi
+    unordered_map<index_t, unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>> face_collisions;
 };
 }

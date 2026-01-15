@@ -9,7 +9,12 @@ T line_line_sqr_distance(
     Eigen::ConstRef<Eigen::Vector3<T>> ea0,
     Eigen::ConstRef<Eigen::Vector3<T>> ea1,
     Eigen::ConstRef<Eigen::Vector3<T>> eb0,
-    Eigen::ConstRef<Eigen::Vector3<T>> eb1);
+    Eigen::ConstRef<Eigen::Vector3<T>> eb1)
+{
+    const Eigen::Vector3<T> normal = (ea1 - ea0).cross(eb1 - eb0);
+    const T line_to_line = (eb0 - ea0).dot(normal);
+    return line_to_line * line_to_line / normal.squaredNorm();
+}
 
 template <typename T>
 T edge_edge_sqr_distance(

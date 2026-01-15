@@ -223,18 +223,6 @@ line_line_closest_point_pairs_hessian(
 }
 
 template <typename scalar>
-scalar line_line_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<scalar>> ea0,
-    Eigen::ConstRef<Eigen::Vector3<scalar>> ea1,
-    Eigen::ConstRef<Eigen::Vector3<scalar>> eb0,
-    Eigen::ConstRef<Eigen::Vector3<scalar>> eb1)
-{
-    const Eigen::Vector3<scalar> normal = (ea1 - ea0).cross(eb1 - eb0);
-    const scalar line_to_line = (eb0 - ea0).dot(normal);
-    return line_to_line * line_to_line / normal.squaredNorm();
-}
-
-template <typename scalar>
 scalar edge_edge_sqr_distance(
     Eigen::ConstRef<Eigen::Vector3<scalar>> ea0,
     Eigen::ConstRef<Eigen::Vector3<scalar>> ea1,

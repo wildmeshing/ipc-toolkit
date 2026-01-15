@@ -289,6 +289,8 @@ public:
     /// @brief Get the barycentric area of the vertices.
     const Eigen::VectorXd& vertex_areas() const { return m_vertex_areas; }
 
+    const Eigen::VectorXd& face_areas() const { return m_face_areas; }
+
     /// @brief Get the gradient of the barycentric area of a vertex wrt the rest positions of all points.
     /// @param vi Vertex ID.
     /// @return Gradient of the barycentric area of vertex vi wrt the rest positions of all points.
@@ -446,6 +448,10 @@ protected:
     /// @brief Edge areas
     /// 3D: 1/3 sum of area of connected triangles
     Eigen::VectorXd m_edge_areas;
+
+    /// @brief Face areas
+    /// 3D: per-face area
+    Eigen::VectorXd m_face_areas;
 
     // Stored as a std::vector so it is easier to access the rows directly.
     /// @brief The rows of the Jacobian of the vertex areas vector.

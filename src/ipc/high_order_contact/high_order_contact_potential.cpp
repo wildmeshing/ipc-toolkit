@@ -8,6 +8,11 @@
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 
+#include "ipc/distance/edge_edge.hpp"
+#include "ipc/smooth_contact/distance/point_face.hpp"
+#include "ipc/smooth_contact/distance/mollifier.hpp"
+#include "ipc/high_order_contact/quadrature_potential.hpp"
+
 namespace ipc {
 
 double HighOrderContactPotential::operator()(
@@ -33,16 +38,90 @@ double HighOrderContactPotential::operator()(
             }
         });
 
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(size_t(0), collisions.triple_collisions.size()),
-        [&](const tbb::blocked_range<size_t>& r) {
-            auto& local_potential = storage.local();
-            for (size_t i = r.begin(); i < r.end(); i++) {
-                // Quadrature weight is premultiplied by local potential
-                local_potential += (*this)(*collisions.triple_collisions[i], collisions.triple_collisions[i]->dof(X));
-            }
-        });
+    if (mesh.dim() == 3) {
+        if (!collisions.use_quadrature) {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(size_t(0), collisions.triple_collisions.size()),
+                [&](const tbb::blocked_range<size_t>& r) {
+                    auto& local_potential = storage.local();
+                    for (size_t i = r.begin(); i < r.end(); i++) {
+                        // Quadrature weight is premultiplied by local potential
+                        local_potential += (*this)(*collisions.triple_collisions[i], collisions.triple_collisions[i]->dof(X));
+                    }
+                });
+        }
+        else {
+            double total = 0;
+            for (index_t f = 0; f < mesh.num_faces(); f++) {
+                const double area = mesh.face_areas()(f);
 
+                Eigen::MatrixXd V_extended(X.rows() + 1, 3);
+                V_extended.topRows(X.rows()) = X;
+                V_extended.row(X.rows()) = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
+
+                for (index_t le = 0; le < 3; le++) {
+                    const index_t edge_id = mesh.faces_to_edges()(f, le);
+                    const index_t ea = mesh.edges()(edge_id, 0);
+                    const index_t eb = mesh.edges()(edge_id, 1);
+
+                    const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
+
+                    double local_potential = 0;
+                    for (index_t other_edge_id : close_edges) {
+                        const index_t ec = mesh.edges()(other_edge_id, 0);
+                        const index_t ed = mesh.edges()(other_edge_id, 1);
+
+                        // Skip adjacent edges
+                        if (ea == ec || ea == ed || eb == ec || eb == ed) {
+                            continue;
+                        }
+
+                        if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
+                            iter != collisions.edge_edge_collisions.end()) {
+
+                            const double dist = sqrt(edge_edge_distance(
+                                X.row(ea), X.row(eb),
+                                X.row(ec), X.row(ed), EdgeEdgeDistanceType::EA_EB));
+
+                            std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
+                            double mollifier = Math<double>::cubic_spline(dist / params.dhat) * 1.5;
+                            mollifier *= edge_edge_mollifier<double>(
+                                    X.row(ea), X.row(eb),
+                                    X.row(ec), X.row(ed),
+                                    mtypes, dist * dist);
+
+                            local_potential += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
+                        }
+                        else {
+                            /* P(q) = 0 */
+                        }
+                    }
+
+                    // face center
+                    if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
+                        local_potential += PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                            V_extended, iter->second, params);
+                    }
+
+                    // vertex ea
+                    if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
+                        local_potential += PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                            X, iter->second, params);
+                    }
+
+                    // vertex eb
+                    if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
+                        local_potential += PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                            X, iter->second, params);
+                    }
+
+                    total += local_potential * area / 9.;
+                }
+            }
+
+            return total;
+        }
+    }
     return storage.combine([](double a, double b) { return a + b; });
 }
 
@@ -78,22 +157,120 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
             }
         });
 
-    maybe_parallel_for(
-        collisions.triple_collisions.size(), [&](int start, int end, int thread_id) {
-            auto& global_grad = get_local_thread_storage(storage, thread_id);
+    if (mesh.dim() == 3) {
+        if (!collisions.use_quadrature) {
+            maybe_parallel_for(
+                collisions.triple_collisions.size(), [&](int start, int end, int thread_id) {
+                    auto& global_grad = get_local_thread_storage(storage, thread_id);
 
-            for (size_t i = start; i < end; i++) {
-                const TriplePairCollision& collision = *collisions.triple_collisions[i];
+                    for (size_t i = start; i < end; i++) {
+                        const TriplePairCollision& collision = *collisions.triple_collisions[i];
 
-                const Eigen::VectorXd local_grad =
-                    this->gradient(collision, collision.dof(X));
+                        const Eigen::VectorXd local_grad =
+                            this->gradient(collision, collision.dof(X));
 
-                const std::vector<index_t> vids = collision.vertex_ids();
+                        const std::vector<index_t> vids = collision.vertex_ids();
 
-                local_gradient_to_global_gradient(
-                    local_grad, vids, dim, global_grad);
+                        local_gradient_to_global_gradient(
+                            local_grad, vids, dim, global_grad);
+                    }
+                });
+        }
+        else {
+            Eigen::VectorXd grad;
+            grad.setZero(X.size());
+
+            using T = ADGrad<12>;
+
+            for (index_t f = 0; f < mesh.num_faces(); f++) {
+                const double area = mesh.face_areas()(f);
+
+                Eigen::MatrixXd V_extended(X.rows() + 1, 3);
+                V_extended.topRows(X.rows()) = X;
+                V_extended.row(X.rows()) = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
+
+                for (index_t le = 0; le < 3; le++) {
+                    const index_t edge_id = mesh.faces_to_edges()(f, le);
+                    const index_t ea = mesh.edges()(edge_id, 0);
+                    const index_t eb = mesh.edges()(edge_id, 1);
+
+                    const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
+
+                    Eigen::SparseMatrix<double> local_grad(X.size(), 1);
+                    for (index_t other_edge_id : close_edges) {
+                        const index_t ec = mesh.edges()(other_edge_id, 0);
+                        const index_t ed = mesh.edges()(other_edge_id, 1);
+
+                        // Skip adjacent edges
+                        if (ea == ec || ea == ed || eb == ec || eb == ed) {
+                            continue;
+                        }
+
+                        if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
+                            iter != collisions.edge_edge_collisions.end()) {
+
+                            // collisions.edge_edge_collisions only contain EA_EB type collision
+                            // other types are ignored because the mollifier makes them vanish
+
+                            Eigen::Vector<double, 12> positions;
+                            positions << X.row(ea).transpose(), X.row(eb).transpose(), X.row(ec).transpose(), X.row(ed).transpose();
+
+                            Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(positions);
+
+                            const T dist = sqrt(line_line_sqr_distance<T>(
+                                positionsT.row(0), positionsT.row(1),
+                                positionsT.row(2), positionsT.row(3)));
+
+                            std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
+                            T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
+                            mollifier *= edge_edge_mollifier<T>(
+                                positionsT.row(0), positionsT.row(1),
+                                positionsT.row(2), positionsT.row(3),
+                                    mtypes, dist * dist);
+
+                            const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
+                            const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
+                            
+                            local_grad += mollifier.val * local_grad_1;
+                            const Vector12d local_grad_2 = local_potential_1 * mollifier.grad;
+                            for (int d = 0; d < 3; d++) {
+                                local_grad.coeffRef(ea * 3 + d, 0) += local_grad_2(d + 0);
+                                local_grad.coeffRef(eb * 3 + d, 0) += local_grad_2(d + 3);
+
+                                local_grad.coeffRef(ec * 3 + d, 0) += local_grad_2(d + 6);
+                                local_grad.coeffRef(ed * 3 + d, 0) += local_grad_2(d + 9);
+                            }
+                        }
+                        else {
+                            /* P(q) = 0 */
+                        }
+                    }
+
+                    // face center
+                    if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
+                        local_grad += PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
+                            V_extended, mesh.faces().row(f), iter->second, params);
+                    }
+
+                    // vertex ea
+                    if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
+                        local_grad += PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                            X, iter->second, params);
+                    }
+
+                    // vertex eb
+                    if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
+                        local_grad += PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                            X, iter->second, params);
+                    }
+
+                    grad += local_grad * (area / 9.);
+                }
             }
-        });
+
+            return grad;
+        }
+    }
 
     Eigen::VectorXd grad;
     grad.setZero(X.size());
@@ -139,22 +316,142 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
             }
         });
 
-    maybe_parallel_for(
-        collisions.triple_collisions.size(), [&](int start, int end, int thread_id) {
-            auto& hess_triplets = get_local_thread_storage(storage, thread_id);
+    if (mesh.dim() == 3) {
+        if (!collisions.use_quadrature) {
+            maybe_parallel_for(
+                collisions.triple_collisions.size(), [&](int start, int end, int thread_id) {
+                    auto& hess_triplets = get_local_thread_storage(storage, thread_id);
 
-            for (size_t i = start; i < end; i++) {
-                const TriplePairCollision& collision = *collisions.triple_collisions[i];
+                    for (size_t i = start; i < end; i++) {
+                        const TriplePairCollision& collision = *collisions.triple_collisions[i];
 
-                const Eigen::MatrixXd local_hess = this->hessian(
-                    collisions[i], collisions[i].dof(X),
-                    project_hessian_to_psd);
+                        const Eigen::MatrixXd local_hess = this->hessian(
+                            collisions[i], collisions[i].dof(X),
+                            project_hessian_to_psd);
 
-                local_hessian_to_global_triplets(
-                    local_hess, collision.vertex_ids(), dim,
-                    *(hess_triplets.cache));
+                        local_hessian_to_global_triplets(
+                            local_hess, collision.vertex_ids(), dim,
+                            *(hess_triplets.cache));
+                    }
+                });
+        }
+        else {
+            using T = ADHessian<12>;
+
+            // TODO: Implement project PSD
+
+            Eigen::SparseMatrix<double> hess(ndof, ndof);
+
+            std::vector<Eigen::Triplet<double>> triplets;
+
+            for (index_t f = 0; f < mesh.num_faces(); f++) {
+                const double area = mesh.face_areas()(f);
+
+                Eigen::MatrixXd V_extended(X.rows() + 1, 3);
+                V_extended.topRows(X.rows()) = X;
+                V_extended.row(X.rows()) = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
+
+                for (index_t le = 0; le < 3; le++) {
+                    const index_t edge_id = mesh.faces_to_edges()(f, le);
+                    const index_t ea = mesh.edges()(edge_id, 0);
+                    const index_t eb = mesh.edges()(edge_id, 1);
+
+                    const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
+
+                    Eigen::SparseMatrix<double> local_hess(X.size(), X.size());
+                    for (index_t other_edge_id : close_edges) {
+                        const index_t ec = mesh.edges()(other_edge_id, 0);
+                        const index_t ed = mesh.edges()(other_edge_id, 1);
+
+                        // Skip adjacent edges
+                        if (ea == ec || ea == ed || eb == ec || eb == ed) {
+                            continue;
+                        }
+
+                        if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
+                            iter != collisions.edge_edge_collisions.end()) {
+
+                            // collisions.edge_edge_collisions only contain EA_EB type collision
+                            // other types are ignored because the mollifier makes them vanish
+
+                            Eigen::Vector<double, 12> positions;
+                            positions << X.row(ea).transpose(), X.row(eb).transpose(), X.row(ec).transpose(), X.row(ed).transpose();
+
+                            Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(positions);
+
+                            const T dist = sqrt(line_line_sqr_distance<T>(
+                                positionsT.row(0), positionsT.row(1),
+                                positionsT.row(2), positionsT.row(3)));
+
+                            std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
+                            T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
+                            mollifier *= edge_edge_mollifier<T>(
+                                positionsT.row(0), positionsT.row(1),
+                                positionsT.row(2), positionsT.row(3),
+                                    mtypes, dist * dist);
+
+                            const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
+                            const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
+                            const Eigen::SparseMatrix<double> local_hess_1 = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
+
+                            local_hess += local_hess_1 * mollifier.val;
+
+                            std::array<index_t, 4> ee_indices = {{ea, eb, ec, ed}};
+                            const Matrix12d local_hess_2 = local_potential_1 * mollifier.Hess;
+                            for (index_t i = 0; i < 4; i++) {
+                                for (index_t j = 0; j < 4; j++) {
+                                    for (index_t di = 0; di < 3; di++) {
+                                        for (index_t dj = 0; dj < 3; dj++) {
+                                            triplets.emplace_back(ee_indices[i] * 3 + di, ee_indices[j] * 3 + dj, local_hess_2(i * 3 + di, j * 3 + dj) * (area / 9.));
+                                        }
+                                    }
+                                }
+                            }
+
+                            for (index_t k = 0; k < local_grad_1.outerSize(); ++k) {
+                                for (Eigen::SparseMatrix<double>::InnerIterator it(local_grad_1, k); it; ++it) {
+                                    for (index_t i = 0; i < 12; i++) {
+                                        assert(it.col() == 0);
+                                        index_t id = ee_indices[i / 3] * 3 + i % 3;
+                                        triplets.emplace_back(id, it.row(), mollifier.grad(i) * it.value() * (area / 9.));
+                                        triplets.emplace_back(it.row(), id, mollifier.grad(i) * it.value() * (area / 9.));
+                                    }
+                                }
+                            }
+                        }
+                        else {
+                            /* P(q) = 0 */
+                        }
+                    }
+
+                    // face center
+                    if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
+                        local_hess += PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
+                            V_extended, mesh.faces().row(f), iter->second, params);
+                    }
+
+                    // vertex ea
+                    if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
+                        local_hess += PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+                            X, iter->second, params);
+                    }
+
+                    // vertex eb
+                    if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
+                        local_hess += PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+                            X, iter->second, params);
+                    }
+
+                    hess += local_hess * (area / 9.);
+                }
             }
-        });
+
+            Eigen::SparseMatrix<double> hess2(ndof, ndof);
+            hess2.setFromTriplets(triplets.begin(), triplets.end());
+
+            return hess + hess2;
+        }
+    }
 
     Eigen::SparseMatrix<double> hess(ndof, ndof);
 

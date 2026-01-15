@@ -408,6 +408,8 @@ std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_
     const index_t e1 = mesh.faces_to_edges()(fi, 1);
     const index_t e2 = mesh.faces_to_edges()(fi, 2);
 
+    assert(vi != t0 && vi != t1 && vi != t2);
+
     if (dtype == PointTriangleDistanceType::AUTO) {
         dtype = point_triangle_distance_type(vertices.row(vi),
             vertices.row(t0),

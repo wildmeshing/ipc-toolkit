@@ -83,29 +83,37 @@ namespace ipc
         return pairs;
     }
 
+double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+            const Eigen::MatrixXd& V,
+            const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const HighOrderContactParameters& params)
+{
+    double potential = 0;
+    for (const auto& pair : collisions) {
+        const auto& cc = pair.second;
+        potential += cc->weight * (*cc)(cc->dof(V), params);
+    }
+
+    return potential;
+}
+
     double PointPotential::evaluate_potential_at_vertex(
         const Eigen::MatrixXd& V,
         const index_t vid) const
     {
         const auto pairs = build_collisions_at_vertex(V, vid);
 
-        double potential = 0;
-        for (const auto& pair : pairs) {
-            const auto& cc = pair.second;
-            potential += cc->weight * (*cc)(cc->dof(V), params);
-        }
-
-        return potential;
+        return PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+            V, pairs, params);
     }
 
-    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_gradient_at_vertex(
-            const Eigen::MatrixXd& V,
-            const index_t vid) const
+    Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+        const Eigen::MatrixXd& V,
+        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const HighOrderContactParameters& params)
     {
-        const auto pairs = build_collisions_at_vertex(V, vid);
-
         std::vector<Eigen::Triplet<double>> triplets;
-        for (const auto& pair : pairs) {
+        for (const auto& pair : collisions) {
             const auto& cc = pair.second;
             Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V), params);
             assert(g.size() == cc->vertex_ids().size() * 3);
@@ -120,6 +128,55 @@ namespace ipc
         grad.setFromTriplets(triplets.begin(), triplets.end());
 
         return grad;
+    }
+
+    Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+        const Eigen::MatrixXd& V,
+        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const HighOrderContactParameters& params)
+    {
+        std::vector<Eigen::Triplet<double>> triplets;
+        for (const auto& pair : collisions) {
+            const auto& cc = pair.second;
+            Eigen::MatrixXd h = cc->weight * cc->hessian(cc->dof(V), params);
+            assert(h.rows() == cc->vertex_ids().size() * 3);
+            assert(h.cols() == cc->vertex_ids().size() * 3);
+            for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+                for (index_t di = 0; di < 3; di++) {
+                    for (index_t j = 0; j < cc->vertex_ids().size(); j++) {
+                        for (index_t dj = 0; dj < 3; dj++) {
+                            triplets.emplace_back(
+                                3 * cc->vertex_ids()[i] + di, 
+                                3 * cc->vertex_ids()[j] + dj, 
+                                h(3 * i + di, 3 * j + dj));
+                        }
+                    }
+                }
+            }
+        }
+
+        Eigen::SparseMatrix<double> hess(V.size(), V.size());
+        hess.setFromTriplets(triplets.begin(), triplets.end());
+
+        return hess;
+    }
+
+    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_gradient_at_vertex(
+            const Eigen::MatrixXd& V,
+            const index_t vid) const
+    {
+        const auto pairs = build_collisions_at_vertex(V, vid);
+
+        return PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(V, pairs, params);
+    }
+
+    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_hessian_at_vertex(
+            const Eigen::MatrixXd& V,
+            const index_t vid) const
+    {
+        const auto pairs = build_collisions_at_vertex(V, vid);
+
+        return PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(V, pairs, params);
     }
 
     unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>
@@ -269,15 +326,13 @@ namespace ipc
         return pairs;
     }
 
-    double PointPotential::evaluate_potential_at_edge_edge_closest_point(
+    double PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
         const Eigen::MatrixXd& V,
-        const index_t e0,
-        const index_t e1) const
+        const unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>& collisions,
+        const HighOrderContactParameters& params)
     {
-        const auto pairs = build_collisions_at_edge_edge_closest_point(V, e0, e1);
-
         double potential = 0;
-        for (const auto& pair : pairs) {
+        for (const auto& pair : collisions) {
             const auto& cc = pair.second;
             double term = (*cc)(cc->dof(V), params);
             assert(std::isfinite(term));
@@ -287,15 +342,24 @@ namespace ipc
         return potential;
     }
 
-    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_gradient_at_edge_edge_closest_point(
+    double PointPotential::evaluate_potential_at_edge_edge_closest_point(
         const Eigen::MatrixXd& V,
         const index_t e0,
         const index_t e1) const
     {
         const auto pairs = build_collisions_at_edge_edge_closest_point(V, e0, e1);
 
+        return PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                V, pairs, params);
+    }
+
+    Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
+            const Eigen::MatrixXd& V,
+            const unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>& collisions,
+            const HighOrderContactParameters& params)
+    {
         std::vector<Eigen::Triplet<double>> triplets;
-        for (const auto& pair : pairs) {
+        for (const auto& pair : collisions) {
             const auto& cc = pair.second;
             Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V), params);
             for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
@@ -311,13 +375,66 @@ namespace ipc
         return grad;
     }
 
+    Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
+            const Eigen::MatrixXd& V,
+            const unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>& collisions,
+            const HighOrderContactParameters& params)
+    {
+        std::vector<Eigen::Triplet<double>> triplets;
+        for (const auto& pair : collisions) {
+            const auto& cc = pair.second;
+            Eigen::MatrixXd h = cc->weight * cc->hessian(cc->dof(V), params);
+            for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+                for (index_t di = 0; di < 3; di++) {
+                    for (index_t j = 0; j < cc->vertex_ids().size(); j++) {
+                        for (index_t dj = 0; dj < 3; dj++) {
+                            triplets.emplace_back(
+                                3 * cc->vertex_ids()[i] + di, 
+                                3 * cc->vertex_ids()[j] + dj, 
+                                h(3 * i + di, 3 * j + dj));
+                        }
+                    }
+                }
+            }
+        }
+
+        Eigen::SparseMatrix<double> hess(V.size(), V.size());
+        hess.setFromTriplets(triplets.begin(), triplets.end());
+
+        return hess;
+    }
+
+    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_gradient_at_edge_edge_closest_point(
+        const Eigen::MatrixXd& V,
+        const index_t e0,
+        const index_t e1) const
+    {
+        const auto pairs = build_collisions_at_edge_edge_closest_point(V, e0, e1);
+
+        return PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(V, pairs, params);
+    }
+
+    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_hessian_at_edge_edge_closest_point(
+        const Eigen::MatrixXd& V,
+        const index_t e0,
+        const index_t e1) const
+    {
+        const auto pairs = build_collisions_at_edge_edge_closest_point(V, e0, e1);
+
+        return PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(V, pairs, params);
+    }
+
     unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>
     PointPotential::build_collisions_at_face_center(
-        const Eigen::MatrixXd& V_,
+        const Eigen::MatrixXd& V,
         const index_t fid) const
     {
         // the fake vertex id
-        const index_t vid = V_.rows() - 1;
+        const index_t vid = V.rows();
+
+        Eigen::MatrixXd V_(V.rows() + 1, 3);
+        V_.topRows(V.rows()) = V;
+        V_.row(vid) = (V.row(mesh.faces()(fid, 0)) + V.row(mesh.faces()(fid, 1)) + V.row(mesh.faces()(fid, 2))) / 3.;
 
         unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>> pairs;
 
@@ -355,6 +472,107 @@ namespace ipc
         return pairs;
     }
 
+    Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
+        const Eigen::MatrixXd& V_extended,
+        Eigen::ConstRef<Eigen::Vector3<index_t>> vids,
+        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const HighOrderContactParameters& params)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        std::vector<Eigen::Triplet<double>> triplets;
+        for (const auto& pair : collisions) {
+            const auto& cc = pair.second;
+            Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V_extended), params);
+            for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+                const index_t global_id = cc->vertex_ids()[i];
+                if (global_id == n_real_vertices) {
+                    // distribute grad wrt virtual vertex to real face vertices
+                    for (index_t d = 0; d < 3; d++) {
+                        for (index_t lv = 0; lv < 3; lv++) {
+                            triplets.emplace_back(vids[lv] * 3 + d, 0, g(3 * i + d) / 3.);
+                        }
+                    }
+                }
+                else {
+                    assert(global_id < n_real_vertices);
+                    for (index_t d = 0; d < 3; d++) {
+                        triplets.emplace_back(3 * global_id + d, 0, g(3 * i + d));
+                    }
+                }
+            }
+        }
+
+        Eigen::SparseMatrix<double> grad(n_real_vertices * 3, 1);
+        grad.setFromTriplets(triplets.begin(), triplets.end());
+
+        return grad;
+    }
+
+    Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
+        const Eigen::MatrixXd& V_extended,
+        Eigen::ConstRef<Eigen::Vector3<index_t>> vids,
+        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const HighOrderContactParameters& params)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        std::vector<Eigen::Triplet<double>> triplets;
+        for (const auto& pair : collisions) {
+            const auto& cc = pair.second;
+            Eigen::MatrixXd h = cc->weight * cc->hessian(cc->dof(V_extended), params);
+
+            for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+                const index_t gi = cc->vertex_ids()[i];
+                for (index_t j = 0; j < cc->vertex_ids().size(); j++) {
+                    const index_t gj = cc->vertex_ids()[j];
+                    if (gi == n_real_vertices && gj == n_real_vertices) {
+                        // distribute grad wrt virtual vertex to real face vertices
+                        for (index_t di = 0; di < 3; di++) {
+                            for (index_t dj = 0; dj < 3; dj++) {
+                                for (index_t li = 0; li < 3; li++) {
+                                    for (index_t lj = 0; lj < 3; lj++) {
+                                        triplets.emplace_back(vids[li] * 3 + di, vids[lj] * 3 + dj, h(3 * i + di, 3 * j + dj) / 9.);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (gi == n_real_vertices) {
+                        for (index_t di = 0; di < 3; di++) {
+                            for (index_t dj = 0; dj < 3; dj++) {
+                                for (index_t li = 0; li < 3; li++) {
+                                    triplets.emplace_back(vids[li] * 3 + di, gj * 3 + dj, h(3 * i + di, 3 * j + dj) / 3.);
+                                }
+                            }
+                        }
+                    }
+                    else if (gj == n_real_vertices) {
+                        for (index_t di = 0; di < 3; di++) {
+                            for (index_t dj = 0; dj < 3; dj++) {
+                                for (index_t lj = 0; lj < 3; lj++) {
+                                    triplets.emplace_back(gi * 3 + di, vids[lj] * 3 + dj, h(3 * i + di, 3 * j + dj) / 3.);
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        assert(gi < n_real_vertices);
+                        assert(gj < n_real_vertices);
+                        for (index_t di = 0; di < 3; di++) {
+                            for (index_t dj = 0; dj < 3; dj++) {
+                                triplets.emplace_back(3 * gi + di, 3 * gj + dj, h(3 * i + di, 3 * j + dj));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Eigen::SparseMatrix<double> hess(n_real_vertices * 3, n_real_vertices * 3);
+        hess.setFromTriplets(triplets.begin(), triplets.end());
+
+        return hess;
+    }
+
     Eigen::SparseMatrix<double> PointPotential::evaluate_potential_gradient_at_face_center(
         const Eigen::MatrixXd& V,
         const index_t fid) const
@@ -369,35 +587,43 @@ namespace ipc
         V_.topRows(V.rows()) = V;
         V_.row(V.rows()) = (V.row(t0) + V.row(t1) + V.row(t2)) / 3.0;
 
-        const auto pairs = build_collisions_at_face_center(V_, fid);
+        const auto pairs = build_collisions_at_face_center(V, fid);
 
-        std::vector<Eigen::Triplet<double>> triplets;
-        for (const auto& pair : pairs) {
+        return PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_, mesh.faces().row(fid), pairs, params);
+    }
+
+    Eigen::SparseMatrix<double> PointPotential::evaluate_potential_hessian_at_face_center(
+        const Eigen::MatrixXd& V,
+        const index_t fid) const
+    {
+        const index_t t0 = mesh.faces()(fid, 0);
+        const index_t t1 = mesh.faces()(fid, 1);
+        const index_t t2 = mesh.faces()(fid, 2);
+
+        // Create a virtual vertex as the face center
+
+        Eigen::MatrixXd V_(V.rows() + 1, 3);
+        V_.topRows(V.rows()) = V;
+        V_.row(V.rows()) = (V.row(t0) + V.row(t1) + V.row(t2)) / 3.0;
+
+        const auto pairs = build_collisions_at_face_center(V, fid);
+
+        return PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
+            V_, mesh.faces().row(fid), pairs, params);
+    }
+
+    double PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+        const Eigen::MatrixXd& V_extended,
+        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const HighOrderContactParameters& params)
+    {
+        double potential = 0;
+        for (const auto& pair : collisions) {
             const auto& cc = pair.second;
-            Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V_), params);
-            for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
-                const index_t global_id = cc->vertex_ids()[i];
-                if (global_id == V.rows()) {
-                    // distribute grad wrt virtual vertex to real face vertices
-                    for (index_t d = 0; d < 3; d++) {
-                        triplets.emplace_back(t0 * 3 + d, 0, g(3 * i + d) / 3.);
-                        triplets.emplace_back(t1 * 3 + d, 0, g(3 * i + d) / 3.);
-                        triplets.emplace_back(t2 * 3 + d, 0, g(3 * i + d) / 3.);
-                    }
-                }
-                else {
-                    assert(global_id < V.rows());
-                    for (index_t d = 0; d < 3; d++) {
-                        triplets.emplace_back(3 * global_id + d, 0, g(3 * i + d));
-                    }
-                }
-            }
+            potential += cc->weight * (*cc)(cc->dof(V_extended), params);
         }
 
-        Eigen::SparseMatrix<double> grad(V.size(), 1);
-        grad.setFromTriplets(triplets.begin(), triplets.end());
-
-        return grad;
+        return potential;
     }
 
     double PointPotential::evaluate_potential_at_face_center(
@@ -414,27 +640,16 @@ namespace ipc
         V_.topRows(V.rows()) = V;
         V_.row(V.rows()) = (V.row(t0) + V.row(t1) + V.row(t2)) / 3.0;
 
-        const auto pairs = build_collisions_at_face_center(V_, fid);
+        const auto pairs = build_collisions_at_face_center(V, fid);
 
-        double potential = 0;
-        for (const auto& pair : pairs) {
-            const auto& cc = pair.second;
-            potential += cc->weight * (*cc)(cc->dof(V_), params);
-        }
-
-        return potential;
+        return PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(V_, pairs, params);
     }
 
     double QuadraturePotential::evaluate_per_face(
         const Eigen::MatrixXd& V,
         const index_t face_id) const
     {
-        const Eigen::MatrixXd& rest_V = mesh.rest_positions();
-
-        const Eigen::Vector3d f0 = rest_V.row(mesh.faces()(face_id, 0));
-        const Eigen::Vector3d f1 = rest_V.row(mesh.faces()(face_id, 1));
-        const Eigen::Vector3d f2 = rest_V.row(mesh.faces()(face_id, 2));
-        const double area = 0.5 * (f1 - f0).cross(f2 - f0).norm();
+        const double area = mesh.face_areas()(face_id);
 
         double total = 0.;
         for (index_t le = 0; le < 3; le++) {
@@ -564,12 +779,8 @@ namespace ipc
         const index_t face_id) const
     {
         Eigen::SparseMatrix<double> grad(3 * mesh.num_vertices(), 1);
-        const Eigen::MatrixXd& rest_V = mesh.rest_positions();
 
-        const Eigen::Vector3d f0 = rest_V.row(mesh.faces()(face_id, 0));
-        const Eigen::Vector3d f1 = rest_V.row(mesh.faces()(face_id, 1));
-        const Eigen::Vector3d f2 = rest_V.row(mesh.faces()(face_id, 2));
-        const double area = 0.5 * (f1 - f0).cross(f2 - f0).norm();
+        const double area = mesh.face_areas()(face_id);
 
         for (index_t le = 0; le < 3; le++) {
             const index_t edge_id = mesh.faces_to_edges()(face_id, le);

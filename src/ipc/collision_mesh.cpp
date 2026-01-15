@@ -320,21 +320,22 @@ void CollisionMesh::init_areas()
     Eigen::VectorXd vertex_face_areas =
         Eigen::VectorXd::Constant(num_vertices(), -1);
     m_edge_areas.setConstant(m_edges.rows(), -1);
+    m_face_areas.setConstant(m_faces.rows(), -1);
     if (dim() == 3) {
         for (int i = 0; i < m_faces.rows(); i++) {
             const Eigen::Vector3d f0 = m_rest_positions.row(m_faces(i, 0));
             const Eigen::Vector3d f1 = m_rest_positions.row(m_faces(i, 1));
             const Eigen::Vector3d f2 = m_rest_positions.row(m_faces(i, 2));
-            double face_area = 0.5 * (f1 - f0).cross(f2 - f0).norm();
+            m_face_areas(i) = 0.5 * (f1 - f0).cross(f2 - f0).norm();
 
             for (int j = 0; j < m_faces.cols(); ++j) {
                 vertex_face_areas[m_faces(i, j)] =
                     std::max(vertex_face_areas[m_faces(i, j)], 0.0);
-                vertex_face_areas[m_faces(i, j)] += face_area / 3.0;
+                vertex_face_areas[m_faces(i, j)] += m_face_areas(i) / 3.0;
 
                 m_edge_areas[m_faces_to_edges(i, j)] =
                     std::max(m_edge_areas[m_faces_to_edges(i, j)], 0.0);
-                m_edge_areas[m_faces_to_edges(i, j)] += face_area / 3.0;
+                m_edge_areas[m_faces_to_edges(i, j)] += m_face_areas(i) / 3.0;
             }
         }
     }

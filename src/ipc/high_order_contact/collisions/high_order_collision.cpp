@@ -40,6 +40,7 @@ Eigen::VectorXd HighOrderCollision::dof(Eigen::ConstRef<Eigen::MatrixXd> X) cons
         }
     } else if (DIM == 3) {
         for (int i = 0; i < num_vertices(); i++) {
+            assert(m_vertex_ids[i] < X.rows());
             x.segment<3>(i * 3) = X.row(m_vertex_ids[i]);
         }
     } else {
@@ -801,6 +802,107 @@ auto HighOrderCollisionTemplate<Face3P1, Vertex3>::gradient(
     grad = grad({3,4,5,6,7,8,9,10,11,0,1,2}).eval();
 
     return grad;
+}
+
+template <>
+auto HighOrderCollisionTemplate<Vertex3, Vertex3>::hessian(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+    -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
+{
+    assert(positions.size() == 6);
+    const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
+    double deriv1 = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
+    double deriv2 = Math<double>::inv_barrier_hess(dist / params.dhat, params.r);
+    deriv2 = deriv2 * (1. / params.dhat / params.dhat / 4 / dist / dist) - deriv1 * (1. / params.dhat / 4 / dist / dist / dist);
+    deriv1 *= 1. / params.dhat / dist / 2.;
+
+    const Vector6d g = point_point_distance_gradient(positions.template head<3>(), positions.template tail<3>());
+    const Matrix6d h = point_point_distance_hessian(positions.template head<3>(), positions.template tail<3>());
+
+    return g * deriv2 * g.transpose() + h * deriv1;
+}
+
+template <>
+auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::hessian(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+    -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
+{
+    assert(positions.size() == 9);
+
+    auto dtype = point_edge_distance_type(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3));
+
+    const double dist = sqrt(point_edge_distance(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype));
+
+    double deriv1 = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
+    double deriv2 = Math<double>::inv_barrier_hess(dist / params.dhat, params.r);
+    deriv2 = deriv2 * (1. / params.dhat / params.dhat / 4 / dist / dist) - deriv1 * (1. / params.dhat / 4 / dist / dist / dist);
+    deriv1 *= 1. / params.dhat / dist / 2.;
+
+    const Vector9d g = point_edge_distance_gradient(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype);
+    const Matrix9d h = point_edge_distance_hessian(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype);
+
+    Matrix9d hess = g * deriv2 * g.transpose() + h * deriv1;
+
+    std::vector<int> reorder{3,4,5,6,7,8,0,1,2};
+
+    return hess(reorder, reorder);
+}
+
+template <>
+auto HighOrderCollisionTemplate<Face3P1, Vertex3>::hessian(
+    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params) const
+    -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
+{
+    assert(positions.size() == 12);
+
+    auto dtype = point_triangle_distance_type(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6));
+
+    const double dist = sqrt(point_triangle_distance(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype));
+
+    double deriv1 = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
+    double deriv2 = Math<double>::inv_barrier_hess(dist / params.dhat, params.r);
+    deriv2 = deriv2 * (1. / params.dhat / params.dhat / 4 / dist / dist) - deriv1 * (1. / params.dhat / 4 / dist / dist / dist);
+    deriv1 *= 1. / params.dhat / dist / 2.;
+
+    const Vector12d g = point_triangle_distance_gradient(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype);
+    const Matrix12d h = point_triangle_distance_hessian(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype);
+
+    Matrix12d hess = g * deriv2 * g.transpose() + h * deriv1;
+
+    std::vector<int> reorder{3,4,5,6,7,8,9,10,11,0,1,2};
+
+    return hess(reorder, reorder);
 }
 
 template <typename PrimitiveA, typename PrimitiveB>

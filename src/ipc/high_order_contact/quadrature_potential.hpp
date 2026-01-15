@@ -15,6 +15,55 @@ namespace ipc
         Face
     };
 
+    namespace PointPotentialHelper {
+        double evaluate_potential_at_vertex_with_cached_collisions(
+            const Eigen::MatrixXd& V,
+            const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const HighOrderContactParameters& params);
+
+        Eigen::SparseMatrix<double> evaluate_potential_gradient_at_vertex_with_cached_collisions(
+            const Eigen::MatrixXd& V,
+            const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const HighOrderContactParameters& params);
+
+        Eigen::SparseMatrix<double> evaluate_potential_hessian_at_vertex_with_cached_collisions(
+            const Eigen::MatrixXd& V,
+            const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const HighOrderContactParameters& params);
+
+        double evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+            const Eigen::MatrixXd& V,
+            const unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>& collisions,
+            const HighOrderContactParameters& params);
+
+        Eigen::SparseMatrix<double> evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
+            const Eigen::MatrixXd& V,
+            const unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>& collisions,
+            const HighOrderContactParameters& params);
+
+        Eigen::SparseMatrix<double> evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
+            const Eigen::MatrixXd& V,
+            const unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>& collisions,
+            const HighOrderContactParameters& params);
+
+        double evaluate_potential_at_face_center_with_cached_collisions(
+            const Eigen::MatrixXd& V_extended,
+            const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const HighOrderContactParameters& params);
+
+        Eigen::SparseMatrix<double> evaluate_potential_gradient_at_face_center_with_cached_collisions(
+            const Eigen::MatrixXd& V_extended,
+            Eigen::ConstRef<Eigen::Vector3<index_t>> vids,
+            const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const HighOrderContactParameters& params);
+
+        Eigen::SparseMatrix<double> evaluate_potential_hessian_at_face_center_with_cached_collisions(
+            const Eigen::MatrixXd& V_extended,
+            Eigen::ConstRef<Eigen::Vector3<index_t>> vids,
+            const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const HighOrderContactParameters& params);
+    }
+
     class PointPotential
     {
     public:
@@ -45,6 +94,10 @@ namespace ipc
             const Eigen::MatrixXd& V,
             const index_t vid) const;
 
+        Eigen::SparseMatrix<double> evaluate_potential_hessian_at_vertex(
+            const Eigen::MatrixXd& V,
+            const index_t vid) const;
+
         unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>
         build_collisions_at_edge_edge_closest_point(
         const Eigen::MatrixXd& V,
@@ -62,6 +115,11 @@ namespace ipc
             const index_t e0,
             const index_t e1) const;
 
+        Eigen::SparseMatrix<double> evaluate_potential_hessian_at_edge_edge_closest_point(
+            const Eigen::MatrixXd& V,
+            const index_t e0,
+            const index_t e1) const;
+
         unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>
         build_collisions_at_face_center(
         const Eigen::MatrixXd& V,
@@ -72,6 +130,10 @@ namespace ipc
             const index_t fid) const;
 
         Eigen::SparseMatrix<double> evaluate_potential_gradient_at_face_center(
+            const Eigen::MatrixXd& V,
+            const index_t fid) const;
+
+        Eigen::SparseMatrix<double> evaluate_potential_hessian_at_face_center(
             const Eigen::MatrixXd& V,
             const index_t fid) const;
 
