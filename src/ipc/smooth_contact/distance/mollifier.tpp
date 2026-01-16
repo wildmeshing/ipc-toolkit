@@ -61,6 +61,30 @@ scalar edge_edge_mollifier(
 }
 
 template <typename scalar>
+scalar half_edge_edge_mollifier(
+    Eigen::ConstRef<Eigen::Vector3<scalar>> ea0,
+    Eigen::ConstRef<Eigen::Vector3<scalar>> ea1,
+    Eigen::ConstRef<Eigen::Vector3<scalar>> eb0,
+    Eigen::ConstRef<Eigen::Vector3<scalar>> eb1,
+    const scalar& dist_sqr)
+{
+    const scalar db = dist_sqr * MOLLIFIER_THRESHOLD_EPS;
+    scalar a = Math<scalar>::mollifier(
+              (PointEdgeDistance<scalar, 3>::point_edge_sqr_distance(
+                   ea0, eb0, eb1)
+               - dist_sqr)
+              / db);
+    scalar b = Math<scalar>::mollifier(
+              (PointEdgeDistance<scalar, 3>::point_edge_sqr_distance(
+                   ea1, eb0, eb1)
+               - dist_sqr)
+              / db);
+
+    scalar c = a * b;
+    return c;
+}
+
+template <typename scalar>
 scalar point_face_mollifier(
     Eigen::ConstRef<Eigen::Vector3<scalar>> p,
     Eigen::ConstRef<Eigen::Vector3<scalar>> e0,
