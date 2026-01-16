@@ -8,12 +8,12 @@
 namespace ipc {
 
 enum class HighOrderCollisionType : uint8_t {
-    EDGE_VERTEX,
-    VERTEX_VERTEX,
-    FACE_VERTEX,
-    EDGE_EDGE,
-    EDGE_FACE,
-    FACE_FACE
+    EDGE_VERTEX = 0,
+    VERTEX_VERTEX = 1,
+    FACE_VERTEX = 2,
+    EDGE_EDGE = 3,
+    EDGE_FACE = 4,
+    FACE_FACE = 5
 };
 
 /// @brief Contact pair class for Geometric Contact Potential.
@@ -50,6 +50,8 @@ public:
 
     /// @brief Contact pair type
     virtual HighOrderCollisionType type() const = 0;
+
+    virtual std::array<index_t, 3> get_typed_hash() const = 0;
 
     /// @brief Get the number of vertices in the collision stencil.
     virtual int num_vertices() const = 0;
@@ -169,6 +171,11 @@ public:
         return primitive_a->n_dofs() + primitive_b->n_dofs();
     }
     HighOrderCollisionType type() const override;
+
+    std::array<index_t, 3> get_typed_hash() const override
+    {
+        return {{static_cast<index_t>(type()), primitive0, primitive1}};
+    }
 
     Vector<int, N_CORE_DOFS> get_core_indices() const;
     std::array<index_t, N_CORE_DOFS> core_vertex_ids() const;

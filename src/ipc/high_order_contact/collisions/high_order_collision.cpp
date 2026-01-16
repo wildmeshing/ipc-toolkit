@@ -166,6 +166,44 @@ double HighOrderCollisionTemplate<Edge2P1, Edge2P1>::compute_distance(
                       point_edge_distance(eb1, ea0, ea1) });
 }
 
+template<>
+double HighOrderCollisionTemplate<Vertex3, Vertex3>::compute_distance(
+    Eigen::ConstRef<Eigen::MatrixXd> vertices) const
+{
+    return point_point_distance(
+        vertices.row(m_vertex_ids[0]), vertices.row(m_vertex_ids[n_vertices_a()]));
+}
+
+template<>
+double HighOrderCollisionTemplate<Edge3P1, Vertex3>::compute_distance(
+    Eigen::ConstRef<Eigen::MatrixXd> vertices) const
+{
+    return point_edge_distance(
+        vertices.row(m_vertex_ids[n_vertices_a()]), vertices.row(m_vertex_ids[0]),
+        vertices.row(m_vertex_ids[1]));
+}
+
+template<>
+double HighOrderCollisionTemplate<Edge3P1, Edge3P1>::compute_distance(
+    Eigen::ConstRef<Eigen::MatrixXd> vertices) const
+{
+    const auto& ea0 = vertices.row(m_vertex_ids[0]);
+    const auto& ea1 = vertices.row(m_vertex_ids[1]);
+    const auto& eb0 = vertices.row(m_vertex_ids[2]);
+    const auto& eb1 = vertices.row(m_vertex_ids[3]);
+    return edge_edge_distance(ea0, ea1, eb0, eb1);
+}
+
+template<>
+double HighOrderCollisionTemplate<Face3P1, Vertex3>::compute_distance(
+    Eigen::ConstRef<Eigen::MatrixXd> vertices) const
+{
+    const auto& f0 = vertices.row(m_vertex_ids[0]);
+    const auto& f1 = vertices.row(m_vertex_ids[1]);
+    const auto& f2 = vertices.row(m_vertex_ids[2]);
+    const auto& v = vertices.row(m_vertex_ids[3]);
+    return point_triangle_distance(v, f0, f1, f2);
+}
 
 template <typename T>
 std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vector2<T>> sample_edge(
