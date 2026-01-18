@@ -25,7 +25,7 @@ public:
             X.template head<3>() /* edge 0 */,
                 X.template segment<3>(3) /* edge 0 */,
                 X.template segment<3>(6) /* edge 1 */,
-                X.template tail<3>() /* edge 1 */);
+                X.template segment<3>(9) /* edge 1 */);
         else
             return EdgeEdgeDistanceType::AUTO;
     }
