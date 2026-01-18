@@ -1,5 +1,7 @@
 #include "high_order_contact_potential.hpp"
 
+#include "igl/write_triangle_mesh.h"
+
 #include <ipc/utils/local_to_global.hpp>
 #include <ipc/utils/maybe_parallel_for.hpp>
 
@@ -79,16 +81,19 @@ double HighOrderContactPotential::operator()(
                         if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
                             iter != collisions.edge_edge_collisions.end()) {
 
+                            auto dtype = edge_edge_distance_type(
+                                X.row(ea), X.row(eb),
+                                X.row(ec), X.row(ed));
+
                             const double dist = sqrt(edge_edge_distance(
                                 X.row(ea), X.row(eb),
-                                X.row(ec), X.row(ed), EdgeEdgeDistanceType::EA_EB));
+                                X.row(ec), X.row(ed), dtype));
 
-                            std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
                             double mollifier = Math<double>::cubic_spline(dist / params.dhat) * 1.5;
-                            mollifier *= edge_edge_mollifier<double>(
+                            mollifier *= half_edge_edge_mollifier<double>(
                                     X.row(ea), X.row(eb),
                                     X.row(ec), X.row(ed),
-                                    mtypes, dist * dist);
+                                    dist * dist);
 
                             local_potential += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
                         }
@@ -209,24 +214,27 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
                             iter != collisions.edge_edge_collisions.end()) {
 
-                            // collisions.edge_edge_collisions only contain EA_EB type collision
+                            // collisions.edge_edge_collisions only contain EA_EB* type collision
                             // other types are ignored because the mollifier makes them vanish
 
                             Eigen::Vector<double, 12> positions;
                             positions << X.row(ea).transpose(), X.row(eb).transpose(), X.row(ec).transpose(), X.row(ed).transpose();
 
+                            const auto dtype = edge_edge_distance_type(
+                                X.row(ea), X.row(eb),
+                                X.row(ec), X.row(ed));
+
                             Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(positions);
 
-                            const T dist = sqrt(line_line_sqr_distance<T>(
+                            const T dist = sqrt(edge_edge_sqr_distance<T>(
                                 positionsT.row(0), positionsT.row(1),
-                                positionsT.row(2), positionsT.row(3)));
+                                positionsT.row(2), positionsT.row(3), dtype));
 
-                            std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
                             T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
-                            mollifier *= edge_edge_mollifier<T>(
+                            mollifier *= half_edge_edge_mollifier<T>(
                                 positionsT.row(0), positionsT.row(1),
                                 positionsT.row(2), positionsT.row(3),
-                                    mtypes, dist * dist);
+                                    dist * dist);
 
                             const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
                             const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
@@ -371,24 +379,27 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
                             iter != collisions.edge_edge_collisions.end()) {
 
-                            // collisions.edge_edge_collisions only contain EA_EB type collision
+                            // collisions.edge_edge_collisions only contain EA_EB* type collision
                             // other types are ignored because the mollifier makes them vanish
 
                             Eigen::Vector<double, 12> positions;
                             positions << X.row(ea).transpose(), X.row(eb).transpose(), X.row(ec).transpose(), X.row(ed).transpose();
 
+                            const auto dtype = edge_edge_distance_type(
+                                X.row(ea), X.row(eb),
+                                X.row(ec), X.row(ed));
+
                             Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(positions);
 
-                            const T dist = sqrt(line_line_sqr_distance<T>(
+                            const T dist = sqrt(edge_edge_sqr_distance<T>(
                                 positionsT.row(0), positionsT.row(1),
-                                positionsT.row(2), positionsT.row(3)));
+                                positionsT.row(2), positionsT.row(3), dtype));
 
-                            std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
                             T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
-                            mollifier *= edge_edge_mollifier<T>(
+                            mollifier *= half_edge_edge_mollifier<T>(
                                 positionsT.row(0), positionsT.row(1),
                                 positionsT.row(2), positionsT.row(3),
-                                    mtypes, dist * dist);
+                                    dist * dist);
 
                             const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
                             const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
