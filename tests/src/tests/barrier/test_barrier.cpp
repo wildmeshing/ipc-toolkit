@@ -132,6 +132,55 @@ TEST_CASE("Inv barrier derivatives", "[deriv]")
     }
 }
 
+TEST_CASE("Log barrier derivatives", "[deriv]")
+{
+    const int n_samples = 100;
+    ScalarBase::setVariableCount(1);
+    using T = ipc::ADHessian<1>;
+    const double dhat = 0.13;
+    for (int i = 1; i <= n_samples; i++) {
+        const double x = i / static_cast<double>(n_samples);
+        double deriv = ipc::Math<double>::log_barrier_grad(x / dhat) / dhat;
+        double hess =
+            ipc::Math<double>::log_barrier_hess(x / dhat) / dhat / dhat;
+        T x_ad = T(x, 0);
+        T y_ad = ipc::Math<T>::log_barrier(x_ad / dhat);
+        double deriv_ad = y_ad.grad(0);
+        double hess_ad = y_ad.Hess(0);
+
+        CHECK(abs(deriv_ad - deriv) < 1e-14 * std::max(1., abs(deriv)));
+        CHECK(abs(hess_ad - hess) < 1e-12 * std::max(1., abs(hess)));
+    }
+
+    ScalarBase::setVariableCount(3);
+    using T3 = ipc::ADHessian<3>;
+
+    for (int i = 1; i <= n_samples; i++) {
+        Eigen::Vector3d x = Eigen::Vector3d::Random() * dhat / 3.;
+        double deriv =
+            ipc::Math<double>::log_barrier_grad(x.norm() / dhat) / dhat;
+        double hess = ipc::Math<double>::log_barrier_hess(x.norm() / dhat)
+            / dhat / dhat;
+        auto x_ad = ipc::slice_positions<T3, 3, 1>(x);
+        T3 y_ad = ipc::Math<T3>::log_barrier(x_ad.norm() / dhat);
+        Eigen::Vector3d deriv_ad = y_ad.grad;
+        Eigen::Matrix3d hess_ad = y_ad.Hess;
+
+        Eigen::Vector3d xn = x / x.norm();
+        Eigen::Vector3d deriv_analytic = deriv * xn;
+        Eigen::Matrix3d hess_analytic =
+            (deriv / x.norm()) * Eigen::Matrix3d::Identity()
+            + (hess - deriv / x.norm()) * xn * xn.transpose();
+
+        CHECK(
+            (deriv_ad - deriv_analytic).norm()
+            < 1e-14 * std::max(1., deriv_ad.norm()));
+        CHECK(
+            (hess_ad - hess_analytic).norm()
+            < 1e-12 * std::max(1., hess_ad.norm()));
+    }
+}
+
 TEST_CASE("Normalize vector derivatives", "[deriv]")
 {
     const int n_samples = 1000;
