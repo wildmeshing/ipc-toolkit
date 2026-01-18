@@ -16,13 +16,57 @@ T line_line_sqr_distance(
     return line_to_line * line_to_line / normal.squaredNorm();
 }
 
-template <typename T>
-T edge_edge_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<T>> ea0,
-    Eigen::ConstRef<Eigen::Vector3<T>> ea1,
-    Eigen::ConstRef<Eigen::Vector3<T>> eb0,
-    Eigen::ConstRef<Eigen::Vector3<T>> eb1,
-    EdgeEdgeDistanceType dtype);
+template <typename scalar>
+scalar edge_edge_sqr_distance(
+    Eigen::ConstRef<Eigen::Vector3<scalar>> ea0,
+    Eigen::ConstRef<Eigen::Vector3<scalar>> ea1,
+    Eigen::ConstRef<Eigen::Vector3<scalar>> eb0,
+    Eigen::ConstRef<Eigen::Vector3<scalar>> eb1,
+    EdgeEdgeDistanceType dtype)
+{
+    if constexpr (std::is_same<double, scalar>::value) {
+        if (dtype == EdgeEdgeDistanceType::AUTO) {
+            dtype = edge_edge_distance_type(ea0, ea1, eb0, eb1);
+        }
+    }
+
+    switch (dtype) {
+    case EdgeEdgeDistanceType::EA0_EB0:
+        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(ea0, eb0);
+
+    case EdgeEdgeDistanceType::EA0_EB1:
+        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(ea0, eb1);
+
+    case EdgeEdgeDistanceType::EA1_EB0:
+        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(ea1, eb0);
+
+    case EdgeEdgeDistanceType::EA1_EB1:
+        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(ea1, eb1);
+
+    case EdgeEdgeDistanceType::EA_EB0:
+        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(
+            eb0, ea0, ea1);
+
+    case EdgeEdgeDistanceType::EA_EB1:
+        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(
+            eb1, ea0, ea1);
+
+    case EdgeEdgeDistanceType::EA0_EB:
+        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(
+            ea0, eb0, eb1);
+
+    case EdgeEdgeDistanceType::EA1_EB:
+        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(
+            ea1, eb0, eb1);
+
+    case EdgeEdgeDistanceType::EA_EB:
+        return line_line_sqr_distance<scalar>(ea0, ea1, eb0, eb1);
+
+    default:
+        throw std::invalid_argument(
+            "Invalid distance type for edge-edge distance!");
+    }
+}
 
 template <typename T>
 Eigen::Vector3<T> line_line_closest_point_direction(
@@ -49,44 +93,44 @@ line_line_closest_point_direction_hessian(
     Eigen::ConstRef<Eigen::Vector3d> eb1);
 
 template <typename T>
-Eigen::Matrix<T, 3, 2> line_line_closest_point_pairs(
-    Eigen::ConstRef<Eigen::Vector3<T>> ea0,
-    Eigen::ConstRef<Eigen::Vector3<T>> ea1,
-    Eigen::ConstRef<Eigen::Vector3<T>> eb0,
-Eigen::ConstRef<Eigen::Vector3<T>> eb1)
-{
-    const Eigen::Vector3<T> ta = ea1 - ea0;
-    const Eigen::Vector3<T> tb = eb1 - eb0;
-    const T la = ta.squaredNorm();
-    const T lb = tb.squaredNorm();
-    const T lab = ta.dot(tb);
-    const Eigen::Vector3<T> d = eb0 - ea0;
-
-    Eigen::Matrix<T, 3, 2> out;
-    const T fac = la * lb - pow(lab, 2);
-    out.col(0) = ea0 + (lb * ta.dot(d) - lab * tb.dot(d)) / fac * ta;
-    out.col(1) = eb0 + (lab * ta.dot(d) - la * tb.dot(d)) / fac * tb;
-
-    return out;
-}
-
-template <typename T>
 Eigen::Vector<T, 2> line_line_closest_point_pairs_uv(
     Eigen::ConstRef<Eigen::Vector3<T>> ea0,
     Eigen::ConstRef<Eigen::Vector3<T>> ea1,
     Eigen::ConstRef<Eigen::Vector3<T>> eb0,
     Eigen::ConstRef<Eigen::Vector3<T>> eb1)
 {
-    const Eigen::Vector3<T> ta = ea1 - ea0;
-    const Eigen::Vector3<T> tb = eb1 - eb0;
-    const T la = ta.squaredNorm();
-    const T lb = tb.squaredNorm();
-    const T lab = ta.dot(tb);
-    const Eigen::Vector3<T> d = eb0 - ea0;
+    const Eigen::Vector3<T> u = ea1 - ea0;
+    const Eigen::Vector3<T> v = eb1 - eb0;
+    const Eigen::Vector3<T> w = ea0 - eb0;
 
-    const T fac = la * lb - pow(lab, 2);
-    return Eigen::Vector<T, 2>(lb * ta.dot(d) - lab * tb.dot(d),
-        lab * ta.dot(d) - la * tb.dot(d)) / fac;
+    const T a = u.squaredNorm();
+    const T b = u.dot(v);
+    const T c = v.squaredNorm();
+    const T d = u.dot(w);
+    const T e = v.dot(w);
+
+    const T sN = (b * e - c * d);
+    const T tN = (a * e - b * d);
+    const T fac = a * c - pow(b, 2);
+    assert(fac > 0);
+
+    return Eigen::Vector<T, 2>(sN, tN) / fac;
+}
+
+template <typename T>
+Eigen::Matrix<T, 3, 2> line_line_closest_point_pairs(
+    Eigen::ConstRef<Eigen::Vector3<T>> ea0,
+    Eigen::ConstRef<Eigen::Vector3<T>> ea1,
+    Eigen::ConstRef<Eigen::Vector3<T>> eb0,
+    Eigen::ConstRef<Eigen::Vector3<T>> eb1)
+{
+    const Eigen::Vector<T, 2> uvs = line_line_closest_point_pairs_uv<T>(ea0, ea1, eb0, eb1);
+
+    Eigen::Matrix<T, 3, 2> out;
+    out.col(0) = ea0 + uvs(0) * (ea1 - ea0);
+    out.col(1) = eb0 + uvs(1) * (eb1 - eb0);
+
+    return out;
 }
 
 std::tuple<Vector6d, Eigen::Matrix<double, 6, 12>>

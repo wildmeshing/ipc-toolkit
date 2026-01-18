@@ -223,58 +223,6 @@ line_line_closest_point_pairs_hessian(
 }
 
 template <typename scalar>
-scalar edge_edge_sqr_distance(
-    Eigen::ConstRef<Eigen::Vector3<scalar>> ea0,
-    Eigen::ConstRef<Eigen::Vector3<scalar>> ea1,
-    Eigen::ConstRef<Eigen::Vector3<scalar>> eb0,
-    Eigen::ConstRef<Eigen::Vector3<scalar>> eb1,
-    EdgeEdgeDistanceType dtype)
-{
-    if constexpr (std::is_same<double, scalar>::value) {
-        if (dtype == EdgeEdgeDistanceType::AUTO) {
-            dtype = edge_edge_distance_type(ea0, ea1, eb0, eb1);
-        }
-    }
-
-    switch (dtype) {
-    case EdgeEdgeDistanceType::EA0_EB0:
-        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(ea0, eb0);
-
-    case EdgeEdgeDistanceType::EA0_EB1:
-        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(ea0, eb1);
-
-    case EdgeEdgeDistanceType::EA1_EB0:
-        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(ea1, eb0);
-
-    case EdgeEdgeDistanceType::EA1_EB1:
-        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(ea1, eb1);
-
-    case EdgeEdgeDistanceType::EA_EB0:
-        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(
-            eb0, ea0, ea1);
-
-    case EdgeEdgeDistanceType::EA_EB1:
-        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(
-            eb1, ea0, ea1);
-
-    case EdgeEdgeDistanceType::EA0_EB:
-        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(
-            ea0, eb0, eb1);
-
-    case EdgeEdgeDistanceType::EA1_EB:
-        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(
-            ea1, eb0, eb1);
-
-    case EdgeEdgeDistanceType::EA_EB:
-        return line_line_sqr_distance<scalar>(ea0, ea1, eb0, eb1);
-
-    default:
-        throw std::invalid_argument(
-            "Invalid distance type for edge-edge distance!");
-    }
-}
-
-template <typename scalar>
 Eigen::Vector3<scalar> line_line_closest_point_direction(
     Eigen::ConstRef<Eigen::Vector3<scalar>> ea0,
     Eigen::ConstRef<Eigen::Vector3<scalar>> ea1,
