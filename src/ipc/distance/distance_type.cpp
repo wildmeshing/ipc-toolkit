@@ -149,20 +149,6 @@ EdgeEdgeDistanceType edge_edge_distance_type(
     } else {
         tN = (a * e - b * d);
         tD = D; // default tD = D ≥ 0
-        if (tN > 0.0 && tN < tD
-            && u.cross(v).squaredNorm() < parallel_tolerance) {
-            // avoid coplanar or nearly parallel EE
-            if (sN < D / 2) {
-                tN = e;
-                tD = c;
-                default_case = EdgeEdgeDistanceType::EA0_EB;
-            } else {
-                tN = e + b;
-                tD = c;
-                default_case = EdgeEdgeDistanceType::EA1_EB;
-            }
-        }
-        // else default_case stays EdgeEdgeDistanceType::EA_EB
     }
 
     if (tN <= 0.0) { // tc < 0 ⟹ the t=0 edge is visible
