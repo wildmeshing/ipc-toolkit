@@ -1,8 +1,50 @@
 #include "triple_pair_collision.hpp"
 #include "pair_distance.hpp"
+#include <ipc/smooth_contact/distance/edge_edge.hpp>
 
 namespace ipc
 {
+namespace {
+
+template <typename T>
+T closest_point_uv(Eigen::ConstRef<Vector<T, 12>> positions, EdgeEdgeDistanceType dtype)
+{
+    Eigen::ConstRef<Vector<T, 3>> e0 = positions.template segment<3>(0);
+    Eigen::ConstRef<Vector<T, 3>> e1 = positions.template segment<3>(3);
+    Eigen::ConstRef<Vector<T, 3>> e2 = positions.template segment<3>(6);
+    Eigen::ConstRef<Vector<T, 3>> e3 = positions.template segment<3>(9);
+    Vector<T, 3> u = e1 - e0;
+    Vector<T, 3> v = e3 - e2;
+
+    T uv(0.);
+    if (dtype == EdgeEdgeDistanceType::EA_EB) {
+        Eigen::Vector2<T> uvs = line_line_closest_point_pairs_uv<T>(
+            e0, e1,
+            e2, e3);
+
+        uv = uvs(0);
+    }
+    else if (dtype == EdgeEdgeDistanceType::EA_EB0) {
+        const T a = u.squaredNorm();
+        const T d = u.dot(e0 - e2);
+        uv = (-d) / a;
+    }
+    else if (dtype == EdgeEdgeDistanceType::EA_EB1) {
+        const T a = u.squaredNorm();
+        const T b = u.dot(v);
+        const T d = u.dot(e0 - e2);
+        uv = (-d + b) / a;
+    }
+    else
+        log_and_throw_error("edge-edge dtype {} cannot handle!", static_cast<int>(dtype));
+
+    if (!(uv > 0 && uv < 1)) {
+        throw std::invalid_argument("Invalid uv!");
+    }
+
+    return uv;
+}
+}
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
     TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::TriplePairCollisionTemplate(
         index_t primitive0,
@@ -35,10 +77,10 @@ namespace ipc
         Eigen::VectorXd X = this->dof(V);
         dtype1 = PairDistance<PrimitiveA, PrimitiveB, double>::compute_distance_type(X.head<PairDistance<PrimitiveA, PrimitiveB, double>::N_DOFS>());
 
-        const Eigen::Matrix<double, DIM, 2> closest_points = closest_point_pair_ab<double>(X);
+        const Eigen::Matrix<double, DIM, 1> closest_point = closest_point_pair_a<double>(X);
 
         Eigen::Vector<double, Eigen::Dynamic> Y(DIM + PrimitiveC::N_DOFS);
-        Y << closest_points.col(0), X.template tail<PrimitiveC::N_DOFS>();
+        Y << closest_point, X.template tail<PrimitiveC::N_DOFS>();
 
         dtype2 = PairDistance<Vertex3, PrimitiveC, double>::compute_distance_type(Y);
 
@@ -46,6 +88,34 @@ namespace ipc
         if (dist_sqr_2 >= dhat * dhat) {
             m_is_active = false;
         }
+
+        m_positions_init = std::move(X);
+    }
+
+    template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
+    template <typename T>
+    Eigen::Matrix<T, TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::DIM, 1> TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::closest_point_pair_a(Eigen::ConstRef<Vector<T, -1, ELEMENT_SIZE>> positions) const
+    {
+        if (m_positions_init.size() > 0 && (m_positions_init - positions).array().abs().maxCoeff() > 0) {
+            log_and_throw_error("Inconsistent positions wrt initialization!");
+        }
+        return positions.template segment<DIM>(0) + closest_point_uv<T>(positions.template head<4 * DIM>(), dtype1) * (
+            positions.template segment<DIM>(DIM) - positions.template segment<DIM>(0));
+    }
+
+    template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
+    double TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::compute_distance(Eigen::ConstRef<Eigen::MatrixXd> positions) const
+    {
+        assert(positions.cols() == DIM);
+        Eigen::VectorXd X = this->dof(positions);
+        const Eigen::Matrix<double, DIM, 1> closest_point = closest_point_pair_a<double>(X);
+
+        static_assert(DIM == 3);
+
+        Eigen::Vector<double, Eigen::Dynamic> Y(DIM + PrimitiveC::N_DOFS);
+        Y << closest_point, X.template tail<PrimitiveC::N_DOFS>();
+
+        return PairDistance<Vertex3, PrimitiveC, double>::compute_distance(Y, dtype2);
     }
 
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
@@ -54,17 +124,15 @@ namespace ipc
         Eigen::ConstRef<Vector<T, N_DOFS>> positions,
         const HighOrderContactParameters& params) const
     {
-        const Eigen::Matrix<T, DIM, 2> closest_points = closest_point_pair_ab<T>(positions);
+        const Eigen::Matrix<T, DIM, 1> closest_point = closest_point_pair_a<T>(positions);
 
         static_assert(DIM == 3);
-        T total(0.);
-        const int i = 0;
-        {
-            Eigen::Vector<T, Eigen::Dynamic> X(DIM + PrimitiveC::N_DOFS);
-            X << closest_points.col(i), positions.template tail<PrimitiveC::N_DOFS>();
-            const T dist_sqr = PairDistance<Vertex3, PrimitiveC, T>::compute_distance(X, dtype2);
-            total += Math<T>::inv_barrier(sqrt(dist_sqr) / params.dhat, params.r);
-        }
+
+        Eigen::Vector<T, Eigen::Dynamic> X(DIM + PrimitiveC::N_DOFS);
+        X << closest_point, positions.template tail<PrimitiveC::N_DOFS>();
+
+        const T dist_sqr = PairDistance<Vertex3, PrimitiveC, T>::compute_distance(X, dtype2);
+        T total = Math<T>::log_barrier(sqrt(dist_sqr) / params.dhat);
 
         return total;
     }
@@ -142,6 +210,22 @@ namespace ipc
         const Eigen::Matrix<T, N_POINTS * DIM, 1> X = slice_positions<T, N_POINTS * DIM, 1>(positions);
 
         return evaluate<T>(X, params).Hess;
+    }
+
+    template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
+    index_t TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::get_type_as_int()
+    {
+        if (std::is_same_v<PrimitiveC, Face3P1>) {
+            return 2;
+        }
+        else if (std::is_same_v<PrimitiveC, Edge3P1>) {
+            return 1;
+        }
+        else if (std::is_same_v<PrimitiveC, Vertex3>) {
+            return 0;
+        }
+        assert(false);
+        return -1;
     }
 
     template class TriplePairCollisionTemplate<Edge3P1, Edge3P1, Vertex3>;

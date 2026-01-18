@@ -35,6 +35,8 @@ public:
     Eigen::MatrixXd vertices(Eigen::ConstRef<Eigen::MatrixXd> vertices) const;
     Eigen::VectorXd dof(Eigen::ConstRef<Eigen::MatrixXd> X) const;
 
+    virtual std::array<index_t, 4> get_typed_hash() const = 0;
+
     bool operator==(const TriplePairCollision& other) const
     {
         return (primitive0 == other.primitive0 && primitive1 == other.primitive1 && primitive2 == other.primitive2);
@@ -69,6 +71,8 @@ public:
     virtual int n_dofs() const = 0;
     virtual int num_vertices() const = 0;
 
+    virtual double compute_distance(Eigen::ConstRef<Eigen::MatrixXd> positions) const = 0;
+
     /// @brief Compute the value of the GCP potential
     virtual double operator()(
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
@@ -92,6 +96,8 @@ protected:
     index_t primitive0, primitive1, primitive2;
     double m_dhat;
     std::vector<index_t> m_vertex_ids;
+
+    Eigen::VectorXd m_positions_init;
 };
 
 template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
@@ -119,6 +125,14 @@ public:
     int n_dofs() const override { return N_DOFS; }
     int num_vertices() const override { return N_POINTS; }
 
+    static index_t get_type_as_int();
+
+    // include type as part of the hash so that we can put different types into the same hash table
+    std::array<index_t, 4> get_typed_hash() const override
+    {
+        return {{get_type_as_int(), primitive0, primitive1, primitive2}};
+    }
+
     typename PairDistType<Vertex3, PrimitiveC>::type distance_type_2() const { return dtype2; }
 
     template <typename T>
@@ -140,20 +154,11 @@ public:
         Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
+    double compute_distance(Eigen::ConstRef<Eigen::MatrixXd> positions) const override;
+
     /// @brief Compute the closest point pair between primitive A and B, for now only supports edge-edge
     template <typename T>
-    Eigen::Matrix<T, DIM, 2> closest_point_pair_ab(Eigen::ConstRef<Vector<T, -1, ELEMENT_SIZE>> positions) const
-    {
-        static_assert(std::is_same_v<PrimitiveA, Edge3P1>);
-        static_assert(std::is_same_v<PrimitiveB, Edge3P1>);
-
-        assert(dtype1 == EdgeEdgeDistanceType::EA_EB);
-        return line_line_closest_point_pairs<T>(
-            positions.template segment<DIM>(0),
-            positions.template segment<DIM>(DIM),
-            positions.template segment<DIM>(2 * DIM),
-            positions.template segment<DIM>(3 * DIM));
-    }
+    Eigen::Matrix<T, DIM, 1> closest_point_pair_a(Eigen::ConstRef<Vector<T, -1, ELEMENT_SIZE>> positions) const;
 
 private:
     PrimitiveA primitive_a;

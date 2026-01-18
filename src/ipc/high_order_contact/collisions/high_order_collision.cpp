@@ -170,6 +170,7 @@ template<>
 double HighOrderCollisionTemplate<Vertex3, Vertex3>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
+    assert(vertices.rows() > m_vertex_ids[0] && vertices.rows() > m_vertex_ids[1]);
     return point_point_distance(
         vertices.row(m_vertex_ids[0]), vertices.row(m_vertex_ids[n_vertices_a()]));
 }
@@ -178,6 +179,7 @@ template<>
 double HighOrderCollisionTemplate<Edge3P1, Vertex3>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
+    assert(vertices.rows() > m_vertex_ids[0] && vertices.rows() > m_vertex_ids[1] && vertices.rows() > m_vertex_ids[2]);
     return point_edge_distance(
         vertices.row(m_vertex_ids[n_vertices_a()]), vertices.row(m_vertex_ids[0]),
         vertices.row(m_vertex_ids[1]));
@@ -187,6 +189,7 @@ template<>
 double HighOrderCollisionTemplate<Edge3P1, Edge3P1>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
+    assert(vertices.rows() > m_vertex_ids[0] && vertices.rows() > m_vertex_ids[1] && vertices.rows() > m_vertex_ids[2] && vertices.rows() > m_vertex_ids[3]);
     const auto& ea0 = vertices.row(m_vertex_ids[0]);
     const auto& ea1 = vertices.row(m_vertex_ids[1]);
     const auto& eb0 = vertices.row(m_vertex_ids[2]);
@@ -198,11 +201,17 @@ template<>
 double HighOrderCollisionTemplate<Face3P1, Vertex3>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
-    const auto& f0 = vertices.row(m_vertex_ids[0]);
-    const auto& f1 = vertices.row(m_vertex_ids[1]);
-    const auto& f2 = vertices.row(m_vertex_ids[2]);
-    const auto& v = vertices.row(m_vertex_ids[3]);
-    return point_triangle_distance(v, f0, f1, f2);
+    const int n_verts = vertices.rows();
+    if (n_verts > m_vertex_ids[0] && n_verts > m_vertex_ids[1] && n_verts > m_vertex_ids[2] && n_verts > m_vertex_ids[3]) {
+        const auto& f0 = vertices.row(m_vertex_ids[0]);
+        const auto& f1 = vertices.row(m_vertex_ids[1]);
+        const auto& f2 = vertices.row(m_vertex_ids[2]);
+        const auto& v = vertices.row(m_vertex_ids[3]);
+        return point_triangle_distance(v, f0, f1, f2);
+    }
+    else {
+        return std::numeric_limits<double>::max();
+    }
 }
 
 template <typename T>
@@ -721,7 +730,7 @@ double HighOrderCollisionTemplate<Vertex3, Vertex3>::operator()(
     const HighOrderContactParameters& params) const
 {
     const double dist = (positions.template head<3>() - positions.template segment<3>(3)).norm();
-    return Math<double>::inv_barrier(dist / params.dhat, params.r);
+    return Math<double>::log_barrier(dist / params.dhat);
 }
 
 template <>
@@ -729,11 +738,11 @@ double HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params) const
 {
-    const double dist = point_edge_distance(
+    const double dist = sqrt(point_edge_distance(
         positions.template segment<3>(6),
         positions.template head<3>(),
-        positions.template segment<3>(3));
-    return Math<double>::inv_barrier(sqrt(dist) / params.dhat, params.r);
+        positions.template segment<3>(3)));
+    return Math<double>::log_barrier(dist / params.dhat);
 }
 
 template <>
@@ -741,12 +750,12 @@ double HighOrderCollisionTemplate<Face3P1, Vertex3>::operator()(
     Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params) const
 {
-    const double dist = point_triangle_distance(
+    const double dist = sqrt(point_triangle_distance(
         positions.template segment<3>(9),
         positions.template head<3>(),
         positions.template segment<3>(3),
-        positions.template segment<3>(6));
-    return Math<double>::inv_barrier(sqrt(dist) / params.dhat, params.r);
+        positions.template segment<3>(6)));
+    return Math<double>::log_barrier(dist / params.dhat);
 }
 
 template <>
@@ -791,7 +800,7 @@ auto HighOrderCollisionTemplate<Vertex3, Vertex3>::gradient(
 {
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
-    double deriv = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
+    double deriv = Math<double>::log_barrier_grad(dist / params.dhat);
     deriv *= 1. / params.dhat / dist / 2.;
 
     Vector6d grad = deriv * point_point_distance_gradient(positions.template head<3>(), positions.template tail<3>());
@@ -817,7 +826,7 @@ auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::gradient(
         positions.template head<3>(),
         positions.template segment<3>(3), dtype));
 
-    double deriv = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
+    double deriv = Math<double>::log_barrier_grad(dist / params.dhat);
     deriv *= 1. / params.dhat / dist / 2.;
 
     Vector9d grad = point_edge_distance_gradient(
@@ -851,7 +860,7 @@ auto HighOrderCollisionTemplate<Face3P1, Vertex3>::gradient(
         positions.template segment<3>(3),
         positions.template segment<3>(6), dtype));
 
-    double deriv = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
+    double deriv = Math<double>::log_barrier_grad(dist / params.dhat);
     deriv *= 1. / params.dhat / dist / 2.;
 
     Vector12d grad = point_triangle_distance_gradient(
@@ -874,8 +883,8 @@ auto HighOrderCollisionTemplate<Vertex3, Vertex3>::hessian(
 {
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
-    double deriv1 = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
-    double deriv2 = Math<double>::inv_barrier_hess(dist / params.dhat, params.r);
+    double deriv1 = Math<double>::log_barrier_grad(dist / params.dhat);
+    double deriv2 = Math<double>::log_barrier_hess(dist / params.dhat);
     deriv2 = deriv2 * (1. / params.dhat / params.dhat / 4 / dist / dist) - deriv1 * (1. / params.dhat / 4 / dist / dist / dist);
     deriv1 *= 1. / params.dhat / dist / 2.;
 
@@ -903,8 +912,8 @@ auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::hessian(
         positions.template head<3>(),
         positions.template segment<3>(3), dtype));
 
-    double deriv1 = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
-    double deriv2 = Math<double>::inv_barrier_hess(dist / params.dhat, params.r);
+    double deriv1 = Math<double>::log_barrier_grad(dist / params.dhat);
+    double deriv2 = Math<double>::log_barrier_hess(dist / params.dhat);
     deriv2 = deriv2 * (1. / params.dhat / params.dhat / 4 / dist / dist) - deriv1 * (1. / params.dhat / 4 / dist / dist / dist);
     deriv1 *= 1. / params.dhat / dist / 2.;
 
@@ -944,8 +953,8 @@ auto HighOrderCollisionTemplate<Face3P1, Vertex3>::hessian(
         positions.template segment<3>(3),
         positions.template segment<3>(6), dtype));
 
-    double deriv1 = Math<double>::inv_barrier_grad(dist / params.dhat, params.r);
-    double deriv2 = Math<double>::inv_barrier_hess(dist / params.dhat, params.r);
+    double deriv1 = Math<double>::log_barrier_grad(dist / params.dhat);
+    double deriv2 = Math<double>::log_barrier_hess(dist / params.dhat);
     deriv2 = deriv2 * (1. / params.dhat / params.dhat / 4 / dist / dist) - deriv1 * (1. / params.dhat / 4 / dist / dist / dist);
     deriv1 *= 1. / params.dhat / dist / 2.;
 
