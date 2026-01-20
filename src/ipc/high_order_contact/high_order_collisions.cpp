@@ -1,6 +1,7 @@
 #include "high_order_collisions.hpp"
 
 #include "high_order_collisions_builder.hpp"
+#include "igl/write_triangle_mesh.h"
 
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_edge.hpp>
@@ -428,6 +429,18 @@ void HighOrderCollisions::build(
 
             // TODO: Parallelism
 
+            {
+                /* Bruteforce method for debugging */
+
+                // for (int vi = 0; vi < mesh.num_vertices(); vi++) {
+                //     vertex_collisions[vi] = point_potential.build_collisions_at_vertex(vertices, vi);
+                // }
+                //
+                // for (int fi = 0; fi < mesh.num_faces(); fi++) {
+                //     face_collisions[fi] = point_potential.build_collisions_at_face_center(vertices, fi);
+                // }
+            }
+
             for (const auto& candidate : candidates.fv_candidates) {
                 const index_t vi = candidate.vertex_id;
                 if (vertex_collisions.find(vi) == vertex_collisions.end()) {
@@ -457,16 +470,6 @@ void HighOrderCollisions::build(
                     vertices.row(ea), vertices.row(eb),
                     vertices.row(ec), vertices.row(ed));
 
-                if (dtype != EdgeEdgeDistanceType::EA_EB) {
-                    continue;
-                }
-
-                if (is_parallel_edge_edge(
-                    vertices.row(ea), vertices.row(eb),
-                    vertices.row(ec), vertices.row(ed))) {
-                    continue;
-                    }
-
                 const double dist = sqrt(edge_edge_distance(
                     vertices.row(ea), vertices.row(eb),
                     vertices.row(ec), vertices.row(ed)));
@@ -475,12 +478,34 @@ void HighOrderCollisions::build(
                     continue;
                 }
 
-                if (edge_edge_collisions.find(std::make_pair(ei, ej)) == edge_edge_collisions.end()) {
-                    edge_edge_collisions[std::make_pair(ei, ej)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ei, ej);
+                if (is_parallel_edge_edge(
+                    vertices.row(ea), vertices.row(eb),
+                    vertices.row(ec), vertices.row(ed))) {
+                    continue;
                 }
 
-                if (edge_edge_collisions.find(std::make_pair(ej, ei)) == edge_edge_collisions.end()) {
-                    edge_edge_collisions[std::make_pair(ej, ei)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ej, ei);
+                if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
+                    if (edge_edge_collisions.find(std::make_pair(ei, ej)) == edge_edge_collisions.end()) {
+                        edge_edge_collisions[std::make_pair(ei, ej)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ei, ej);
+                    }
+                }
+
+                if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
+                    if (edge_edge_collisions.find(std::make_pair(ej, ei)) == edge_edge_collisions.end()) {
+                        edge_edge_collisions[std::make_pair(ej, ei)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ej, ei);
+                    }
+                }
+
+                if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
+                    if (edge_edge_collisions_advanced.find(std::make_pair(ei, ej)) == edge_edge_collisions_advanced.end()) {
+                        edge_edge_collisions_advanced[std::make_pair(ei, ej)] = point_potential.build_collisions_at_edge_edge_closest_point_advanced(vertices, ei, ej);
+                    }
+                }
+
+                if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
+                    if (edge_edge_collisions_advanced.find(std::make_pair(ej, ei)) == edge_edge_collisions_advanced.end()) {
+                        edge_edge_collisions_advanced[std::make_pair(ej, ei)] = point_potential.build_collisions_at_edge_edge_closest_point_advanced(vertices, ej, ei);
+                    }
                 }
             }
 
@@ -523,7 +548,16 @@ void HighOrderCollisions::build(
 // ============================================================================
 size_t HighOrderCollisions::size() const { return collisions.size(); }
 bool HighOrderCollisions::empty() const { return collisions.empty() && triple_collisions.empty() && vertex_collisions.empty() && edge_edge_collisions.empty() && face_collisions.empty(); }
-void HighOrderCollisions::clear() { collisions.clear(); }
+void HighOrderCollisions::clear()
+{
+    collisions.clear();
+
+    triple_collisions.clear();
+
+    vertex_collisions.clear();
+    edge_edge_collisions.clear();
+    face_collisions.clear();
+}
 
 HighOrderCollision& HighOrderCollisions::operator[](size_t i)
 {
@@ -607,26 +641,48 @@ double HighOrderCollisions::compute_active_minimum_distance(
 {
     assert(vertices.rows() == mesh.num_vertices());
 
-    if (collisions.empty()) {
+    if (empty()) {
         return std::numeric_limits<double>::infinity();
     }
 
     tbb::enumerable_thread_specific<double> storage(
         std::numeric_limits<double>::infinity());
 
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, collisions.size()),
-        [&](tbb::blocked_range<size_t> r) {
-            double& local_min_dist = storage.local();
+    if (mesh.dim() == 2 || !use_quadrature) {
+        tbb::parallel_for(
+            tbb::blocked_range<size_t>(0, collisions.size()),
+            [&](tbb::blocked_range<size_t> r) {
+                double& local_min_dist = storage.local();
 
-            for (size_t i = r.begin(); i < r.end(); i++) {
-                const double dist = collisions[i]->compute_distance(vertices);
+                for (size_t i = r.begin(); i < r.end(); i++) {
+                    const double dist = collisions[i]->compute_distance(vertices);
 
-                if (collisions[i]->is_active() && dist < local_min_dist) {
-                    local_min_dist = dist;
+                    if (collisions[i]->is_active() && dist < local_min_dist) {
+                        local_min_dist = dist;
+                    }
                 }
+            });
+    }
+    else {
+        double min_dist = std::numeric_limits<double>::max();
+        for (const auto& map : vertex_collisions) {
+            for (const auto& cc : map.second) {
+                min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
             }
-        });
+        }
+        // for (const auto& map : face_collisions) {
+        //     for (const auto& cc : map.second) {
+        //         min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
+        //     }
+        // }
+        for (const auto& map : edge_edge_collisions) {
+            for (const auto& cc : map.second) {
+                min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
+            }
+        }
+
+        return min_dist;
+    }
 
     return storage.combine([](double a, double b) { return std::min(a, b); });
 }

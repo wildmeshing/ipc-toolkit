@@ -81,7 +81,7 @@ scalar half_edge_edge_mollifier(
               / db);
 
     scalar c = a * b;
-    return c;
+    return c * c;
 }
 
 template <typename scalar>

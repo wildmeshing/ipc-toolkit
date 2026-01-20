@@ -18,13 +18,13 @@ namespace ipc
             unordered_map<THash, std::shared_ptr<TCollision>>& collisions,
             std::shared_ptr<TCollision> collision)
         {
-            if (auto iter = collisions.find(collision->get_hash()); iter != collisions.end()) {
+            if (auto iter = collisions.find(collision->get_typed_hash()); iter != collisions.end()) {
                 iter->second->weight += collision->weight;
                 if (iter->second->weight == 0) {
                     collisions.erase(iter);
                 }
             } else {
-                collisions[collision->get_hash()] = collision;
+                collisions[collision->get_typed_hash()] = collision;
             }
         }
     }
@@ -43,12 +43,12 @@ namespace ipc
         point_potential = std::make_unique<PointPotential>(mesh, candidates, params);
     }
 
-    unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>
+    unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>
         PointPotential::build_collisions_at_vertex(
             const Eigen::MatrixXd& V,
             const index_t vid) const
     {
-        unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>> pairs;
+        unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>> pairs;
 
         const auto& v_set = candidates.vv_set(vid);
         const auto& e_set = candidates.ve_set(vid);
@@ -57,17 +57,19 @@ namespace ipc
         for (const auto& other_f : f_set) {
             if (std::shared_ptr<HighOrderCollision> pair = HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
                 FaceVertexCandidate(other_f, vid),
-                params, mesh, V); pair->is_active()) {
-                insert_pair(pairs, pair);
+                params, mesh, V)) {
+                if (pair->is_active())
+                    insert_pair(pairs, pair);
                 }
         }
 
         for (const auto& other_e : e_set) {
             if (std::shared_ptr<HighOrderCollision> pair = HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
                 EdgeVertexCandidate(other_e, vid),
-                params, mesh, V); pair->is_active()) {
+                params, mesh, V)) {
                 pair->weight = -1;
-                insert_pair(pairs, pair);
+                if (pair->is_active())
+                    insert_pair(pairs, pair);
                 }
         }
 
@@ -85,13 +87,17 @@ namespace ipc
 
 double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
             const Eigen::MatrixXd& V,
-            const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
             const HighOrderContactParameters& params)
 {
     double potential = 0;
     for (const auto& pair : collisions) {
         const auto& cc = pair.second;
         potential += cc->weight * (*cc)(cc->dof(V), params);
+    }
+
+    if (potential < -1e-8) {
+        logger().debug("vertex P(q) {} < 0!", potential);
     }
 
     return potential;
@@ -109,7 +115,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
 
     Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
         const Eigen::MatrixXd& V,
-        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
         const HighOrderContactParameters& params)
     {
         std::vector<Eigen::Triplet<double>> triplets;
@@ -132,7 +138,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
 
     Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
         const Eigen::MatrixXd& V,
-        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
         const HighOrderContactParameters& params)
     {
         std::vector<Eigen::Triplet<double>> triplets;
@@ -179,13 +185,13 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
         return PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(V, pairs, params);
     }
 
-    unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>
+    unordered_map<std::array<index_t, 4>, std::shared_ptr<TriplePairCollision>>
     PointPotential::build_collisions_at_edge_edge_closest_point(
         const Eigen::MatrixXd& V,
         const index_t e0,
         const index_t e1) const
     {
-        unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>> pairs;
+        unordered_map<std::array<index_t, 4>, std::shared_ptr<TriplePairCollision>> pairs;
 
         const auto& v_set = candidates.ev_set(e0);
         const auto& e_set = candidates.ee_set(e0);
@@ -200,25 +206,57 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
             V.row(e00), V.row(e01),
             V.row(e10), V.row(e11)
         );
-        if (dtype != EdgeEdgeDistanceType::EA_EB) {
-            log_and_throw_error("Can only handle edge-edge distance type!");
+
+        if (dtype != EdgeEdgeDistanceType::EA_EB && dtype != EdgeEdgeDistanceType::EA_EB0 && dtype != EdgeEdgeDistanceType::EA_EB1) {
+            log_and_throw_error("Can only handle EA_EB* distance type!");
+        }
+
+        if (is_parallel_edge_edge(V.row(e00), V.row(e01),
+            V.row(e10), V.row(e11))) {
+            log_and_throw_error("Cannot handle parallel edge!");
         }
 
         if (edge_edge_distance(V.row(e00), V.row(e01),
-                               V.row(e10), V.row(e11), dtype) >= params.dhat * params.dhat)
+                               V.row(e10), V.row(e11), dtype) >= params.dhat * params.dhat) {
             return pairs;
+        }
 
-        const Eigen::Vector2d closest_uvs = line_line_closest_point_pairs_uv<double>(
-            V.row(e00), V.row(e01),
-            V.row(e10), V.row(e11));
+        double closest_uv = 0;
+        if (dtype == EdgeEdgeDistanceType::EA_EB) {
+            closest_uv = line_line_closest_point_pairs_uv<double>(
+                V.row(e00), V.row(e01),
+                V.row(e10), V.row(e11))(0);
+        }
+        else if (dtype == EdgeEdgeDistanceType::EA_EB0) {
+            Eigen::RowVector3d p = V.row(e10);
+            Eigen::RowVector3d d = p - V.row(e00);
+            Eigen::RowVector3d t = V.row(e01) - V.row(e00);
+            closest_uv = t.dot(d) / t.squaredNorm();
+        }
+        else if (dtype == EdgeEdgeDistanceType::EA_EB1) {
+            Eigen::RowVector3d t = V.row(e01) - V.row(e00);
+            const double a = t.squaredNorm();
+            const double b = t.dot(V.row(e11) - V.row(e10));
+            const double d = t.dot(V.row(e00) - V.row(e10));
+            closest_uv = (-d + b) / a;
+        }
+        else
+            log_and_throw_error("Invalid dtype!");
 
-        if (!std::isfinite(closest_uvs.norm())) {
+        if (!std::isfinite(closest_uv)) {
             log_and_throw_error("Potentially parallel edges!");
         }
 
-        const Eigen::Vector3d q = closest_uvs(0) * (V.row(e01) - V.row(e00)) + V.row(e00);
+        bool for_debug = false;
+        if (closest_uv < 1e-15)
+            for_debug = true;
 
-        for (const auto& other_v : v_set) {
+        assert(closest_uv > 0);
+
+        const Eigen::Vector3d q = closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
+
+        // for (const auto& other_v : v_set) {
+        for (index_t other_v = 0; other_v < mesh.num_vertices(); ++other_v) {
             std::shared_ptr<TriplePairCollision> pair = std::make_shared<TriplePairCollisionTemplate<Edge3P1, Edge3P1, Vertex3>>(
                         e0, e1, other_v, mesh, params, params.dhat, V);
 
@@ -227,7 +265,11 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
             }
         }
 
-        for (const auto& other_e : e_set) {
+        // for (const auto& other_e : e_set) {
+        for (index_t other_e = 0; other_e < mesh.num_edges(); ++other_e) {
+            if (other_e == e0)
+                continue;
+
             auto pair = std::make_shared<TriplePairCollisionTemplate<Edge3P1, Edge3P1, Edge3P1>>(
                         e0, e1, other_e, mesh, params, params.dhat, V);
 
@@ -264,7 +306,11 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
             }
         }
 
-        for (const auto& other_f : f_set) {
+        // for (const auto& other_f : f_set) {
+        for (index_t other_f = 0; other_f < mesh.num_faces(); ++other_f) {
+            if (mesh.edges_to_faces()(e0, 0) == other_f || mesh.edges_to_faces()(e0, 1) == other_f)
+                continue;
+
             auto pair = std::make_shared<TriplePairCollisionTemplate<Edge3P1, Edge3P1, Face3P1>>(
                         e0, e1, other_f, mesh, params, params.dhat, V);
 
@@ -323,19 +369,233 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
             }
         }
 
+        if (for_debug) {
+            logger().debug("edge-edge collision P(q) terms for q {} size is {} between edge {} {} and {} {}", closest_uv, pairs.size(), e00, e01, e10, e11);
+            for (const auto& pair : pairs) {
+                const auto& cc = *(pair.second);
+                logger().debug("name {}, id {}, w {}, distance {}", cc.name(), cc[1], cc.weight, sqrt(cc.compute_distance(V)));
+            }
+        }
+
+        return pairs;
+    }
+
+    unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>
+    PointPotential::build_collisions_at_edge_edge_closest_point_advanced(
+        const Eigen::MatrixXd& V,
+        const index_t e0,
+        const index_t e1) const
+    {
+        unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>> pairs;
+
+        const auto& v_set = candidates.ev_set(e0);
+        const auto& e_set = candidates.ee_set(e0);
+        const auto& f_set = candidates.ef_set(e0);
+
+        // Compute closest point
+        const index_t e00 = mesh.edges()(e0, 0);
+        const index_t e01 = mesh.edges()(e0, 1);
+        const index_t e10 = mesh.edges()(e1, 0);
+        const index_t e11 = mesh.edges()(e1, 1);
+        const EdgeEdgeDistanceType dtype = edge_edge_distance_type(
+            V.row(e00), V.row(e01),
+            V.row(e10), V.row(e11)
+        );
+        if (dtype != EdgeEdgeDistanceType::EA_EB && dtype != EdgeEdgeDistanceType::EA_EB0 && dtype != EdgeEdgeDistanceType::EA_EB1) {
+            log_and_throw_error("Can only handle EA_EB* distance type!");
+        }
+
+        if (is_parallel_edge_edge(V.row(e00), V.row(e01),
+            V.row(e10), V.row(e11))) {
+            log_and_throw_error("Cannot handle parallel edge!");
+        }
+
+        if (edge_edge_distance(V.row(e00), V.row(e01),
+                               V.row(e10), V.row(e11), dtype) >= params.dhat * params.dhat) {
+            return pairs;
+        }
+
+        double closest_uv = 0;
+        if (dtype == EdgeEdgeDistanceType::EA_EB) {
+            closest_uv = line_line_closest_point_pairs_uv<double>(
+                V.row(e00), V.row(e01),
+                V.row(e10), V.row(e11))(0);
+        }
+        else if (dtype == EdgeEdgeDistanceType::EA_EB0) {
+            Eigen::RowVector3d p = V.row(e10);
+            Eigen::RowVector3d d = p - V.row(e00);
+            Eigen::RowVector3d t = V.row(e01) - V.row(e00);
+            closest_uv = d.dot(t) / t.squaredNorm();
+        }
+        else if (dtype == EdgeEdgeDistanceType::EA_EB1) {
+            Eigen::RowVector3d p = V.row(e11);
+            Eigen::RowVector3d d = p - V.row(e00);
+            Eigen::RowVector3d t = V.row(e01) - V.row(e00);
+            closest_uv = d.dot(t) / t.squaredNorm();
+        }
+        else
+            log_and_throw_error("Invalid dtype!");
+
+        if (!std::isfinite(closest_uv)) {
+            log_and_throw_error("Potentially parallel edges!");
+        }
+
+        const index_t vid = V.rows();
+
+        Eigen::MatrixXd V_(V.rows() + 1, 3);
+        V_.topRows(V.rows()) = V;
+        V_.row(vid) = closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
+
+        // for (const auto& other_v : v_set) {
+        for (index_t other_v = 0; other_v < mesh.num_vertices(); ++other_v) {
+            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                        vid, other_v, mesh, params, params.dhat, V_);
+
+            if (pair->is_active()) {
+                insert_pair(pairs, pair);
+            }
+        }
+
+        // for (const auto& other_e : e_set) {
+        for (index_t other_e = 0; other_e < mesh.num_edges(); ++other_e) {
+            if (other_e == e0)
+                continue;
+
+            auto pair = std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
+                        other_e, vid, mesh, params, params.dhat, V_);
+
+            if (!pair->is_active()) {
+                continue;
+            }
+
+            auto dtype2 = point_edge_distance_type(V_.row(vid), V_.row(mesh.edges()(other_e, 0)), V_.row(mesh.edges()(other_e, 1)));
+
+            switch (dtype2) {
+            case PointEdgeDistanceType::P_E0:
+                {
+                    std::shared_ptr<HighOrderCollision> pair2 = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                            vid, mesh.edges()(other_e, 0), mesh, params, params.dhat, V_);
+                    pair2->weight = -1;
+                    insert_pair(pairs, pair2);
+                    break;
+                }
+            case PointEdgeDistanceType::P_E1:
+                {
+                    std::shared_ptr<HighOrderCollision> pair2 = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                            vid, mesh.edges()(other_e, 1), mesh, params, params.dhat, V_);
+                    pair2->weight = -1;
+                    insert_pair(pairs, pair2);
+                    break;
+                }
+            case PointEdgeDistanceType::P_E:
+                {
+                    pair->weight = -1;
+                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+                    break;
+                }
+            default:
+                assert(false);
+                break;
+            }
+        }
+
+        // for (const auto& other_f : f_set) {
+        for (index_t other_f = 0; other_f < mesh.num_faces(); ++other_f) {
+            if (mesh.edges_to_faces()(e0, 0) == other_f || mesh.edges_to_faces()(e0, 1) == other_f)
+                continue;
+
+            auto pair = std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(
+                        other_f, vid, mesh, params, params.dhat, V_);
+
+            if (!pair->is_active()) {
+                continue;
+            }
+
+            auto dtype2 = point_triangle_distance_type(V_.row(vid), V_.row(mesh.faces()(other_f, 0)), V_.row(mesh.faces()(other_f, 1)), V_.row(mesh.faces()(other_f, 2)));
+
+            switch (dtype2) {
+            case PointTriangleDistanceType::P_T0:
+                {
+                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                        vid, mesh.faces()(other_f, 0), mesh, params, params.dhat, V_)));
+                    break;
+                }
+            case PointTriangleDistanceType::P_T1:
+                {
+                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                        vid, mesh.faces()(other_f, 1), mesh, params, params.dhat, V_)));
+                    break;
+                }
+            case PointTriangleDistanceType::P_T2:
+                {
+                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                        vid, mesh.faces()(other_f, 2), mesh, params, params.dhat, V_)));
+                    break;
+                }
+            case PointTriangleDistanceType::P_E0:
+                {
+                    insert_pair(pairs,
+                        std::shared_ptr<HighOrderCollision>(std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
+                            mesh.faces_to_edges()(other_f, 0), vid, mesh, params, params.dhat, V_)));
+                    break;
+                }
+            case PointTriangleDistanceType::P_E1:
+                {
+                    insert_pair(pairs,
+                        std::shared_ptr<HighOrderCollision>(std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
+                            mesh.faces_to_edges()(other_f, 1), vid, mesh, params, params.dhat, V_)));
+                    break;
+                }
+            case PointTriangleDistanceType::P_E2:
+                {
+                    insert_pair(pairs,
+                        std::shared_ptr<HighOrderCollision>(std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
+                            mesh.faces_to_edges()(other_f, 2), vid, mesh, params, params.dhat, V_)));
+                    break;
+                }
+            case PointTriangleDistanceType::P_T:
+                {
+                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+                    break;
+                }
+            default:
+                assert(false);
+                break;
+            }
+        }
+
         return pairs;
     }
 
     double PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+        const Eigen::MatrixXd& V_extended,
+        const unordered_map<std::array<index_t, 4>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const HighOrderContactParameters& params)
+    {
+        double potential = 0;
+        for (const auto& pair : collisions) {
+            const auto& cc = pair.second;
+            double term = (*cc)(cc->dof(V_extended), params);
+            assert(std::isfinite(term));
+            potential += cc->weight * term;
+        }
+
+        if (potential < -1e-8) {
+            logger().debug("edge-edge P(q) {} < 0!", potential);
+        }
+
+        return potential;
+    }
+
+    double PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
         const Eigen::MatrixXd& V,
-        const unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>& collisions,
+        const unordered_map<std::array<index_t, 4>, std::shared_ptr<TriplePairCollision>>& collisions,
         const HighOrderContactParameters& params)
     {
         double potential = 0;
         for (const auto& pair : collisions) {
             const auto& cc = pair.second;
             double term = (*cc)(cc->dof(V), params);
-            assert(std::isfinite(term));
             potential += cc->weight * term;
         }
 
@@ -355,7 +615,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
 
     Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
             const Eigen::MatrixXd& V,
-            const unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>& collisions,
+            const unordered_map<std::array<index_t, 4>, std::shared_ptr<TriplePairCollision>>& collisions,
             const HighOrderContactParameters& params)
     {
         std::vector<Eigen::Triplet<double>> triplets;
@@ -375,9 +635,137 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
         return grad;
     }
 
+    Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
+            const Eigen::MatrixXd& V_extended,
+            const unordered_map<std::array<index_t, 4>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const HighOrderContactParameters& params,
+            Eigen::ConstRef<Eigen::Vector4i> vids,
+            const Eigen::Vector3<ADGrad<12>>& q)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        std::vector<Eigen::Triplet<double>> triplets;
+        for (const auto& pair : collisions) {
+            const auto& cc = pair.second;
+            Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V_extended), params);
+            for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+                const index_t global_id = cc->vertex_ids()[i];
+                if (global_id == n_real_vertices) {
+                    const Vector12d local_grad = (q(0) * g(3 * i + 0) + q(1) * g(3 * i + 1) + q(2) * g(3 * i + 2)).grad;
+                    // distribute grad wrt virtual vertex to real edge vertices
+                    for (index_t lv = 0; lv < 4; lv++) {
+                        for (index_t d = 0; d < 3; d++) {
+                            triplets.emplace_back(vids[lv] * 3 + d, 0, local_grad(lv * 3 + d));
+                        }
+                    }
+                }
+                else {
+                    assert(global_id < n_real_vertices);
+                    for (index_t d = 0; d < 3; d++) {
+                        triplets.emplace_back(3 * cc->vertex_ids()[i] + d, 0, g(3 * i + d));
+                    }
+                }
+            }
+        }
+
+        Eigen::SparseMatrix<double> grad(n_real_vertices * 3, 1);
+        grad.setFromTriplets(triplets.begin(), triplets.end());
+
+        return grad;
+    }
+
+    // Eigen::SparseMatrix<double> evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
+    //     const Eigen::MatrixXd& V_extended,
+    //     const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
+    //     const HighOrderContactParameters& params,
+    //     Eigen::ConstRef<Eigen::Vector4i> vids,
+    //     const Eigen::Vector3<ADHessian<12>>& q)
+    // {
+    //     const index_t n_real_vertices = V_extended.rows() - 1;
+    //     std::vector<Eigen::Triplet<double>> triplets;
+    //     for (const auto& pair : collisions) {
+    //         const auto& cc = pair.second;
+    //         Eigen::MatrixXd h = cc->weight * cc->hessian(cc->dof(V_extended), params);
+    //         Eigen::MatrixXd g = cc->weight * cc->gradient(cc->dof(V_extended), params);
+    //
+    //         for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+    //             const index_t gi = cc->vertex_ids()[i];
+    //             for (index_t j = 0; j < cc->vertex_ids().size(); j++) {
+    //                 const index_t gj = cc->vertex_ids()[j];
+    //                 if (gi == n_real_vertices && gj == n_real_vertices) {
+    //                     assert(i == j);
+    //                     // distribute grad wrt virtual vertex to real edge vertices
+    //                     Matrix12d local_hess = Matrix12d::Zero();
+    //                     {
+    //                         Eigen::Matrix<double, 3, 12> tmp_g;
+    //                         tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
+    //                         local_hess += tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j) * tmp_g;
+    //
+    //                         for (int d = 0; d < 3; d++) {
+    //                             local_hess += q(d).Hess * g(3 * i + d);
+    //                         }
+    //                     }
+    //
+    //                     for (index_t di = 0; di < 3; di++) {
+    //                         for (index_t dj = 0; dj < 3; dj++) {
+    //                             for (index_t li = 0; li < 4; li++) {
+    //                                 for (index_t lj = 0; lj < 4; lj++) {
+    //                                     triplets.emplace_back(vids[li] * 3 + di, vids[lj] * 3 + dj, local_hess(3 * li + di, 3 * lj + dj));
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //                 else if (gi == n_real_vertices) {
+    //                     Eigen::Matrix<double, 12, 3> local_hess;
+    //                     local_hess.setZero();
+    //                     {
+    //                         Eigen::Matrix<double, 3, 12> tmp_g;
+    //                         tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
+    //                         local_hess += tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j);
+    //
+    //                         for (int d = 0; d < 3; d++) {
+    //                             local_hess += q(d).Hess * g(3 * i + d);
+    //                         }
+    //                     }
+    //                     // for (index_t di = 0; di < 3; di++) {
+    //                     //     for (index_t dj = 0; dj < 3; dj++) {
+    //                     //         for (index_t li = 0; li < 3; li++) {
+    //                     //             triplets.emplace_back(vids[li] * 3 + di, gj * 3 + dj, h(3 * i + di, 3 * j + dj) / 3.);
+    //                     //         }
+    //                     //     }
+    //                     // }
+    //                 }
+    //                 else if (gj == n_real_vertices) {
+    //                     // for (index_t di = 0; di < 3; di++) {
+    //                     //     for (index_t dj = 0; dj < 3; dj++) {
+    //                     //         for (index_t lj = 0; lj < 3; lj++) {
+    //                     //             triplets.emplace_back(gi * 3 + di, vids[lj] * 3 + dj, h(3 * i + di, 3 * j + dj) / 3.);
+    //                     //         }
+    //                     //     }
+    //                     // }
+    //                 }
+    //                 else {
+    //                     assert(gi < n_real_vertices);
+    //                     assert(gj < n_real_vertices);
+    //                     for (index_t di = 0; di < 3; di++) {
+    //                         for (index_t dj = 0; dj < 3; dj++) {
+    //                             triplets.emplace_back(3 * gi + di, 3 * gj + dj, h(3 * i + di, 3 * j + dj));
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //    Eigen::SparseMatrix<double> hess(n_real_vertices * 3, n_real_vertices * 3);
+    //    hess.setFromTriplets(triplets.begin(), triplets.end());
+
+    //    return hess;
+    //}
+
     Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
             const Eigen::MatrixXd& V,
-            const unordered_map<std::array<index_t, 3>, std::shared_ptr<TriplePairCollision>>& collisions,
+            const unordered_map<std::array<index_t, 4>, std::shared_ptr<TriplePairCollision>>& collisions,
             const HighOrderContactParameters& params)
     {
         std::vector<Eigen::Triplet<double>> triplets;
@@ -424,7 +812,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
         return PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(V, pairs, params);
     }
 
-    unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>
+    unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>
     PointPotential::build_collisions_at_face_center(
         const Eigen::MatrixXd& V,
         const index_t fid) const
@@ -436,7 +824,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
         V_.topRows(V.rows()) = V;
         V_.row(vid) = (V.row(mesh.faces()(fid, 0)) + V.row(mesh.faces()(fid, 1)) + V.row(mesh.faces()(fid, 2))) / 3.;
 
-        unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>> pairs;
+        unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>> pairs;
 
         const auto& v_set = candidates.fv_set(fid);
         const auto& e_set = candidates.fe_set(fid);
@@ -475,7 +863,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
     Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
         const Eigen::MatrixXd& V_extended,
         Eigen::ConstRef<Eigen::Vector3<index_t>> vids,
-        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
         const HighOrderContactParameters& params)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
@@ -511,7 +899,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
     Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
         const Eigen::MatrixXd& V_extended,
         Eigen::ConstRef<Eigen::Vector3<index_t>> vids,
-        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
         const HighOrderContactParameters& params)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
@@ -614,13 +1002,17 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
 
     double PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
         const Eigen::MatrixXd& V_extended,
-        const unordered_map<std::pair<index_t, index_t>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
         const HighOrderContactParameters& params)
     {
         double potential = 0;
         for (const auto& pair : collisions) {
             const auto& cc = pair.second;
             potential += cc->weight * (*cc)(cc->dof(V_extended), params);
+        }
+
+        if (potential < -1e-8) {
+            logger().debug("face P(q) {} < 0!", potential);
         }
 
         return potential;
@@ -659,9 +1051,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
 
             const std::set<index_t> close_edges = candidates.ee_set(edge_id);
 
-            std::vector<EdgePairClosestPoint<double>> points = {
-                EdgePairClosestPoint(0.), EdgePairClosestPoint(1.)
-            };
+            std::vector<EdgePairClosestPoint<double>> points;
             for (index_t other_edge_id : close_edges) {
                 const index_t ec = mesh.edges()(other_edge_id, 0);
                 const index_t ed = mesh.edges()(other_edge_id, 1);
@@ -675,7 +1065,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
                     V.row(ea), V.row(eb),
                     V.row(ec), V.row(ed));
 
-                if (dtype != EdgeEdgeDistanceType::EA_EB) {
+                if (dtype != EdgeEdgeDistanceType::EA_EB && dtype != EdgeEdgeDistanceType::EA_EB0 && dtype != EdgeEdgeDistanceType::EA_EB1) {
                     continue;
                 }
 
@@ -693,81 +1083,63 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
                     continue;
                 }
 
-                Eigen::Vector<double, 2> closest_points_uv = line_line_closest_point_pairs_uv<double>(
-                    V.row(ea), V.row(eb),
-                    V.row(ec), V.row(ed));
+                double closest_uv = 0;
+                if (dtype == EdgeEdgeDistanceType::EA_EB) {
+                    closest_uv = line_line_closest_point_pairs_uv<double>(
+                        V.row(ea), V.row(eb),
+                        V.row(ec), V.row(ed))(0);
+                }
+                else if (dtype == EdgeEdgeDistanceType::EA_EB0) {
+                    Eigen::RowVector3d p = V.row(ec);
+                    Eigen::RowVector3d d = p - V.row(ea);
+                    Eigen::RowVector3d t = V.row(eb) - V.row(ea);
+                    closest_uv = d.dot(t) / t.squaredNorm();
+                }
+                else if (dtype == EdgeEdgeDistanceType::EA_EB1) {
+                    Eigen::RowVector3d p = V.row(ed);
+                    Eigen::RowVector3d d = p - V.row(ea);
+                    Eigen::RowVector3d t = V.row(eb) - V.row(ea);
+                    closest_uv = d.dot(t) / t.squaredNorm();
+                }
+                else
+                    log_and_throw_error("Invalid dtype!");
 
-                assert(closest_points_uv(0) > 0 && closest_points_uv(0) < 1);
-
-                std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
                 double mollifier = Math<double>::cubic_spline(dist / dhat) * 1.5;
-                mollifier *= edge_edge_mollifier<double>(
+                mollifier *= half_edge_edge_mollifier<double>(
                         V.row(ea), V.row(eb),
                         V.row(ec), V.row(ed),
-                        mtypes, dist * dist);
+                        dist * dist);
 
                 if (mollifier == 0) {
                     continue;
                 }
 
-                points.push_back(EdgePairClosestPoint(closest_points_uv(0), other_edge_id, mollifier));
+                points.push_back(EdgePairClosestPoint(closest_uv, other_edge_id, mollifier));
             }
 
-            // sort uv from small to large
-            std::sort(points.begin(), points.end(),
-                      [](const EdgePairClosestPoint<double>& a, const EdgePairClosestPoint<double>& b) {
-                          return a.uv0 < b.uv0;
-                      });
-
-            assert(points.front().uv0 == 0.);
-            assert(points.back().uv0 == 1.);
-
-            assert(points[0].beta == 0.);
-            assert(points.back().beta == 1.);
-
-            // fancy quadrature
-            // double norm_fac = 0.;
-            // for (index_t i = 0; i < points.size() - 1; i++) {
-            //     const auto& pts_a = points[i];
-            //     const auto& pts_b = points[i + 1];
-            //     norm_fac += (pts_b.beta - pts_a.beta) * (pts_b.uv0 * pts_b.mollifier + pts_a.uv0 * pts_a.mollifier);
-            // }
-            //
-            // for (auto& pts : points) {
-            //     pts.beta /= norm_fac;
-            // }
-
-            const double P_q_center = point_potential->evaluate_potential_at_face_center(V, face_id);
-
-            std::vector<double> P_q_i(points.size(), 0.0);
-            {
-                assert(points[0].uv0 == 0.);
-                P_q_i[0] = point_potential->evaluate_potential_at_vertex(
-                    V, mesh.edges()(edge_id, 0));
-            }
-            {
-                assert(points[P_q_i.size() - 1].uv0 == 1.);
-                P_q_i.back() = point_potential->evaluate_potential_at_vertex(
-                    V, mesh.edges()(edge_id, 1));
-            }
-            for (index_t i = 1; i < P_q_i.size() - 1; i++) {
+            double cur_val = 0.;
+            if (points.size() > 0) {
+                std::vector<double> P_q_i(points.size(), 0.0);
+                for (index_t i = 0; i < P_q_i.size(); i++) {
                     assert(points[i].uv0 < 1.);
                     assert(points[i].uv0 > 0.);
                     assert(points[i].e1 >= 0);
                     P_q_i[i] = point_potential->evaluate_potential_at_edge_edge_closest_point(
                         V, edge_id, points[i].e1);
+                }
+
+                for (index_t i = 0; i < P_q_i.size(); i++) {
+                    cur_val += P_q_i[i] * points[i].mollifier;
+                }
             }
 
-            double cur_val = 0.;
-            for (index_t i = 1; i < P_q_i.size() - 1; i++) {
-                cur_val += P_q_i[i] * points[i].mollifier;
-            }
+            // two vertices and face center do not need mollifier
+            cur_val += point_potential->evaluate_potential_at_vertex(
+                    V, mesh.edges()(edge_id, 0)) +
+                point_potential->evaluate_potential_at_vertex(
+                    V, mesh.edges()(edge_id, 1)) +
+                point_potential->evaluate_potential_at_face_center(V, face_id);
 
-            // two vertices do not need mollifier
-            cur_val += P_q_i[0] + P_q_i.back();
-            // cur_val += P_q_i[0] * (points[1].beta - points[0].beta) + P_q_i.back() * (points.back().beta - points[points.size() - 2].beta);
-
-            cur_val += P_q_center;
             total += cur_val * area / 9.;
         }
 
@@ -791,9 +1163,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
 
             using T = ADGrad<12>;
 
-            std::vector<EdgePairClosestPoint<T>> points = {
-                EdgePairClosestPoint(T(0.)), EdgePairClosestPoint(T(1.))
-            };
+            std::vector<EdgePairClosestPoint<T>> points;
             for (index_t other_edge_id : close_edges) {
                 const index_t ec = mesh.edges()(other_edge_id, 0);
                 const index_t ed = mesh.edges()(other_edge_id, 1);
@@ -812,7 +1182,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
                     V.row(ea), V.row(eb),
                     V.row(ec), V.row(ed));
 
-                if (dtype != EdgeEdgeDistanceType::EA_EB) {
+                if (dtype != EdgeEdgeDistanceType::EA_EB && dtype != EdgeEdgeDistanceType::EA_EB0 && dtype != EdgeEdgeDistanceType::EA_EB1) {
                     continue;
                 }
 
@@ -822,99 +1192,84 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
                     continue;
                 }
 
-                const T dist = sqrt(line_line_sqr_distance<T>(
+                const T dist = sqrt(edge_edge_sqr_distance<T>(
                     positionsT.row(0), positionsT.row(1),
-                    positionsT.row(2), positionsT.row(3)));
+                    positionsT.row(2), positionsT.row(3), dtype));
 
                 if (dist >= dhat) {
                     continue;
                 }
 
-                Eigen::Vector<T, 2> closest_points_uv = line_line_closest_point_pairs_uv<T>(
+                T closest_uv = 0;
+                if (dtype == EdgeEdgeDistanceType::EA_EB) {
+                    closest_uv = line_line_closest_point_pairs_uv<T>(
                     positionsT.row(0), positionsT.row(1),
-                    positionsT.row(2), positionsT.row(3));
+                    positionsT.row(2), positionsT.row(3))(0);
+                }
+                else if (dtype == EdgeEdgeDistanceType::EA_EB0) {
+                    Eigen::RowVector3<T> p = positionsT.row(2);
+                    Eigen::RowVector3<T> d = p - positionsT.row(0);
+                    Eigen::RowVector3<T> t = positionsT.row(1) - positionsT.row(0);
+                    closest_uv = d.dot(t) / t.squaredNorm();
+                }
+                else if (dtype == EdgeEdgeDistanceType::EA_EB1) {
+                    Eigen::RowVector3<T> p = positionsT.row(2);
+                    Eigen::RowVector3<T> d = p - positionsT.row(0);
+                    Eigen::RowVector3<T> t = positionsT.row(1) - positionsT.row(0);
+                    closest_uv = d.dot(t) / t.squaredNorm();
+                }
+                else
+                    log_and_throw_error("Invalid dtype!");
 
-                std::array<HeavisideType, 4> mtypes{{HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT, HeavisideType::VARIANT}};
                 T mollifier = Math<T>::cubic_spline(dist / dhat) * 1.5;
-                mollifier *= edge_edge_mollifier<T>(
+                mollifier *= half_edge_edge_mollifier<T>(
                 positionsT.row(0), positionsT.row(1),
                 positionsT.row(2), positionsT.row(3),
-                        mtypes, dist * dist);
+                        dist * dist);
 
                 if (mollifier == 0.) {
                     continue;
                 }
 
-                points.push_back(EdgePairClosestPoint<T>(closest_points_uv(0), other_edge_id, mollifier));
+                points.push_back(EdgePairClosestPoint<T>(closest_uv, other_edge_id, mollifier));
             }
 
-            // sort uv from small to large
-            std::sort(points.begin(), points.end(),
-                      [](const EdgePairClosestPoint<T>& a, const EdgePairClosestPoint<T>& b) {
-                          return a.uv0.val < b.uv0.val;
-                      });
+            Eigen::SparseMatrix<double> cur_grad(V.size(), 1);
+            if (points.size() > 0) {
+                std::vector<double> P_q_i_values(points.size());
+                std::vector<Eigen::SparseMatrix<double>> P_q_i_grad(points.size());
 
-            // fancy quadrature
-            // double norm_fac = 0.;
-            // for (index_t i = 0; i < points.size() - 1; i++) {
-            //     const auto& pts_a = points[i];
-            //     const auto& pts_b = points[i + 1];
-            //     norm_fac += (pts_b.beta - pts_a.beta) * (pts_b.uv0 * pts_b.mollifier + pts_a.uv0 * pts_a.mollifier);
-            // }
-            //
-            // for (auto& pts : points) {
-            //     pts.beta /= norm_fac;
-            // }
+                for (index_t i = 0; i < P_q_i_grad.size(); i++) {
+                        assert(points[i].uv0 < 1.);
+                        assert(points[i].uv0 > 0.);
+                        assert(points[i].e1 >= 0);
+                        P_q_i_grad[i] = point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
+                            V, edge_id, points[i].e1);
+                        P_q_i_values[i] = point_potential->evaluate_potential_at_edge_edge_closest_point(
+                            V, edge_id, points[i].e1);
+                }
 
-            auto P_q_center_grad = point_potential->evaluate_potential_gradient_at_face_center(V, face_id);
-            assert(P_q_center_grad.cols() == 1 && P_q_center_grad.rows() == V.size());
+                for (index_t i = 0; i < P_q_i_grad.size(); i++) {
+                    cur_grad += P_q_i_grad[i] * points[i].mollifier.val;
 
-            std::vector<double> P_q_i_values(points.size());
-            std::vector<Eigen::SparseMatrix<double>> P_q_i_grad(points.size());
-            {
-                assert(points[0].uv0 == 0.);
-                P_q_i_grad[0] = point_potential->evaluate_potential_gradient_at_vertex(
-                    V, mesh.edges()(edge_id, 0));
-                P_q_i_values[0] = point_potential->evaluate_potential_at_vertex(
-                    V, mesh.edges()(edge_id, 0));
-            }
-            {
-                assert(points[P_q_i_grad.size() - 1].uv0 == 1.);
-                P_q_i_grad.back() = point_potential->evaluate_potential_gradient_at_vertex(
-                    V, mesh.edges()(edge_id, 1));
-                P_q_i_values.back() = point_potential->evaluate_potential_at_vertex(
-                    V, mesh.edges()(edge_id, 1));
-            }
-            for (index_t i = 1; i < P_q_i_grad.size() - 1; i++) {
-                    assert(points[i].uv0 < 1.);
-                    assert(points[i].uv0 > 0.);
-                    assert(points[i].e1 >= 0);
-                    P_q_i_grad[i] = point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
-                        V, edge_id, points[i].e1);
-                    P_q_i_values[i] = point_potential->evaluate_potential_at_edge_edge_closest_point(
-                        V, edge_id, points[i].e1);
-            }
+                    Vector12d cur_grad_2 = P_q_i_values[i] * points[i].mollifier.grad;
+                    for (int d = 0; d < 3; d++) {
+                        cur_grad.coeffRef(ea * 3 + d, 0) += cur_grad_2(d + 0);
+                        cur_grad.coeffRef(eb * 3 + d, 0) += cur_grad_2(d + 3);
 
-            Eigen::SparseMatrix<double> cur_grad(P_q_i_grad[0].rows(), P_q_i_grad[0].cols());
-            for (index_t i = 1; i < P_q_i_grad.size() - 1; i++) {
-                cur_grad += P_q_i_grad[i] * points[i].mollifier.val;
-
-                Vector12d cur_grad_2 = P_q_i_values[i] * points[i].mollifier.grad;
-                for (int d = 0; d < 3; d++) {
-                    cur_grad.coeffRef(ea * 3 + d, 0) += cur_grad_2(d + 0);
-                    cur_grad.coeffRef(eb * 3 + d, 0) += cur_grad_2(d + 3);
-
-                    cur_grad.coeffRef(mesh.edges()(points[i].e1, 0) * 3 + d, 0) += cur_grad_2(d + 6);
-                    cur_grad.coeffRef(mesh.edges()(points[i].e1, 1) * 3 + d, 0) += cur_grad_2(d + 9);
+                        cur_grad.coeffRef(mesh.edges()(points[i].e1, 0) * 3 + d, 0) += cur_grad_2(d + 6);
+                        cur_grad.coeffRef(mesh.edges()(points[i].e1, 1) * 3 + d, 0) += cur_grad_2(d + 9);
+                    }
                 }
             }
 
-
             // two vertices do not need mollifier
-            cur_grad += P_q_i_grad[0] + P_q_i_grad.back();
-            // cur_grad += P_q_i[0] * (points[1].beta - points[0].beta) + P_q_i.back() * (points.back().beta - points[points.size() - 2].beta);
+            cur_grad += point_potential->evaluate_potential_gradient_at_vertex(
+                        V, mesh.edges()(edge_id, 0)) +
+                    point_potential->evaluate_potential_gradient_at_vertex(
+                        V, mesh.edges()(edge_id, 1)) +
+                    point_potential->evaluate_potential_gradient_at_face_center(V, face_id);
 
-            cur_grad += P_q_center_grad;
             grad += cur_grad * (area / 9.);
         }
 
