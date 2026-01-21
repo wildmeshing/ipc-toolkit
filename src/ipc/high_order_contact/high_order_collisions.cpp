@@ -217,6 +217,9 @@ void HighOrderCollisions::build(
     };
 
     if (mesh.dim() == 2) {
+        if (use_adaptive_dhat) {
+            log_and_throw_error("Adaptive dhat with exact cancellation is not implemented!");
+        }
         auto storage = create_thread_storage<HighOrderCollisionsBuilder<2>>(
             HighOrderCollisionsBuilder<2>());
         maybe_parallel_for(

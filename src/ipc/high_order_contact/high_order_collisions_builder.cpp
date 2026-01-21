@@ -63,58 +63,51 @@ void HighOrderCollisionsBuilder<2>::add_edge_vertex_collisions(
     const size_t start_i,
     const size_t end_i)
 {
+    if (params.quad_points == 0) throw std::logic_error("Vertex integration temporarily removed");
+    const double dhat = params.dhat;
+    const double dhat2 = dhat * dhat;
+
+    // go over EV candidates and add those with nonzero potential.
     for (size_t i = start_i; i < end_i; i++) {
         const auto& [ei, vi] = candidates[i];
-		const PointEdgeDistanceType pe_dtype = point_edge_distance_type(
-			vertices.row(vi), vertices.row(mesh.edges()(ei, 0)),
-			vertices.row(mesh.edges()(ei, 1)));
+        const auto &v = vertices.row(vi);
+        const auto &ei0 = vertices.row(mesh.edges()(ei, 0));
+        const auto &ei1 = vertices.row(mesh.edges()(ei, 1));
+        const double d2 = point_edge_distance(v, ei0, ei1, point_edge_distance_type(v, ei0, ei1));
+        if (d2 < dhat2) add_collision(
+            std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
+                ei, vi, mesh, params, dhat, vertices),
+            vert_edge_2_to_id, collisions
+        );
+    }
 
-        const double distance_sqr = point_edge_distance(
-            vertices.row(vi), vertices.row(mesh.edges()(ei, 0)),
-            vertices.row(mesh.edges()(ei, 1)), pe_dtype);
-        assert(distance_sqr >= 0);
-        const double dhat_EV = std::min(vert_dhat(vi), edge_dhat(ei));
-        if (distance_sqr < dhat_EV * dhat_EV) {
-            add_collision(
-                std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
-                    ei, vi, mesh, params, dhat_EV, vertices),
-                vert_edge_2_to_id, collisions);
-        }
-
-        // need to add EV pairs with endpoints
+    // add all EV collision pairs for adjacent vertices
+    for (size_t ei = 0; ei < mesh.num_edges(); ei++) {
         for (int j = 0; j < 2; j++) {
-            const index_t vj = mesh.edges()(ei, j);
+            const index_t vi = mesh.edges()(ei, j);
             add_collision(
                 std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
-                    ei, vj, mesh, params, dhat_EV, vertices),
-                vert_edge_2_to_id, collisions);
+                    ei, vi, mesh, params, dhat, vertices),
+                vert_edge_2_to_id, collisions
+            );
         }
+    }
 
-        if (params.quad_points == 0) {
-            // vertex-vertex
-            for (int j = 0; j < 2; j++) {
-                const index_t vj = mesh.edges()(ei, j);
-                const double dhat_VV = std::min(vert_dhat(vi), vert_dhat(vj));
-                if ((vertices.row(vi) - vertices.row(vj)).norm() < dhat_VV) {
-                    add_collision(
-                        std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(
-                            std::min(vi, vj), std::max(vi, vj), mesh, params,
-                            dhat_VV, vertices),
-                        vert_vert_2_to_id, collisions);
-                }
-            }
-        }
-        else {
-            // edge-edge
-            for (const index_t ej : mesh.vertices_to_edges()[vi]) {
-                const double dhat_EE = std::min(edge_dhat(ei), edge_dhat(ej));
+    // for each EV pair, add all EE pairs with edges including the vertex
+    for (const auto& [key, val] : vert_edge_2_to_id) {
+        const index_t ei = key.first;
+        const index_t vi = key.second;
+        const auto adj = mesh.vertices_to_edges()[vi];
+        assert(adj.size() == 2);
+        for (const index_t ej : adj) {
+            if (ei != ej) {
                 add_collision(
                     std::make_shared<HighOrderCollisionTemplate<Edge2P1, Edge2P1>>(
                         std::min<index_t>(ei, ej), std::max<index_t>(ei, ej),
-                        mesh, params, dhat_EE, vertices),
+                        mesh, params, dhat, vertices),
                     edge_edge_2_to_id, collisions);
             }
-		}
+        }
     }
 }
 
