@@ -299,8 +299,9 @@ TEST_CASE("Convergent Quadrature Edge Edge Hessian", "[high_order_potential]")
 
         V_extended.row(V.rows()) << q(0).val, q(1).val, q(2).val;
         auto collisions = potential.point_potential->build_collisions_at_edge_edge_closest_point_advanced(V, ee.edge0_id, ee.edge1_id);
-        Eigen::SparseMatrix<double> h2 = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
+        Eigen::MatrixXd h2 = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
             V_extended, collisions, params, vids, q) * mollifier;
+        h2 = h2(indices, indices).eval();
 
         REQUIRE((h2 - h).norm() < 1e-10 * std::max({h.norm(), h2.norm(), 1e-8}));
     }

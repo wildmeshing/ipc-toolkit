@@ -677,7 +677,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
          for (const auto& pair : collisions) {
              const auto& cc = pair.second;
              Eigen::MatrixXd h = cc->weight * cc->hessian(cc->dof(V_extended), params);
-             Eigen::MatrixXd g = cc->weight * cc->gradient(cc->dof(V_extended), params);
+             Eigen::VectorXd g = cc->weight * cc->gradient(cc->dof(V_extended), params);
 
              for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
                  const index_t gi = cc->vertex_ids()[i];
@@ -715,11 +715,11 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
                              tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
                              local_hess += tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j);
                          }
-                         for (index_t dj = 0; dj < 3; dj++) {
-                             for (index_t di = 0; di < 3; di++) {
-                                 for (index_t lj = 0; lj < 4; lj++) {
-                                     triplets.emplace_back(vids[lj] * 3 + dj, gi * 3 + di, h(3 * i + dj, 3 * j + di));
-                                     triplets.emplace_back(gi * 3 + di, vids[lj] * 3 + dj, h(3 * i + dj, 3 * j + di));
+                         for (index_t di = 0; di < 3; di++) {
+                             for (index_t dj = 0; dj < 3; dj++) {
+                                 for (index_t li = 0; li < 4; li++) {
+                                     triplets.emplace_back(vids[li] * 3 + di, gj * 3 + dj, local_hess(3 * li + di, dj));
+                                     triplets.emplace_back(gj * 3 + dj, vids[li] * 3 + di, local_hess(3 * li + di, dj));
                                  }
                              }
                          }
