@@ -313,7 +313,7 @@ TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential]")
                 return potential.evaluate_per_face(fd::unflatten(y_, 3), face_id);
             }, fg, fd::AccuracyOrder::SECOND, 1e-8);
 
-        Eigen::VectorXd g = ((Eigen::VectorXd)g_sparse)(indices);
+        Eigen::VectorXd g = static_cast<Eigen::VectorXd>(g_sparse)(indices);
 
         REQUIRE((g - fg).norm() < 1e-6 * std::max({g.norm(), fg.norm(), 1e-8}));
     }
@@ -361,6 +361,11 @@ TEST_CASE("Convergent Quadrature Edge Edge Gradient", "[high_order_potential]")
     const double dhat = 0.1;
     QuadraturePotential potential(mesh, V, dhat);
 
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    Eigen::MatrixXd V_extended(V.rows() + 1, V.cols());
+    V_extended.topRows(V.rows()) = V;
+
     for (const auto &ee : potential.point_potential->candidates.ee_candidates) {
         auto dtype = edge_edge_distance_type(
             V.row(mesh.edges()(ee.edge0_id, 0)),
@@ -395,6 +400,29 @@ TEST_CASE("Convergent Quadrature Edge Edge Gradient", "[high_order_potential]")
         fg *= mollifier;
 
         REQUIRE((g - fg).norm() < 2e-6 * std::max({g.norm(), fg.norm(), 1e-8}));
+
+        Eigen::Vector4i vids;
+        vids <<
+            mesh.edges()(ee.edge0_id, 0),
+            mesh.edges()(ee.edge0_id, 1),
+            mesh.edges()(ee.edge1_id, 0),
+            mesh.edges()(ee.edge1_id, 1);
+
+        using T = ADGrad<12>;
+        Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(fd::flatten(V(vids, Eigen::all)));
+
+        Eigen::Vector3<T> q = line_line_closest_point_pairs<T>(
+            positionsT.row(0),
+            positionsT.row(1),
+            positionsT.row(2),
+            positionsT.row(3)).col(0);
+
+        V_extended.row(V.rows()) << q(0).val, q(1).val, q(2).val;
+        auto collisions = potential.point_potential->build_collisions_at_edge_edge_closest_point_advanced(V, ee.edge0_id, ee.edge1_id);
+        Eigen::SparseMatrix<double> g2 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
+            V_extended, collisions, params, vids, q) * mollifier;
+
+        REQUIRE((g2 - g).norm() < 1e-10 * std::max({g.norm(), g2.norm(), 1e-8}));
     }
 }
 

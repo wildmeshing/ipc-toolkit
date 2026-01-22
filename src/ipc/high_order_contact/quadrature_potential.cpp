@@ -637,7 +637,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
 
     Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
             const Eigen::MatrixXd& V_extended,
-            const unordered_map<std::array<index_t, 4>, std::shared_ptr<HighOrderCollision>>& collisions,
+            const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
             const HighOrderContactParameters& params,
             Eigen::ConstRef<Eigen::Vector4i> vids,
             const Eigen::Vector3<ADGrad<12>>& q)
