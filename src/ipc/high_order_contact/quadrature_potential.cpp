@@ -96,10 +96,6 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
         potential += cc->weight * (*cc)(cc->dof(V), params);
     }
 
-    if (potential < -1e-8) {
-        logger().debug("vertex P(q) {} < 0!", potential);
-    }
-
     return potential;
 }
 
@@ -569,7 +565,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
 
     double PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
         const Eigen::MatrixXd& V_extended,
-        const unordered_map<std::array<index_t, 4>, std::shared_ptr<HighOrderCollision>>& collisions,
+        const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
         const HighOrderContactParameters& params)
     {
         double potential = 0;
@@ -578,10 +574,6 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
             double term = (*cc)(cc->dof(V_extended), params);
             assert(std::isfinite(term));
             potential += cc->weight * term;
-        }
-
-        if (potential < -1e-8) {
-            logger().debug("edge-edge P(q) {} < 0!", potential);
         }
 
         return potential;
@@ -1009,10 +1001,6 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
         for (const auto& pair : collisions) {
             const auto& cc = pair.second;
             potential += cc->weight * (*cc)(cc->dof(V_extended), params);
-        }
-
-        if (potential < -1e-8) {
-            logger().debug("face P(q) {} < 0!", potential);
         }
 
         return potential;

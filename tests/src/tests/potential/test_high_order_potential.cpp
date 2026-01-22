@@ -423,6 +423,11 @@ TEST_CASE("Convergent Quadrature Edge Edge Gradient", "[high_order_potential]")
             V_extended, collisions, params, vids, q) * mollifier;
 
         REQUIRE((g2 - g).norm() < 1e-10 * std::max({g.norm(), g2.norm(), 1e-8}));
+
+        double x2 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+            V_extended, collisions, params) * mollifier;
+
+        REQUIRE(abs(x - x2) < 1e-10 * std::max({abs(x), abs(x2), 1e-8}));
     }
 }
 
