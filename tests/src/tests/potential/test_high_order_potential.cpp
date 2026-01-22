@@ -23,6 +23,112 @@
 
 using namespace ipc;
 
+// When the edge-edge closest point approaches the end points of the edge, the potential should converge to a finite number
+TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+
+    double epsilon = GENERATE(1e-3, 1e-4, 1e-6, 1e-12, 1e-16);
+    {
+        V.resize(8, 3);
+        V <<
+            0, 0, 0,
+            1, 0, 0,
+            0.5, -0.5, 1,
+            0.5, 0.5, 1,
+            epsilon, 0.5, -0.01,
+            epsilon, -0.5, -0.01,
+            epsilon + 0.5, 0, -1.01,
+            epsilon - 0.5, 0, -1.01;
+
+        F.resize(8, 3);
+        F <<
+            0, 1, 2,
+            0, 1, 3,
+            0, 2, 3,
+            1, 2, 3,
+            4, 5, 6,
+            4, 6, 7,
+            4, 5, 7,
+            5, 6, 7;
+
+        E.resize(12, 2);
+        E <<
+            0, 1,
+            0, 2,
+            0, 3,
+            1, 2,
+            1, 3,
+            2, 3,
+            4, 5,
+            4, 6,
+            4, 7,
+            5, 6,
+            5, 7,
+            6, 7;
+    }
+
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.1;
+    QuadraturePotential potential(mesh, V, dhat);
+
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    Eigen::MatrixXd V_extended(V.rows() + 1, V.cols());
+    V_extended.topRows(V.rows()) = V;
+
+    const index_t e0 = 0;
+    const index_t e1 = 6;
+
+    auto dtype = edge_edge_distance_type(
+        V.row(mesh.edges()(e0, 0)),
+        V.row(mesh.edges()(e0, 1)),
+        V.row(mesh.edges()(e1, 0)),
+        V.row(mesh.edges()(e1, 1)));
+
+    REQUIRE(dtype == EdgeEdgeDistanceType::EA_EB);
+
+    double mollifier = Math<double>::cubic_spline(sqrt(edge_edge_distance(
+        V.row(mesh.edges()(e0, 0)),
+        V.row(mesh.edges()(e0, 1)),
+        V.row(mesh.edges()(e1, 0)),
+        V.row(mesh.edges()(e1, 1)), dtype)) / dhat) * 1.5;
+
+    Eigen::Vector4i vids;
+    vids <<
+        mesh.edges()(e0, 0),
+        mesh.edges()(e0, 1),
+        mesh.edges()(e1, 0),
+        mesh.edges()(e1, 1);
+
+    using T = ADGrad<12>;
+    Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(fd::flatten(V(vids, Eigen::all)));
+
+    Eigen::Vector3<T> q = line_line_closest_point_pairs<T>(
+        positionsT.row(0),
+        positionsT.row(1),
+        positionsT.row(2),
+        positionsT.row(3)).col(0);
+
+    V_extended.row(V.rows()) << q(0).val, q(1).val, q(2).val;
+    auto collisions = potential.point_potential->build_collisions_at_edge_edge_closest_point_advanced(V, e0, e1);
+
+    Eigen::SparseMatrix<double> g = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
+        V_extended, collisions, params, vids, q);
+
+    double x = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+        V_extended, collisions, params);
+
+    // std::cout << V.row(0) << ", " << V_extended.bottomRows(1) << std::endl;
+    // std::cout << abs(x) << ", " << g.norm() << std::endl;
+
+    // These numbers can be changed as the formulation changes, but they shouldn't be extremely large
+    REQUIRE(abs(x) < 2);
+    REQUIRE(g.norm() < 200);
+}
+
 TEST_CASE("Convergent Quadrature Hessian Formal", "[high_order_potential]")
 {
     Eigen::MatrixXd V;
