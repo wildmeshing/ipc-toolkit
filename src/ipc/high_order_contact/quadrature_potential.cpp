@@ -665,95 +665,86 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
         return grad;
     }
 
-    // Eigen::SparseMatrix<double> evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
-    //     const Eigen::MatrixXd& V_extended,
-    //     const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
-    //     const HighOrderContactParameters& params,
-    //     Eigen::ConstRef<Eigen::Vector4i> vids,
-    //     const Eigen::Vector3<ADHessian<12>>& q)
-    // {
-    //     const index_t n_real_vertices = V_extended.rows() - 1;
-    //     std::vector<Eigen::Triplet<double>> triplets;
-    //     for (const auto& pair : collisions) {
-    //         const auto& cc = pair.second;
-    //         Eigen::MatrixXd h = cc->weight * cc->hessian(cc->dof(V_extended), params);
-    //         Eigen::MatrixXd g = cc->weight * cc->gradient(cc->dof(V_extended), params);
-    //
-    //         for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
-    //             const index_t gi = cc->vertex_ids()[i];
-    //             for (index_t j = 0; j < cc->vertex_ids().size(); j++) {
-    //                 const index_t gj = cc->vertex_ids()[j];
-    //                 if (gi == n_real_vertices && gj == n_real_vertices) {
-    //                     assert(i == j);
-    //                     // distribute grad wrt virtual vertex to real edge vertices
-    //                     Matrix12d local_hess = Matrix12d::Zero();
-    //                     {
-    //                         Eigen::Matrix<double, 3, 12> tmp_g;
-    //                         tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
-    //                         local_hess += tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j) * tmp_g;
-    //
-    //                         for (int d = 0; d < 3; d++) {
-    //                             local_hess += q(d).Hess * g(3 * i + d);
-    //                         }
-    //                     }
-    //
-    //                     for (index_t di = 0; di < 3; di++) {
-    //                         for (index_t dj = 0; dj < 3; dj++) {
-    //                             for (index_t li = 0; li < 4; li++) {
-    //                                 for (index_t lj = 0; lj < 4; lj++) {
-    //                                     triplets.emplace_back(vids[li] * 3 + di, vids[lj] * 3 + dj, local_hess(3 * li + di, 3 * lj + dj));
-    //                                 }
-    //                             }
-    //                         }
-    //                     }
-    //                 }
-    //                 else if (gi == n_real_vertices) {
-    //                     Eigen::Matrix<double, 12, 3> local_hess;
-    //                     local_hess.setZero();
-    //                     {
-    //                         Eigen::Matrix<double, 3, 12> tmp_g;
-    //                         tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
-    //                         local_hess += tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j);
-    //
-    //                         for (int d = 0; d < 3; d++) {
-    //                             local_hess += q(d).Hess * g(3 * i + d);
-    //                         }
-    //                     }
-    //                     // for (index_t di = 0; di < 3; di++) {
-    //                     //     for (index_t dj = 0; dj < 3; dj++) {
-    //                     //         for (index_t li = 0; li < 3; li++) {
-    //                     //             triplets.emplace_back(vids[li] * 3 + di, gj * 3 + dj, h(3 * i + di, 3 * j + dj) / 3.);
-    //                     //         }
-    //                     //     }
-    //                     // }
-    //                 }
-    //                 else if (gj == n_real_vertices) {
-    //                     // for (index_t di = 0; di < 3; di++) {
-    //                     //     for (index_t dj = 0; dj < 3; dj++) {
-    //                     //         for (index_t lj = 0; lj < 3; lj++) {
-    //                     //             triplets.emplace_back(gi * 3 + di, vids[lj] * 3 + dj, h(3 * i + di, 3 * j + dj) / 3.);
-    //                     //         }
-    //                     //     }
-    //                     // }
-    //                 }
-    //                 else {
-    //                     assert(gi < n_real_vertices);
-    //                     assert(gj < n_real_vertices);
-    //                     for (index_t di = 0; di < 3; di++) {
-    //                         for (index_t dj = 0; dj < 3; dj++) {
-    //                             triplets.emplace_back(3 * gi + di, 3 * gj + dj, h(3 * i + di, 3 * j + dj));
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
+     Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
+         const Eigen::MatrixXd& V_extended,
+         const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& collisions,
+         const HighOrderContactParameters& params,
+         Eigen::ConstRef<Eigen::Vector4i> vids,
+         const Eigen::Vector3<ADHessian<12>>& q)
+     {
+         const index_t n_real_vertices = V_extended.rows() - 1;
+         std::vector<Eigen::Triplet<double>> triplets;
+         for (const auto& pair : collisions) {
+             const auto& cc = pair.second;
+             Eigen::MatrixXd h = cc->weight * cc->hessian(cc->dof(V_extended), params);
+             Eigen::MatrixXd g = cc->weight * cc->gradient(cc->dof(V_extended), params);
 
-    //    Eigen::SparseMatrix<double> hess(n_real_vertices * 3, n_real_vertices * 3);
-    //    hess.setFromTriplets(triplets.begin(), triplets.end());
+             for (index_t i = 0; i < cc->vertex_ids().size(); i++) {
+                 const index_t gi = cc->vertex_ids()[i];
+                 for (index_t j = 0; j < cc->vertex_ids().size(); j++) {
+                     const index_t gj = cc->vertex_ids()[j];
+                     if (gi == n_real_vertices && gj == n_real_vertices) {
+                         assert(i == j);
+                         // distribute derivatives wrt virtual vertex to real edge vertices
+                         Matrix12d local_hess = Matrix12d::Zero();
+                         {
+                             Eigen::Matrix<double, 3, 12> tmp_g;
+                             tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
+                             local_hess += tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j) * tmp_g;
 
-    //    return hess;
-    //}
+                             for (int d = 0; d < 3; d++) {
+                                 local_hess += q(d).Hess * g(3 * i + d);
+                             }
+                         }
+
+                         for (index_t di = 0; di < 3; di++) {
+                             for (index_t dj = 0; dj < 3; dj++) {
+                                 for (index_t li = 0; li < 4; li++) {
+                                     for (index_t lj = 0; lj < 4; lj++) {
+                                         triplets.emplace_back(vids[li] * 3 + di, vids[lj] * 3 + dj, local_hess(3 * li + di, 3 * lj + dj));
+                                     }
+                                 }
+                             }
+                         }
+                     }
+                     else if (gi == n_real_vertices) {
+                         Eigen::Matrix<double, 12, 3> local_hess;
+                         local_hess.setZero();
+                         {
+                             Eigen::Matrix<double, 3, 12> tmp_g;
+                             tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
+                             local_hess += tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j);
+                         }
+                         for (index_t dj = 0; dj < 3; dj++) {
+                             for (index_t di = 0; di < 3; di++) {
+                                 for (index_t lj = 0; lj < 4; lj++) {
+                                     triplets.emplace_back(vids[lj] * 3 + dj, gi * 3 + di, h(3 * i + dj, 3 * j + di));
+                                     triplets.emplace_back(gi * 3 + di, vids[lj] * 3 + dj, h(3 * i + dj, 3 * j + di));
+                                 }
+                             }
+                         }
+                     }
+                     else if (gj == n_real_vertices) {
+                         // Already handled in (gi == n_real_vertices) case
+                     }
+                     else {
+                         assert(gi < n_real_vertices);
+                         assert(gj < n_real_vertices);
+                         for (index_t di = 0; di < 3; di++) {
+                             for (index_t dj = 0; dj < 3; dj++) {
+                                 triplets.emplace_back(3 * gi + di, 3 * gj + dj, h(3 * i + di, 3 * j + dj));
+                             }
+                         }
+                     }
+                 }
+             }
+         }
+
+        Eigen::SparseMatrix<double> hess(n_real_vertices * 3, n_real_vertices * 3);
+        hess.setFromTriplets(triplets.begin(), triplets.end());
+
+        return hess;
+    }
 
     Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
             const Eigen::MatrixXd& V,
