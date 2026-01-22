@@ -34,36 +34,50 @@ void OffsetCollisionsBuilder<2>::add_edge_vertex_collisions(
     const size_t start_i,
     const size_t end_i)
 {
+    const double dhat = params.dhat;
+    const double dhat2 = dhat * dhat;
+
+    // go over EV candidates and add those with nonzero potential.
     for (size_t i = start_i; i < end_i; i++) {
         const auto& [ei, vi] = candidates[i];
-        const double dhat_EV = std::min(vert_dhat(vi), edge_dhat(ei));
-		const PointEdgeDistanceType pe_dtype = point_edge_distance_type(
-			vertices.row(vi), vertices.row(mesh.edges()(ei, 0)),
-			vertices.row(mesh.edges()(ei, 1)));
+        const auto &v = vertices.row(vi);
+        const auto &ei0 = vertices.row(mesh.edges()(ei, 0));
+        const auto &ei1 = vertices.row(mesh.edges()(ei, 1));
+        const double d2 = point_edge_distance(v, ei0, ei1, point_edge_distance_type(v, ei0, ei1));
+        if (d2 < dhat2) add_collision(
+            std::make_shared<OffsetCollisionTemplate<ogcEdge2, ogcVert2>>(
+                ei, vi, mesh, params, dhat, vertices),
+            vert_edge_2_to_id, collisions
+        );
+    }
 
-        const double distance_sqr = point_edge_distance(
-            vertices.row(vi), vertices.row(mesh.edges()(ei, 0)),
-            vertices.row(mesh.edges()(ei, 1)), pe_dtype);
-        assert(distance_sqr >= 0);
-        if (distance_sqr < dhat_EV * dhat_EV) {
+    // add all EV collision pairs for adjacent vertices
+    /*for (size_t ei = 0; ei < mesh.num_edges(); ei++) {
+        for (int j = 0; j < 2; j++) {
+            const index_t vi = mesh.edges()(ei, j);
             add_collision(
                 std::make_shared<OffsetCollisionTemplate<ogcEdge2, ogcVert2>>(
-                    ei, vi, mesh, params, dhat_EV, vertices),
-                vert_edge_2_to_id, collisions);
+                    ei, vi, mesh, params, dhat, vertices),
+                vert_edge_2_to_id, collisions
+            );
         }
+    }*/
 
-		// vertex-vertex
-		for (int j = 0; j < 2; j++) {
-			const index_t vj = mesh.edges()(ei, j);
-            const double dhat_VV = std::min(vert_dhat(vi), vert_dhat(vj));
-			if ((vertices.row(vi) - vertices.row(vj)).norm() < dhat_VV) {
-				add_collision(
-					std::make_shared<OffsetCollisionTemplate<ogcVert2, ogcVert2>>(
-						std::min(vi, vj), std::max(vi, vj), mesh, params,
-						dhat_VV, vertices),
-					vert_vert_2_to_id, collisions);
-			}
-		}
+    // for each EV pair, add necessary VV pairs
+    for (const auto& [key, val] : vert_edge_2_to_id) {
+        const index_t ei = key.first;
+        const index_t vi = key.second;
+        for (int j = 0; j < 2; j++) {
+            const index_t vj = mesh.edges()(ei, j);
+            if (vi != vj && (vertices.row(vi) - vertices.row(vj)).squaredNorm() < dhat2) {
+                add_collision(
+                    std::make_shared<OffsetCollisionTemplate<ogcVert2, ogcVert2>>(
+                        std::min<index_t>(vi, vj), std::max<index_t>(vi, vj),
+                        mesh, params, dhat, vertices),
+                    vert_vert_2_to_id, collisions
+                );
+            }
+        }
     }
 }
 

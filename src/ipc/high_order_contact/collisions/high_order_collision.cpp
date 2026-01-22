@@ -367,12 +367,15 @@ namespace alternating_contact_potential {
     ) {
         const Eigen::Vector2<T> edge = e1 - e0;
         const T length = edge.norm();
+        if (length == 0) {
+            return (v0 - e0).norm();
+        }
         const Eigen::Vector2<T> tangent = edge / length;
         const Eigen::Vector2<T> vec = v0 - e0;
         const T proj = vec.dot(tangent);
 
-        if (proj < 0) return vec.norm();
-        if (proj > length) return (v0 - e1).norm();
+        if (proj <= 0) return vec.norm();
+        if (proj >= length) return (v0 - e1).norm();
 
         const Eigen::Vector2<T> normal(-tangent.y(), tangent.x());
         using namespace std;

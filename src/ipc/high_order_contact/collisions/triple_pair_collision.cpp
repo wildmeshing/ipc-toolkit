@@ -47,17 +47,17 @@ T closest_point_uv(Eigen::ConstRef<Vector<T, 12>> positions, EdgeEdgeDistanceTyp
 }
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
     TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::TriplePairCollisionTemplate(
-        index_t primitive0,
-        index_t primitive1,
-        index_t primitive2,
+        index_t primitive0_,
+        index_t primitive1_,
+        index_t primitive2_,
         const CollisionMesh& mesh,
         const HighOrderContactParameters& params,
         const double dhat,
         const Eigen::MatrixXd& V)
-        : TriplePairCollision(primitive0, primitive1, primitive2, dhat, mesh),
-          primitive_a(primitive0, mesh, V),
-          primitive_b(primitive1, mesh, V),
-          primitive_c(primitive2, mesh, V)
+        : TriplePairCollision(primitive0_, primitive1_, primitive2_, dhat, mesh),
+          primitive_a(primitive0_, mesh, V),
+          primitive_b(primitive1_, mesh, V),
+          primitive_c(primitive2_, mesh, V)
     {
         int i = 0;
         m_vertex_ids.assign(
@@ -94,7 +94,7 @@ T closest_point_uv(Eigen::ConstRef<Vector<T, 12>> positions, EdgeEdgeDistanceTyp
 
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
     template <typename T>
-    Eigen::Matrix<T, TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::DIM, 1> TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::closest_point_pair_a(Eigen::ConstRef<Vector<T, -1, ELEMENT_SIZE>> positions) const
+    auto TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::closest_point_pair_a(Eigen::ConstRef<Vector<T, -1, TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::ELEMENT_SIZE> > positions) const -> Eigen::Matrix<T, DIM, 1>
     {
         if (m_positions_init.size() > 0 && (m_positions_init - positions).array().abs().maxCoeff() > 0) {
             log_and_throw_error("Inconsistent positions wrt initialization!");
