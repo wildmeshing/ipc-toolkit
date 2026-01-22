@@ -273,7 +273,7 @@ TEST_CASE("Convergent Quadrature Edge Edge Hessian", "[high_order_potential]")
                 y_(indices) = y;
                 Eigen::VectorXd g = potential.point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
                     fd::unflatten(y_, 3), ee.edge0_id, ee.edge1_id);
-                return g(indices);
+                return g(indices).eval();
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
         fh *= mollifier;
 
