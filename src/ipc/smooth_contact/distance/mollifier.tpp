@@ -60,14 +60,39 @@ scalar edge_edge_mollifier(
     return a * b * c * d;
 }
 
+// template <typename scalar>
+// scalar half_edge_edge_mollifier(
+//     Eigen::ConstRef<Eigen::Vector3<scalar>> ea0,
+//     Eigen::ConstRef<Eigen::Vector3<scalar>> ea1,
+//     Eigen::ConstRef<Eigen::Vector3<scalar>> eb0,
+//     Eigen::ConstRef<Eigen::Vector3<scalar>> eb1,
+//     const scalar& dist_sqr)
+// {
+//     const scalar db = dist_sqr * MOLLIFIER_THRESHOLD_EPS;
+//     scalar a = Math<scalar>::mollifier(
+//               (PointEdgeDistance<scalar, 3>::point_edge_sqr_distance(
+//                    ea0, eb0, eb1)
+//                - dist_sqr)
+//               / db);
+//     scalar b = Math<scalar>::mollifier(
+//               (PointEdgeDistance<scalar, 3>::point_edge_sqr_distance(
+//                    ea1, eb0, eb1)
+//                - dist_sqr)
+//               / db);
+//
+//     scalar c = a * b;
+//     return c * c;
+// }
+
 template <typename scalar>
 scalar half_edge_edge_mollifier(
     Eigen::ConstRef<Eigen::Vector3<scalar>> ea0,
     Eigen::ConstRef<Eigen::Vector3<scalar>> ea1,
     Eigen::ConstRef<Eigen::Vector3<scalar>> eb0,
     Eigen::ConstRef<Eigen::Vector3<scalar>> eb1,
-    const scalar& dist_sqr)
+    EdgeEdgeDistanceType dtype)
 {
+    const scalar dist_sqr = edge_edge_sqr_distance(ea0, ea1, eb0, eb1, dtype);
     const scalar db = dist_sqr * MOLLIFIER_THRESHOLD_EPS;
     scalar a = Math<scalar>::mollifier(
               (PointEdgeDistance<scalar, 3>::point_edge_sqr_distance(
@@ -80,8 +105,12 @@ scalar half_edge_edge_mollifier(
                - dist_sqr)
               / db);
 
+    // scalar uv = closest_point_uv(ea0, ea1, eb0, eb1, dtype);
+    // scalar a = Math<scalar>::mollifier(uv / MOLLIFIER_THRESHOLD_EPS);
+    // scalar b = Math<scalar>::mollifier((1 - uv) / MOLLIFIER_THRESHOLD_EPS);
+
     scalar c = a * b;
-    return c * c;
+    return c;
 }
 
 template <typename scalar>

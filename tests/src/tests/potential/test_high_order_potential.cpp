@@ -90,12 +90,6 @@ TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential]")
 
     REQUIRE(dtype == EdgeEdgeDistanceType::EA_EB);
 
-    double mollifier = Math<double>::cubic_spline(sqrt(edge_edge_distance(
-        V.row(mesh.edges()(e0, 0)),
-        V.row(mesh.edges()(e0, 1)),
-        V.row(mesh.edges()(e1, 0)),
-        V.row(mesh.edges()(e1, 1)), dtype)) / dhat) * 1.5;
-
     Eigen::Vector4i vids;
     vids <<
         mesh.edges()(e0, 0),
@@ -255,10 +249,6 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
         Eigen::MatrixXd h = potential.point_potential->evaluate_potential_hessian_at_vertex(V, vid);
         h = h(indices, indices).eval();
 
-        if (abs(x) < 1e-12) {
-            continue;
-        }
-
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
             fd::flatten(V)(indices), [&](const Eigen::VectorXd& y) {
@@ -301,10 +291,6 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
         Eigen::MatrixXd h = potential.point_potential->evaluate_potential_hessian_at_face_center(V, fid);
         h = h(indices, indices).eval();
 
-        if (abs(x) < 1e-12) {
-            continue;
-        }
-
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
             fd::flatten(V)(indices), [&](const Eigen::VectorXd& y) {
@@ -341,21 +327,22 @@ TEST_CASE("Convergent Quadrature Edge Edge Hessian", "[high_order_potential]")
             V.row(mesh.edges()(ee.edge0_id, 1)),
             V.row(mesh.edges()(ee.edge1_id, 0)),
             V.row(mesh.edges()(ee.edge1_id, 1)));
-        if (dtype != EdgeEdgeDistanceType::EA_EB)
+        if (dtype != EdgeEdgeDistanceType::EA_EB && dtype != EdgeEdgeDistanceType::EA_EB1 && dtype != EdgeEdgeDistanceType::EA_EB0)
             continue;
 
         double mollifier = Math<double>::cubic_spline(sqrt(edge_edge_distance(
-            V.row(mesh.edges()(ee.edge0_id, 0)),
-            V.row(mesh.edges()(ee.edge0_id, 1)),
-            V.row(mesh.edges()(ee.edge1_id, 0)),
-            V.row(mesh.edges()(ee.edge1_id, 1)), dtype)) / dhat) * 1.5;
+                V.row(mesh.edges()(ee.edge0_id, 0)),
+                V.row(mesh.edges()(ee.edge0_id, 1)),
+                V.row(mesh.edges()(ee.edge1_id, 0)),
+                V.row(mesh.edges()(ee.edge1_id, 1)), dtype)) / dhat) * 1.5 *
+            half_edge_edge_mollifier<double>(
+                V.row(mesh.edges()(ee.edge0_id, 0)),
+                V.row(mesh.edges()(ee.edge0_id, 1)),
+                V.row(mesh.edges()(ee.edge1_id, 0)),
+                V.row(mesh.edges()(ee.edge1_id, 1)), dtype);
 
         double x = potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
             V, ee.edge0_id, ee.edge1_id) * mollifier;
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
 
         std::vector<int> indices;
         {
@@ -429,10 +416,6 @@ TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential]")
         double x = potential.evaluate_per_face(V, face_id);
         Eigen::SparseMatrix<double> g_sparse = potential.evaluate_per_face_gradient(V, face_id);
 
-        if (abs(x) < 1e-12) {
-            continue;
-        }
-
         std::vector<int> indices;
         for (index_t k = 0; k < g_sparse.outerSize(); ++k) {
             for (Eigen::SparseMatrix<double>::InnerIterator it(g_sparse, k); it; ++it) {
@@ -471,10 +454,6 @@ TEST_CASE("Convergent Quadrature Face Gradient", "[high_order_potential]")
         double x = potential.point_potential->evaluate_potential_at_face_center(V, fid);
         Eigen::VectorXd g = potential.point_potential->evaluate_potential_gradient_at_face_center(V, fid);
 
-        if (abs(x) < 1e-12) {
-            continue;
-        }
-
         Eigen::VectorXd fg;
         fd::finite_gradient(
             fd::flatten(V), [&](const Eigen::VectorXd& y) {
@@ -494,7 +473,7 @@ TEST_CASE("Convergent Quadrature Edge Edge Gradient", "[high_order_potential]")
     igl::edges(F, E);
     CollisionMesh mesh(V, E, F);
 
-    const double dhat = 0.1;
+    const double dhat = 0.15;
     QuadraturePotential potential(mesh, V, dhat);
 
     HighOrderContactParameters params(dhat, 0., 2, 0);
@@ -508,24 +487,32 @@ TEST_CASE("Convergent Quadrature Edge Edge Gradient", "[high_order_potential]")
             V.row(mesh.edges()(ee.edge0_id, 1)),
             V.row(mesh.edges()(ee.edge1_id, 0)),
             V.row(mesh.edges()(ee.edge1_id, 1)));
-        if (dtype != EdgeEdgeDistanceType::EA_EB)
+        if (dtype != EdgeEdgeDistanceType::EA_EB && dtype != EdgeEdgeDistanceType::EA_EB1 && dtype != EdgeEdgeDistanceType::EA_EB0) {
             continue;
+        }
+
+        if (is_parallel_edge_edge(V.row(mesh.edges()(ee.edge0_id, 0)),
+                                  V.row(mesh.edges()(ee.edge0_id, 1)),
+                                  V.row(mesh.edges()(ee.edge1_id, 0)),
+                                  V.row(mesh.edges()(ee.edge1_id, 1)))) {
+            continue;
+        }
 
         double mollifier = Math<double>::cubic_spline(sqrt(edge_edge_distance(
-            V.row(mesh.edges()(ee.edge0_id, 0)),
-            V.row(mesh.edges()(ee.edge0_id, 1)),
-            V.row(mesh.edges()(ee.edge1_id, 0)),
-            V.row(mesh.edges()(ee.edge1_id, 1)), dtype)) / dhat) * 1.5;
+                V.row(mesh.edges()(ee.edge0_id, 0)),
+                V.row(mesh.edges()(ee.edge0_id, 1)),
+                V.row(mesh.edges()(ee.edge1_id, 0)),
+                V.row(mesh.edges()(ee.edge1_id, 1)), dtype)) / dhat) * 1.5 *
+            half_edge_edge_mollifier<double>(V.row(mesh.edges()(ee.edge0_id, 0)),
+                                             V.row(mesh.edges()(ee.edge0_id, 1)),
+                                             V.row(mesh.edges()(ee.edge1_id, 0)),
+                                             V.row(mesh.edges()(ee.edge1_id, 1)), dtype);
 
         double x = potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
             V, ee.edge0_id, ee.edge1_id) * mollifier;
 
         Eigen::MatrixXd g = potential.point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
             V, ee.edge0_id, ee.edge1_id) * mollifier;
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
 
         Eigen::VectorXd fg;
         fd::finite_gradient(
@@ -547,16 +534,22 @@ TEST_CASE("Convergent Quadrature Edge Edge Gradient", "[high_order_potential]")
         using T = ADGrad<12>;
         Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(fd::flatten(V(vids, Eigen::all)));
 
-        Eigen::Vector3<T> q = line_line_closest_point_pairs<T>(
+        T uv = closest_point_uv<T>(
             positionsT.row(0),
             positionsT.row(1),
             positionsT.row(2),
-            positionsT.row(3)).col(0);
+            positionsT.row(3), dtype);
+        Eigen::Vector3<T> q = uv * (positionsT.row(1) - positionsT.row(0)) + positionsT.row(0);
 
         V_extended.row(V.rows()) << q(0).val, q(1).val, q(2).val;
         auto collisions = potential.point_potential->build_collisions_at_edge_edge_closest_point_advanced(V, ee.edge0_id, ee.edge1_id);
+
         Eigen::SparseMatrix<double> g2 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
             V_extended, collisions, params, vids, q) * mollifier;
+
+        if (abs(uv) < 1e-15) {
+            continue;
+        }
 
         REQUIRE((g2 - g).norm() < 1e-10 * std::max({g.norm(), g2.norm(), 1e-8}));
 
@@ -582,10 +575,6 @@ TEST_CASE("Convergent Quadrature Vertex Gradient", "[high_order_potential]")
     for (int vid = 0; vid < V.rows(); ++vid) {
         double x = potential.point_potential->evaluate_potential_at_vertex(V, vid);
         Eigen::VectorXd g = potential.point_potential->evaluate_potential_gradient_at_vertex(V, vid);
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
 
         Eigen::VectorXd fg;
         fd::finite_gradient(
@@ -663,7 +652,7 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential]")
                 V.row(mesh.edges()(e0, 0)),
                 V.row(mesh.edges()(e0, 1)),
                 V.row(mesh.edges()(e1, 0)),
-                V.row(mesh.edges()(e1, 1)), dist_sqr);
+                V.row(mesh.edges()(e1, 1)), dtype);
 
             double x = potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
                 V, e0, e1) * mollifier;

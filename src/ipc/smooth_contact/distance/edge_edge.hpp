@@ -175,4 +175,46 @@ Eigen::Matrix<T, 3, 2> edge_edge_closest_point_pairs(
     Eigen::ConstRef<Eigen::Vector3<T>> eb0,
     Eigen::ConstRef<Eigen::Vector3<T>> eb1,
     EdgeEdgeDistanceType dtype);
+
+// Compute the closest point local coordinate on edge (e0, e1) with respect to edge (e2, e3)
+// This function is written in a consistent way as the edge-edge distance type classification
+template <typename T>
+T closest_point_uv(
+    Eigen::ConstRef<Eigen::Vector3<T>> e0,
+    Eigen::ConstRef<Eigen::Vector3<T>> e1,
+    Eigen::ConstRef<Eigen::Vector3<T>> e2,
+    Eigen::ConstRef<Eigen::Vector3<T>> e3,
+    EdgeEdgeDistanceType dtype)
+{
+    Vector<T, 3> u = e1 - e0;
+    Vector<T, 3> v = e3 - e2;
+
+    T uv(0.);
+    if (dtype == EdgeEdgeDistanceType::EA_EB) {
+        Eigen::Vector2<T> uvs = line_line_closest_point_pairs_uv<T>(
+            e0, e1,
+            e2, e3);
+
+        uv = uvs(0);
+    }
+    else if (dtype == EdgeEdgeDistanceType::EA_EB0) {
+        const T a = u.squaredNorm();
+        const T d = u.dot(e0 - e2);
+        uv = (-d) / a;
+    }
+    else if (dtype == EdgeEdgeDistanceType::EA_EB1) {
+        const T a = u.squaredNorm();
+        const T b = u.dot(v);
+        const T d = u.dot(e0 - e2);
+        uv = (-d + b) / a;
+    }
+    else
+        log_and_throw_error("edge-edge dtype {} cannot handle!", static_cast<int>(dtype));
+
+    if (!(uv > 0 && uv < 1)) {
+        throw std::invalid_argument("Invalid uv!");
+    }
+
+    return uv;
+}
 } // namespace ipc

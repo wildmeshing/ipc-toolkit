@@ -365,7 +365,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
             }
         }
 
-        if (for_debug) {
+        if (for_debug && pairs.size() > 0) {
             logger().debug("edge-edge collision P(q) terms for q {} size is {} between edge {} {} and {} {}", closest_uv, pairs.size(), e00, e01, e10, e11);
             for (const auto& pair : pairs) {
                 const auto& cc = *(pair.second);
@@ -1087,7 +1087,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
                 mollifier *= half_edge_edge_mollifier<double>(
                         V.row(ea), V.row(eb),
                         V.row(ec), V.row(ed),
-                        dist * dist);
+                        dtype);
 
                 if (mollifier == 0) {
                     continue;
@@ -1204,7 +1204,7 @@ double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions
                 mollifier *= half_edge_edge_mollifier<T>(
                 positionsT.row(0), positionsT.row(1),
                 positionsT.row(2), positionsT.row(3),
-                        dist * dist);
+                        dtype);
 
                 if (mollifier == 0.) {
                     continue;

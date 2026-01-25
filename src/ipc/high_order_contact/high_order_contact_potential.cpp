@@ -93,7 +93,7 @@ double HighOrderContactPotential::operator()(
                             mollifier *= half_edge_edge_mollifier<double>(
                                     X.row(ea), X.row(eb),
                                     X.row(ec), X.row(ed),
-                                    dist * dist);
+                                    dtype);
 
                             local_potential += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
                         }
@@ -234,7 +234,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             mollifier *= half_edge_edge_mollifier<T>(
                                 positionsT.row(0), positionsT.row(1),
                                 positionsT.row(2), positionsT.row(3),
-                                    dist * dist);
+                                    dtype);
 
                             const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
                             const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
@@ -399,7 +399,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                             mollifier *= half_edge_edge_mollifier<T>(
                                 positionsT.row(0), positionsT.row(1),
                                 positionsT.row(2), positionsT.row(3),
-                                    dist * dist);
+                                    dtype);
 
                             const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
                             const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
