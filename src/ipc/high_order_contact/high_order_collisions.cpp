@@ -488,18 +488,6 @@ void HighOrderCollisions::build(
                 }
 
                 if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
-                    if (edge_edge_collisions.find(std::make_pair(ei, ej)) == edge_edge_collisions.end()) {
-                        edge_edge_collisions[std::make_pair(ei, ej)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ei, ej);
-                    }
-                }
-
-                if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
-                    if (edge_edge_collisions.find(std::make_pair(ej, ei)) == edge_edge_collisions.end()) {
-                        edge_edge_collisions[std::make_pair(ej, ei)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ej, ei);
-                    }
-                }
-
-                if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
                     if (edge_edge_collisions_advanced.find(std::make_pair(ei, ej)) == edge_edge_collisions_advanced.end()) {
                         edge_edge_collisions_advanced[std::make_pair(ei, ej)] = point_potential.build_collisions_at_edge_edge_closest_point_advanced(vertices, ei, ej);
                     }
@@ -550,7 +538,7 @@ void HighOrderCollisions::build(
 
 // ============================================================================
 size_t HighOrderCollisions::size() const { return collisions.size(); }
-bool HighOrderCollisions::empty() const { return collisions.empty() && triple_collisions.empty() && vertex_collisions.empty() && edge_edge_collisions.empty() && face_collisions.empty(); }
+bool HighOrderCollisions::empty() const { return collisions.empty() && triple_collisions.empty() && vertex_collisions.empty() && edge_edge_collisions_advanced.empty() && face_collisions.empty(); }
 void HighOrderCollisions::clear()
 {
     collisions.clear();
@@ -558,7 +546,7 @@ void HighOrderCollisions::clear()
     triple_collisions.clear();
 
     vertex_collisions.clear();
-    edge_edge_collisions.clear();
+    edge_edge_collisions_advanced.clear();
     face_collisions.clear();
 }
 
@@ -673,16 +661,20 @@ double HighOrderCollisions::compute_active_minimum_distance(
                 min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
             }
         }
+
+        // TODO
+
         // for (const auto& map : face_collisions) {
         //     for (const auto& cc : map.second) {
         //         min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
         //     }
         // }
-        for (const auto& map : edge_edge_collisions) {
-            for (const auto& cc : map.second) {
-                min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
-            }
-        }
+
+        // for (const auto& map : edge_edge_collisions_advanced) {
+        //     for (const auto& cc : map.second) {
+        //         min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
+        //     }
+        // }
 
         return min_dist;
     }

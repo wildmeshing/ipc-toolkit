@@ -49,6 +49,16 @@ Eigen::VectorXd HighOrderCollision::dof(Eigen::ConstRef<Eigen::MatrixXd> X) cons
     return x;
 }
 
+Eigen::VectorXd HighOrderCollision::dof(ConcatMatrixView<3> X_extended) const
+{
+    Eigen::VectorXd x(num_vertices() * 3);
+    for (int i = 0; i < num_vertices(); i++) {
+        assert(m_vertex_ids[i] < X_extended.rows());
+        x.segment<3>(i * 3) = X_extended(m_vertex_ids[i]);
+    }
+    return x;
+}
+
 template <typename PrimitiveA, typename PrimitiveB>
 auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::get_core_indices() const
     -> Vector<int, N_CORE_DOFS>
@@ -82,24 +92,26 @@ HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::HighOrderCollisionTemplate(
     if constexpr (std::is_same_v<PrimitiveB, Edge2P1>) {
         m_area_b = mesh.edge_length(_primitive1);
     }
-        
-    auto is_obstacle = [&](const auto& primitive) {
-        bool any_obstacle = false;
-        bool all_obstacle = true;
-        for (const index_t vid : primitive->vertex_ids()) {
-            if (mesh.is_obstacle_vertex(vid)) {
-                any_obstacle = true;
-            } else {
-                all_obstacle = false;
+
+    if constexpr (DIM == 3) {
+        auto is_obstacle = [&](const auto& primitive) {
+            bool any_obstacle = false;
+            bool all_obstacle = true;
+            for (const index_t vid : primitive->vertex_ids()) {
+                if (mesh.is_obstacle_vertex(vid)) {
+                    any_obstacle = true;
+                } else {
+                    all_obstacle = false;
+                }
             }
-        }
-        if (any_obstacle && !all_obstacle) {
-            throw std::logic_error("Primitive has mixed obstacle and non-obstacle vertices!");
-        }
-        return all_obstacle;
-    };
-    m_is_obstacle_a = is_obstacle(primitive_a);
-    m_is_obstacle_b = is_obstacle(primitive_b);
+            if (any_obstacle && !all_obstacle) {
+                throw std::logic_error("Primitive has mixed obstacle and non-obstacle vertices!");
+            }
+            return all_obstacle;
+        };
+        m_is_obstacle_a = is_obstacle(primitive_a);
+        m_is_obstacle_b = is_obstacle(primitive_b);
+    }
 
     if ((primitive_a->n_vertices() + primitive_b->n_vertices()) * DIM
         > ELEMENT_SIZE) {

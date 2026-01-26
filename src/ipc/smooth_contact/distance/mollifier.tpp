@@ -105,12 +105,13 @@ scalar half_edge_edge_mollifier(
                - dist_sqr)
               / db);
 
+    // Using uv to mollify may be less stable than using pure distance
     // scalar uv = closest_point_uv(ea0, ea1, eb0, eb1, dtype);
     // scalar a = Math<scalar>::mollifier(uv / MOLLIFIER_THRESHOLD_EPS);
     // scalar b = Math<scalar>::mollifier((1 - uv) / MOLLIFIER_THRESHOLD_EPS);
 
     scalar c = a * b;
-    return c;
+    return c * c;
 }
 
 template <typename scalar>
