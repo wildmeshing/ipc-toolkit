@@ -27,6 +27,24 @@ public:
         const size_t start_i,
         const size_t end_i);
 
+    void add_edge_edge_collisions(
+        const CollisionMesh& mesh,
+        const Eigen::MatrixXd& vertices,
+        const std::vector<EdgeEdgeCandidate>& candidates,
+        const HighOrderContactParameters& params,
+        const std::function<double(const index_t)>& vert_dhat,
+        const std::function<double(const index_t)>& edge_dhat,
+        const size_t start_i,
+        const size_t end_i);
+
+    static std::shared_ptr<HighOrderCollision> reduce_edge_edge_collision(
+        const index_t ei,
+        const index_t ej,
+        const double dhat,
+        const CollisionMesh& mesh,
+        const Eigen::MatrixXd& vertices,
+        const HighOrderContactParameters& params);
+
     // -------------------------------------------------------------------------
 
     static void merge(
@@ -39,6 +57,7 @@ public:
     // -------------------------------------------------------------------------
 
     // Store the indices to pairs to avoid duplicates.
+    /*
     unordered_map<
         std::pair<index_t, index_t>,
         std::shared_ptr<HighOrderCollisionTemplate<Vertex2, Vertex2>>>
@@ -51,6 +70,11 @@ public:
         std::pair<index_t, index_t>,
         std::shared_ptr<HighOrderCollisionTemplate<Edge2P1, Edge2P1>>>
         edge_edge_2_to_id;
+    */
+
+    unordered_map<std::pair<index_t, index_t>, index_t> vert_vert_2_to_id;
+    unordered_map<std::pair<index_t, index_t>, index_t> vert_edge_2_to_id;
+    unordered_map<std::pair<index_t, index_t>, index_t> edge_edge_2_to_id;
 };
 
 template <> class HighOrderCollisionsBuilder<3> {

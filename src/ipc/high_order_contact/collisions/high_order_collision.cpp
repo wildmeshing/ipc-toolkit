@@ -423,7 +423,7 @@ namespace alternating_contact_potential {
         }
 
         const T length = (integration_area < 0) ? ((e0 - e1).norm()) : integration_area;
-        return -0.5 * length * integral;
+        return 0.5 * length * integral; //negative sign given by weight
     }
 
     template <typename T>
@@ -474,9 +474,9 @@ namespace alternating_contact_potential {
         if (!is_obstacleA) { // integrate on primitive A
             pot += potential_EE_onesided(ea0, ea1, eb0, eb1, params, integration_areaA);
         }
-        if (!is_obstacleB) { // integrate on primitive B
+        /*if (!is_obstacleB) { // integrate on primitive B
             pot += potential_EE_onesided(eb0, eb1, ea0, ea1, params, integration_areaB);
-        }
+        }*/
         return pot;
     }
 } // namespace alternating_contact_potential

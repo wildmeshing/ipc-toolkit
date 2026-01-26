@@ -10,28 +10,6 @@
 namespace ipc {
 
 namespace {
-    template <typename TCollision>
-    void add_collision(
-        const std::shared_ptr<TCollision>& pair,
-        unordered_map<std::pair<index_t, index_t>, std::shared_ptr<TCollision>>&
-            cc_to_id,
-        std::vector<std::shared_ptr<HighOrderCollision>>& collisions)
-    {
-        if (pair->is_active()) { // filters dupes
-            auto found_item = cc_to_id.find(pair->get_hash());
-            if (found_item == cc_to_id.end()) {
-                // New collision, so add it to the end of collisions
-                cc_to_id.emplace(pair->get_hash(), pair);
-                collisions.push_back(pair);
-            }
-            else {
-                if constexpr (TCollision::DIM == 3) {
-                    found_item->second->weight += pair->weight;
-                }
-            }
-        }
-    }
-
     template <typename TCollision, typename THash>
     void add_collision(
         const std::shared_ptr<TCollision>& pair,
@@ -74,40 +52,68 @@ void HighOrderCollisionsBuilder<2>::add_edge_vertex_collisions(
         const auto &ei0 = vertices.row(mesh.edges()(ei, 0));
         const auto &ei1 = vertices.row(mesh.edges()(ei, 1));
         const double d2 = point_edge_distance(v, ei0, ei1, point_edge_distance_type(v, ei0, ei1));
-        if (d2 < dhat2) add_collision(
-            std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
-                ei, vi, mesh, params, dhat, vertices),
-            vert_edge_2_to_id, collisions
-        );
-    }
-
-    // add all EV collision pairs for adjacent vertices
-    for (size_t ei = 0; ei < mesh.num_edges(); ei++) {
-        for (int j = 0; j < 2; j++) {
-            const index_t vi = mesh.edges()(ei, j);
-            add_collision(
-                std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
-                    ei, vi, mesh, params, dhat, vertices),
-                vert_edge_2_to_id, collisions
-            );
+        if (d2 < dhat2) {
+            const auto pair = std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
+                ei, vi, mesh, params, dhat, vertices);
+            pair->weight = -1;
+            add_collision<HighOrderCollision>(pair, vert_edge_2_to_id, collisions);
         }
     }
+}
 
-    // for each EV pair, add all EE pairs with edges including the vertex
-    for (const auto& [key, val] : vert_edge_2_to_id) {
-        const index_t ei = key.first;
-        const index_t vi = key.second;
-        const auto adj = mesh.vertices_to_edges()[vi];
-        assert(adj.size() == 2);
-        for (const index_t ej : adj) {
-            if (ei != ej) {
-                add_collision(
-                    std::make_shared<HighOrderCollisionTemplate<Edge2P1, Edge2P1>>(
-                        std::min<index_t>(ei, ej), std::max<index_t>(ei, ej),
-                        mesh, params, dhat, vertices),
-                    edge_edge_2_to_id, collisions);
-            }
+void HighOrderCollisionsBuilder<2>::add_edge_edge_collisions(
+    const CollisionMesh& mesh,
+    const Eigen::MatrixXd& vertices,
+    const std::vector<EdgeEdgeCandidate>& candidates,
+    const HighOrderContactParameters& params,
+    const std::function<double(const index_t)>& vert_dhat,
+    const std::function<double(const index_t)>& edge_dhat,
+    const size_t start_i,
+    const size_t end_i)
+{
+    if (params.quad_points == 0) throw std::logic_error("Vertex integration temporarily removed");
+    const double dhat = params.dhat;
+    //const double dhat2 = dhat * dhat;
+
+    for (size_t i = start_i; i < end_i; i++) {
+        const auto& [ei, ej] = candidates[i];
+        auto collision = reduce_edge_edge_collision(ei, ej, dhat, mesh, vertices, params);
+        if (collision->type() == HighOrderCollisionType::EDGE_EDGE) {
+            add_collision<HighOrderCollision>(
+                std::static_pointer_cast<HighOrderCollisionTemplate<Edge2P1, Edge2P1>>(collision),
+                edge_edge_2_to_id, collisions);
+        } else {
+            add_collision<HighOrderCollision>(
+                std::static_pointer_cast<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(collision),
+                vert_edge_2_to_id, collisions);
         }
+    }
+}
+
+std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<2>::reduce_edge_edge_collision(
+    const index_t ei,
+    const index_t ej,
+    const double dhat,
+    const CollisionMesh& mesh,
+    const Eigen::MatrixXd& vertices,
+    const HighOrderContactParameters& params)
+{
+    const auto& ea0 = vertices.row(mesh.edges()(ei, 0));
+    const auto& ea1 = vertices.row(mesh.edges()(ei, 1));
+    const auto& eb0 = vertices.row(mesh.edges()(ej, 0));
+    const auto& eb1 = vertices.row(mesh.edges()(ej, 1));
+
+    const auto dtype0 = point_edge_distance_type(ea0, eb0, eb1);
+    const auto dtype1 = point_edge_distance_type(ea1, eb0, eb1);
+
+    if (dtype0 == dtype1 && (dtype0 == PointEdgeDistanceType::P_E0 || dtype0 == PointEdgeDistanceType::P_E1)) {
+        const index_t vi = (dtype0 == PointEdgeDistanceType::P_E0) ? mesh.edges()(ej, 0) : mesh.edges()(ej, 1);
+        return std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
+            ei, vi, mesh, params, dhat, vertices);
+    }
+    else {
+        return std::make_shared<HighOrderCollisionTemplate<Edge2P1, Edge2P1>>(
+            ei, ej, mesh, params, dhat, vertices);
     }
 }
 
@@ -115,18 +121,9 @@ void HighOrderCollisionsBuilder<2>::merge(
     const ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
     HighOrderCollisions& merged_collisions)
 {
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge2P1, Edge2P1>>>
-        edge_edge_2_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Vertex2, Vertex2>>>
-        vert_vert_2_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge2P1, Vertex2>>>
-        vert_edge_2_to_id;
+    unordered_map<std::pair<index_t, index_t>, index_t> edge_edge_2_to_id;
+    unordered_map<std::pair<index_t, index_t>, index_t> vert_vert_2_to_id;
+    unordered_map<std::pair<index_t, index_t>, index_t> vert_edge_2_to_id;
 
     // size up the hash items
     size_t total = 0;
@@ -138,26 +135,25 @@ void HighOrderCollisionsBuilder<2>::merge(
 
     // merge
     for (const auto& builder : local_storage) {
-        edge_edge_2_to_id.insert(
-            builder.edge_edge_2_to_id.begin(), builder.edge_edge_2_to_id.end());
-        vert_vert_2_to_id.insert(
-            builder.vert_vert_2_to_id.begin(), builder.vert_vert_2_to_id.end());
-        vert_edge_2_to_id.insert(
-            builder.vert_edge_2_to_id.begin(), builder.vert_edge_2_to_id.end());
+        for (const auto& ve : builder.vert_edge_2_to_id) {
+            add_collision<HighOrderCollision>(builder.collisions[ve.second], vert_edge_2_to_id, merged_collisions.collisions);
+        }
+        for (const auto& ee : builder.edge_edge_2_to_id) {
+            add_collision<HighOrderCollision>(builder.collisions[ee.second], edge_edge_2_to_id, merged_collisions.collisions);
+        }
     }
+
+    // remove 0-weight collisions
+    merged_collisions.collisions.erase(
+    std::remove_if(
+        merged_collisions.collisions.begin(), merged_collisions.collisions.end(),
+        [&](std::shared_ptr<HighOrderCollision> cc) {
+            return cc->weight == 0;
+        }), merged_collisions.collisions.end());
+
     int edge_edge_count = edge_edge_2_to_id.size();
     int vert_vert_count = vert_vert_2_to_id.size();
     int vert_edge_count = vert_edge_2_to_id.size();
-
-    for (const auto& [key, val] : edge_edge_2_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
-    for (const auto& [key, val] : vert_vert_2_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
-    for (const auto& [key, val] : vert_edge_2_to_id) {
-        merged_collisions.collisions.push_back(val);
-    }
 
     logger().trace(
         "VV pairs: {}; VE pairs: {}; EE pairs: {}.",
