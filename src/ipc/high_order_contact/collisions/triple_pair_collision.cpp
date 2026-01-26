@@ -4,47 +4,6 @@
 
 namespace ipc
 {
-namespace {
-
-template <typename T>
-T closest_point_uv(Eigen::ConstRef<Vector<T, 12>> positions, EdgeEdgeDistanceType dtype)
-{
-    Eigen::ConstRef<Vector<T, 3>> e0 = positions.template segment<3>(0);
-    Eigen::ConstRef<Vector<T, 3>> e1 = positions.template segment<3>(3);
-    Eigen::ConstRef<Vector<T, 3>> e2 = positions.template segment<3>(6);
-    Eigen::ConstRef<Vector<T, 3>> e3 = positions.template segment<3>(9);
-    Vector<T, 3> u = e1 - e0;
-    Vector<T, 3> v = e3 - e2;
-
-    T uv(0.);
-    if (dtype == EdgeEdgeDistanceType::EA_EB) {
-        Eigen::Vector2<T> uvs = line_line_closest_point_pairs_uv<T>(
-            e0, e1,
-            e2, e3);
-
-        uv = uvs(0);
-    }
-    else if (dtype == EdgeEdgeDistanceType::EA_EB0) {
-        const T a = u.squaredNorm();
-        const T d = u.dot(e0 - e2);
-        uv = (-d) / a;
-    }
-    else if (dtype == EdgeEdgeDistanceType::EA_EB1) {
-        const T a = u.squaredNorm();
-        const T b = u.dot(v);
-        const T d = u.dot(e0 - e2);
-        uv = (-d + b) / a;
-    }
-    else
-        log_and_throw_error("edge-edge dtype {} cannot handle!", static_cast<int>(dtype));
-
-    if (!(uv > 0 && uv < 1)) {
-        throw std::invalid_argument("Invalid uv!");
-    }
-
-    return uv;
-}
-}
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
     TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::TriplePairCollisionTemplate(
         index_t primitive0_,
@@ -99,7 +58,12 @@ T closest_point_uv(Eigen::ConstRef<Vector<T, 12>> positions, EdgeEdgeDistanceTyp
         if (m_positions_init.size() > 0 && (m_positions_init - positions).array().abs().maxCoeff() > 0) {
             log_and_throw_error("Inconsistent positions wrt initialization!");
         }
-        return positions.template segment<DIM>(0) + closest_point_uv<T>(positions.template head<4 * DIM>(), dtype1) * (
+        return positions.template segment<DIM>(0) +
+            closest_point_uv<T>(
+                positions.template segment<DIM>(0),
+                positions.template segment<DIM>(DIM),
+                positions.template segment<DIM>(2*DIM),
+                positions.template segment<DIM>(3*DIM), dtype1) * (
             positions.template segment<DIM>(DIM) - positions.template segment<DIM>(0));
     }
 

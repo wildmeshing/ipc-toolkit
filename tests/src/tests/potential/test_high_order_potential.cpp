@@ -23,7 +23,84 @@
 
 using namespace ipc;
 
-TEST_CASE("Convergent Quadrature Hessian Formal", "[high_order_potential]")
+// When the edge-edge closest point approaches the end points of the edge, the potential should converge to a finite number
+TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+
+    double epsilon = GENERATE(1e-3, 1e-4, 1e-6, 1e-12, 1e-16);
+    {
+        V.resize(8, 3);
+        V <<
+            0, 0, 0,
+            1, 0, 0,
+            0.5, -0.5, 1,
+            0.5, 0.5, 1,
+            epsilon, 0.5, -0.01,
+            epsilon, -0.5, -0.01,
+            epsilon + 0.5, 0, -1.01,
+            epsilon - 0.5, 0, -1.01;
+
+        F.resize(8, 3);
+        F <<
+            0, 1, 2,
+            0, 1, 3,
+            0, 2, 3,
+            1, 2, 3,
+            4, 5, 6,
+            4, 6, 7,
+            4, 5, 7,
+            5, 6, 7;
+
+        E.resize(12, 2);
+        E <<
+            0, 1,
+            0, 2,
+            0, 3,
+            1, 2,
+            1, 3,
+            2, 3,
+            4, 5,
+            4, 6,
+            4, 7,
+            5, 6,
+            5, 7,
+            6, 7;
+    }
+
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.1;
+
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    HighOrderContactPotential potential(params);
+
+    const index_t e0 = 0;
+    const index_t e1 = 6;
+
+    auto dtype = edge_edge_distance_type(
+        V.row(mesh.edges()(e0, 0)),
+        V.row(mesh.edges()(e0, 1)),
+        V.row(mesh.edges()(e1, 0)),
+        V.row(mesh.edges()(e1, 1)));
+
+    REQUIRE(dtype == EdgeEdgeDistanceType::EA_EB);
+
+    Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
+
+    double x = potential(collisions, mesh, V);
+
+    // These numbers can be changed as the formulation changes, but they shouldn't be extremely large
+    REQUIRE(abs(x) < 2);
+    REQUIRE(g.norm() < 200);
+}
+
+TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential]")
 {
     Eigen::MatrixXd V;
     Eigen::MatrixXi F, E;
@@ -60,7 +137,7 @@ TEST_CASE("Convergent Quadrature Hessian Formal", "[high_order_potential]")
     REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-6);
 }
 
-TEST_CASE("Convergent Quadrature Gradient Formal", "[high_order_potential]")
+TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential]")
 {
     Eigen::MatrixXd V;
     Eigen::MatrixXi F, E;
@@ -97,7 +174,7 @@ TEST_CASE("Convergent Quadrature Gradient Formal", "[high_order_potential]")
     REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-6);
 }
 
-TEST_CASE("Convergent Quadrature Formal Zero on Sphere", "[high_order_potential]")
+TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential]")
 {
     Eigen::MatrixXd V;
     Eigen::MatrixXi F, E;
@@ -129,36 +206,51 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
     igl::edges(F, E);
     CollisionMesh mesh(V, E, F);
 
-    const double dhat = 0.2;
-    QuadraturePotential potential(mesh, V, dhat);
+    const double dhat = 0.15;
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    Candidates candidates;
+    candidates.build(mesh, V, dhat / 2, make_default_broad_phase(), true);
+    candidates.convert_candidates_to_sets();
+    PointPotential point_potential(mesh, candidates, params);
 
     for (int vid = 0; vid < V.rows(); ++vid) {
+        const auto collisions = point_potential.build_collisions_at_vertex(V, vid);
+
+        if (collisions.size() == 0) {
+            continue;
+        }
 
         std::vector<int> indices;
         {
-            Eigen::SparseMatrix<double> g_sparse = potential.point_potential->evaluate_potential_gradient_at_vertex(V, vid);
+            Eigen::SparseMatrix<double> g_sparse =
+                PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                    V, collisions, params);
             for (index_t k = 0; k < g_sparse.outerSize(); ++k) {
                 for (Eigen::SparseMatrix<double>::InnerIterator it(g_sparse, k); it; ++it) {
                     assert(it.col() == 0);
                     indices.push_back(it.row());
                 }
             }
+
+            if (g_sparse.norm() < 1e-10) {
+                continue;
+            }
         }
 
-        double x = potential.point_potential->evaluate_potential_at_vertex(V, vid);
-        Eigen::MatrixXd h = potential.point_potential->evaluate_potential_hessian_at_vertex(V, vid);
+        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+            V, collisions, params);
         h = h(indices, indices).eval();
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
             fd::flatten(V)(indices), [&](const Eigen::VectorXd& y) {
                 Eigen::VectorXd y_ = fd::flatten(V);
                 y_(indices) = y;
-                Eigen::VectorXd g = potential.point_potential->evaluate_potential_gradient_at_vertex(fd::unflatten(y_, 3), vid);
+                Eigen::MatrixXd V_fd = fd::unflatten(y_, 3);
+
+                Eigen::VectorXd g = Eigen::MatrixXd(PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                    V_fd, collisions, params)).col(0);
                 return g(indices);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
@@ -175,345 +267,61 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
     igl::edges(F, E);
     CollisionMesh mesh(V, E, F);
 
-    const double dhat = 0.2;
-    QuadraturePotential potential(mesh, V, dhat);
+    const double dhat = 0.15;
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    Candidates candidates;
+    candidates.build(mesh, V, dhat / 2, make_default_broad_phase(), true);
+    candidates.convert_candidates_to_sets();
+    PointPotential point_potential(mesh, candidates, params);
 
     for (int fid = 0; fid < F.rows(); ++fid) {
 
+        const auto collisions = point_potential.build_collisions_at_face_center(V, fid);
+
+        if (collisions.size() == 0) {
+            continue;
+        }
+
+        Eigen::Vector3<index_t> vids;
+        vids << F(fid, 0), F(fid, 1), F(fid, 2);
+
+        Eigen::RowVector3d face_center = (V.row(vids[0]) + V.row(vids[1]) + V.row(vids[2])) / 3.;
+
+        ConcatMatrixView<3> V_extended(V, face_center);
+
         std::vector<int> indices;
         {
-            Eigen::SparseMatrix<double> g_sparse = potential.point_potential->evaluate_potential_gradient_at_face_center(V, fid);
+            Eigen::SparseMatrix<double> g_sparse = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_extended, vids, collisions, params);
             for (index_t k = 0; k < g_sparse.outerSize(); ++k) {
                 for (Eigen::SparseMatrix<double>::InnerIterator it(g_sparse, k); it; ++it) {
                     assert(it.col() == 0);
                     indices.push_back(it.row());
                 }
             }
+
+            if (g_sparse.norm() < 1e-10) {
+                continue;
+            }
         }
 
-        double x = potential.point_potential->evaluate_potential_at_face_center(V, fid);
-        Eigen::MatrixXd h = potential.point_potential->evaluate_potential_hessian_at_face_center(V, fid);
+        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, vids, collisions, params);
         h = h(indices, indices).eval();
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
             fd::flatten(V)(indices), [&](const Eigen::VectorXd& y) {
                 Eigen::VectorXd y_ = fd::flatten(V);
                 y_(indices) = y;
-                Eigen::VectorXd g = potential.point_potential->evaluate_potential_gradient_at_face_center(fd::unflatten(y_, 3), fid);
+                Eigen::MatrixXd V_fd = fd::unflatten(y_, 3);
+                Eigen::RowVector3d face_center_fd = (V_fd.row(vids[0]) + V_fd.row(vids[1]) + V_fd.row(vids[2])) / 3.;
+                ConcatMatrixView<3> V_fd_extended(V_fd, face_center_fd);
+
+                Eigen::VectorXd g = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_fd_extended, vids, collisions, params);
                 return g(indices);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
         REQUIRE((h - fh).norm() < 1e-6 * std::max({h.norm(), fh.norm(), 1e-8}));
-    }
-}
-
-TEST_CASE("Convergent Quadrature Edge Edge Hessian", "[high_order_potential]")
-{
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 0.2;
-    QuadraturePotential potential(mesh, V, dhat);
-
-    for (const auto &ee : potential.point_potential->candidates.ee_candidates) {
-        auto dtype = edge_edge_distance_type(
-            V.row(mesh.edges()(ee.edge0_id, 0)),
-            V.row(mesh.edges()(ee.edge0_id, 1)),
-            V.row(mesh.edges()(ee.edge1_id, 0)),
-            V.row(mesh.edges()(ee.edge1_id, 1)));
-        if (dtype != EdgeEdgeDistanceType::EA_EB)
-            continue;
-
-        double mollifier = Math<double>::cubic_spline(sqrt(edge_edge_distance(
-            V.row(mesh.edges()(ee.edge0_id, 0)),
-            V.row(mesh.edges()(ee.edge0_id, 1)),
-            V.row(mesh.edges()(ee.edge1_id, 0)),
-            V.row(mesh.edges()(ee.edge1_id, 1)), dtype)) / dhat) * 1.5;
-
-        double x = potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
-            V, ee.edge0_id, ee.edge1_id) * mollifier;
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
-
-        std::vector<int> indices;
-        {
-            Eigen::SparseMatrix<double> g_sparse = potential.point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(V, ee.edge0_id, ee.edge1_id);
-            for (index_t k = 0; k < g_sparse.outerSize(); ++k) {
-                for (Eigen::SparseMatrix<double>::InnerIterator it(g_sparse, k); it; ++it) {
-                    assert(it.col() == 0);
-                    indices.push_back(it.row());
-                }
-            }
-        }
-
-        Eigen::MatrixXd h = potential.point_potential->evaluate_potential_hessian_at_edge_edge_closest_point(
-            V, ee.edge0_id, ee.edge1_id) * mollifier;
-        h = h(indices, indices).eval();
-
-        Eigen::MatrixXd fh;
-        fd::finite_jacobian(
-            fd::flatten(V)(indices), [&](const Eigen::VectorXd& y) {
-                Eigen::VectorXd y_ = fd::flatten(V);
-                y_(indices) = y;
-                Eigen::VectorXd g = potential.point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
-                    fd::unflatten(y_, 3), ee.edge0_id, ee.edge1_id);
-                return g(indices);
-            }, fh, fd::AccuracyOrder::SECOND, 1e-8);
-        fh *= mollifier;
-
-        // std::cout << (g - fh).norm() << " " << g.norm() << std::endl;
-        REQUIRE((h - fh).norm() < 1e-4 * std::max({h.norm(), fh.norm(), 1e-8}));
-    }
-}
-
-TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential]")
-{
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 0.1;
-    QuadraturePotential potential(mesh, V, dhat);
-
-    for (int face_id = 0; face_id < F.rows(); face_id++) {
-        double x = potential.evaluate_per_face(V, face_id);
-        Eigen::SparseMatrix<double> g_sparse = potential.evaluate_per_face_gradient(V, face_id);
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
-
-        std::vector<int> indices;
-        for (index_t k = 0; k < g_sparse.outerSize(); ++k) {
-            for (Eigen::SparseMatrix<double>::InnerIterator it(g_sparse, k); it; ++it) {
-                assert(it.col() == 0);
-                indices.push_back(it.row());
-            }
-        }
-
-        Eigen::VectorXd fg;
-        fd::finite_gradient(
-            fd::flatten(V)(indices), [&](const Eigen::VectorXd& y) {
-                Eigen::VectorXd y_ = fd::flatten(V);
-                y_(indices) = y;
-                return potential.evaluate_per_face(fd::unflatten(y_, 3), face_id);
-            }, fg, fd::AccuracyOrder::SECOND, 1e-8);
-
-        Eigen::VectorXd g = ((Eigen::VectorXd)g_sparse)(indices);
-
-        REQUIRE((g - fg).norm() < 1e-6 * std::max({g.norm(), fg.norm(), 1e-8}));
-    }
-}
-
-TEST_CASE("Convergent Quadrature Face Gradient", "[high_order_potential]")
-{
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 0.1;
-    QuadraturePotential potential(mesh, V, dhat);
-
-    for (int fid = 0; fid < F.rows(); ++fid) {
-        double x = potential.point_potential->evaluate_potential_at_face_center(V, fid);
-        Eigen::VectorXd g = potential.point_potential->evaluate_potential_gradient_at_face_center(V, fid);
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
-
-        Eigen::VectorXd fg;
-        fd::finite_gradient(
-            fd::flatten(V), [&](const Eigen::VectorXd& y) {
-                return potential.point_potential->evaluate_potential_at_face_center(fd::unflatten(y, 3), fid);
-            }, fg, fd::AccuracyOrder::SECOND, 1e-8);
-
-        REQUIRE((g - fg).norm() < 1e-6 * std::max({g.norm(), fg.norm(), 1e-8}));
-    }
-}
-
-TEST_CASE("Convergent Quadrature Edge Edge Gradient", "[high_order_potential]")
-{
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 0.1;
-    QuadraturePotential potential(mesh, V, dhat);
-
-    for (const auto &ee : potential.point_potential->candidates.ee_candidates) {
-        auto dtype = edge_edge_distance_type(
-            V.row(mesh.edges()(ee.edge0_id, 0)),
-            V.row(mesh.edges()(ee.edge0_id, 1)),
-            V.row(mesh.edges()(ee.edge1_id, 0)),
-            V.row(mesh.edges()(ee.edge1_id, 1)));
-        if (dtype != EdgeEdgeDistanceType::EA_EB)
-            continue;
-
-        double mollifier = Math<double>::cubic_spline(sqrt(edge_edge_distance(
-            V.row(mesh.edges()(ee.edge0_id, 0)),
-            V.row(mesh.edges()(ee.edge0_id, 1)),
-            V.row(mesh.edges()(ee.edge1_id, 0)),
-            V.row(mesh.edges()(ee.edge1_id, 1)), dtype)) / dhat) * 1.5;
-
-        double x = potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
-            V, ee.edge0_id, ee.edge1_id) * mollifier;
-
-        Eigen::MatrixXd g = potential.point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
-            V, ee.edge0_id, ee.edge1_id) * mollifier;
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
-
-        Eigen::VectorXd fg;
-        fd::finite_gradient(
-            fd::flatten(V), [&](const Eigen::VectorXd& y) {
-                return potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
-                    fd::unflatten(y, 3), ee.edge0_id, ee.edge1_id);
-            }, fg, fd::AccuracyOrder::SECOND, 1e-8);
-        fg *= mollifier;
-
-        REQUIRE((g - fg).norm() < 2e-6 * std::max({g.norm(), fg.norm(), 1e-8}));
-    }
-}
-
-TEST_CASE("Convergent Quadrature Vertex Gradient", "[high_order_potential]")
-{
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 0.1;
-    QuadraturePotential potential(mesh, V, dhat);
-
-    for (int vid = 0; vid < V.rows(); ++vid) {
-        double x = potential.point_potential->evaluate_potential_at_vertex(V, vid);
-        Eigen::VectorXd g = potential.point_potential->evaluate_potential_gradient_at_vertex(V, vid);
-
-        if (abs(x) < 1e-12) {
-            continue;
-        }
-
-        Eigen::VectorXd fg;
-        fd::finite_gradient(
-            fd::flatten(V), [&](const Eigen::VectorXd& y) {
-                return potential.point_potential->evaluate_potential_at_vertex(fd::unflatten(y, 3), vid);
-            }, fg, fd::AccuracyOrder::SECOND, 1e-8);
-
-        REQUIRE((g - fg).norm() < 1e-6 * std::max({g.norm(), fg.norm(), 1e-8}));
-    }
-}
-
-TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential]")
-{
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 0.2;
-    QuadraturePotential potential(mesh, V, dhat);
-
-    for (int vid = 0; vid < V.rows(); ++vid) {
-        double x = potential.point_potential->evaluate_potential_at_vertex(V, vid);
-        REQUIRE(abs(x) < 1e-12);
-
-        Eigen::MatrixXd g = potential.point_potential->evaluate_potential_gradient_at_vertex(V, vid);
-        REQUIRE(g.norm() < 1e-8);
-    }
-
-    for (int fid = 0; fid < F.rows(); ++fid) {
-        double x = potential.point_potential->evaluate_potential_at_face_center(V, fid);
-        REQUIRE(abs(x) < 1e-12);
-
-        Eigen::MatrixXd g = potential.point_potential->evaluate_potential_gradient_at_face_center(V, fid);
-        REQUIRE(g.norm() < 1e-8);
-    }
-
-    for (const auto &ee : potential.point_potential->candidates.ee_candidates) {
-        for (int i = 0; i < 2; i++) {
-            int e0, e1;
-            if (i == 0) {
-                e0 = ee.edge0_id;
-                e1 = ee.edge1_id;
-            }
-            else {
-                e0 = ee.edge1_id;
-                e1 = ee.edge0_id;
-            }
-            auto dtype = edge_edge_distance_type(
-                V.row(mesh.edges()(e0, 0)),
-                V.row(mesh.edges()(e0, 1)),
-                V.row(mesh.edges()(e1, 0)),
-                V.row(mesh.edges()(e1, 1)));
-            if (dtype != EdgeEdgeDistanceType::EA_EB0 && dtype != EdgeEdgeDistanceType::EA_EB1 && dtype != EdgeEdgeDistanceType::EA_EB) {
-                continue;
-            }
-
-            if (is_parallel_edge_edge(V.row(mesh.edges()(e0, 0)),
-                V.row(mesh.edges()(e0, 1)),
-                V.row(mesh.edges()(e1, 0)),
-                V.row(mesh.edges()(e1, 1)))) {
-                continue;
-            }
-
-            const double dist_sqr = edge_edge_distance(
-                V.row(mesh.edges()(e0, 0)),
-                V.row(mesh.edges()(e0, 1)),
-                V.row(mesh.edges()(e1, 0)),
-                V.row(mesh.edges()(e1, 1)), dtype);
-
-            double mollifier = Math<double>::cubic_spline(sqrt(dist_sqr) / dhat) * 1.5;
-            mollifier *= half_edge_edge_mollifier<double>(
-                V.row(mesh.edges()(e0, 0)),
-                V.row(mesh.edges()(e0, 1)),
-                V.row(mesh.edges()(e1, 0)),
-                V.row(mesh.edges()(e1, 1)), dist_sqr);
-
-            double x = potential.point_potential->evaluate_potential_at_edge_edge_closest_point(
-                V, e0, e1) * mollifier;
-
-            REQUIRE(abs(x) < 1e-12);
-
-            Eigen::MatrixXd g = potential.point_potential->evaluate_potential_gradient_at_edge_edge_closest_point(
-                V, e0, e1) * mollifier;
-
-            REQUIRE(g.norm() < 1e-8);
-        }
-    }
-
-    for (int face_id = 0; face_id < F.rows(); face_id++) {
-        double x = potential.evaluate_per_face(V, face_id);
-        Eigen::SparseMatrix<double> g = potential.evaluate_per_face_gradient(V, face_id);
-
-        REQUIRE(abs(x) < 1e-12);
-        REQUIRE(g.norm() < 1e-8);
     }
 }
 

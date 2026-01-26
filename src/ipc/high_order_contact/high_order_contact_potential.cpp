@@ -57,9 +57,7 @@ double HighOrderContactPotential::operator()(
             for (index_t f = 0; f < mesh.num_faces(); f++) {
                 const double area = mesh.face_areas()(f);
 
-                Eigen::MatrixXd V_extended(X.rows() + 1, 3);
-                V_extended.topRows(X.rows()) = X;
-                V_extended.row(X.rows()) = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
+                const Eigen::RowVector3d face_center = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
 
                 for (index_t le = 0; le < 3; le++) {
                     const index_t edge_id = mesh.faces_to_edges()(f, le);
@@ -78,8 +76,8 @@ double HighOrderContactPotential::operator()(
                             continue;
                         }
 
-                        if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
-                            iter != collisions.edge_edge_collisions.end()) {
+                        if (auto iter = collisions.edge_edge_collisions_advanced.find(std::make_pair(edge_id, other_edge_id));
+                            iter != collisions.edge_edge_collisions_advanced.end()) {
 
                             auto dtype = edge_edge_distance_type(
                                 X.row(ea), X.row(eb),
@@ -89,13 +87,20 @@ double HighOrderContactPotential::operator()(
                                 X.row(ea), X.row(eb),
                                 X.row(ec), X.row(ed), dtype));
 
+                            const double uv = closest_point_uv<double>(
+                                X.row(ea), X.row(eb),
+                                X.row(ec), X.row(ed), dtype);
+
+                            const Eigen::RowVector3d ee_closest_point = uv * (X.row(eb) - X.row(ea)) + X.row(ea);
+
                             double mollifier = Math<double>::cubic_spline(dist / params.dhat) * 1.5;
                             mollifier *= half_edge_edge_mollifier<double>(
                                     X.row(ea), X.row(eb),
                                     X.row(ec), X.row(ed),
-                                    dist * dist);
+                                    dtype);
 
-                            local_potential += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
+                            local_potential += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                ConcatMatrixView<3>(X, ee_closest_point), iter->second, params, dtype);
                         }
                         else {
                             /* P(q) = 0 */
@@ -105,7 +110,7 @@ double HighOrderContactPotential::operator()(
                     // face center
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                         local_potential += PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                            V_extended, iter->second, params);
+                            ConcatMatrixView<3>(X, face_center), iter->second, params);
                     }
 
                     // vertex ea
@@ -190,9 +195,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
             for (index_t f = 0; f < mesh.num_faces(); f++) {
                 const double area = mesh.face_areas()(f);
 
-                Eigen::MatrixXd V_extended(X.rows() + 1, 3);
-                V_extended.topRows(X.rows()) = X;
-                V_extended.row(X.rows()) = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
+                const Eigen::RowVector3d face_center = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
 
                 for (index_t le = 0; le < 3; le++) {
                     const index_t edge_id = mesh.faces_to_edges()(f, le);
@@ -211,10 +214,10 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             continue;
                         }
 
-                        if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
-                            iter != collisions.edge_edge_collisions.end()) {
+                        if (auto iter = collisions.edge_edge_collisions_advanced.find(std::make_pair(edge_id, other_edge_id));
+                            iter != collisions.edge_edge_collisions_advanced.end()) {
 
-                            // collisions.edge_edge_collisions only contain EA_EB* type collision
+                            // collisions.edge_edge_collisions_advanced only contain EA_EB* type collision
                             // other types are ignored because the mollifier makes them vanish
 
                             Eigen::Vector<double, 12> positions;
@@ -230,14 +233,26 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 positionsT.row(0), positionsT.row(1),
                                 positionsT.row(2), positionsT.row(3), dtype));
 
+                            const T uv = closest_point_uv<T>(
+                                positionsT.row(0), positionsT.row(1),
+                                positionsT.row(2), positionsT.row(3), dtype);
+
+                            const Eigen::RowVector3<T> ee_closest_point_T = uv * (positionsT.row(1) - positionsT.row(0)) + positionsT.row(0);
+                            const Eigen::RowVector3<double> ee_closest_point(ee_closest_point_T(0).val, ee_closest_point_T(1).val, ee_closest_point_T(2).val);
+
                             T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
                             mollifier *= half_edge_edge_mollifier<T>(
                                 positionsT.row(0), positionsT.row(1),
                                 positionsT.row(2), positionsT.row(3),
-                                    dist * dist);
+                                    dtype);
 
-                            const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
-                            const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
+                            ConcatMatrixView<3> X_extended(X, ee_closest_point);
+                            assert(X_extended.rows() == X.rows() + 1);
+                            assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
+                            const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                X_extended, iter->second, params, dtype);
+                            const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<ADGrad<12>>(
+                                X_extended, iter->second, params, Eigen::Vector4i(ea, eb, ec, ed), ee_closest_point_T, dtype);
                             
                             local_grad += mollifier.val * local_grad_1;
                             const Vector12d local_grad_2 = local_potential_1 * mollifier.grad;
@@ -257,7 +272,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                     // face center
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                         local_grad += PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                            V_extended, mesh.faces().row(f), iter->second, params);
+                            ConcatMatrixView<3>(X, face_center), mesh.faces().row(f), iter->second, params);
                     }
 
                     // vertex ea
@@ -344,9 +359,9 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                 });
         }
         else {
-            using T = ADHessian<12>;
-
             // TODO: Implement project PSD
+
+            using T = ADHessian<12>;
 
             Eigen::SparseMatrix<double> hess(ndof, ndof);
 
@@ -355,9 +370,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
             for (index_t f = 0; f < mesh.num_faces(); f++) {
                 const double area = mesh.face_areas()(f);
 
-                Eigen::MatrixXd V_extended(X.rows() + 1, 3);
-                V_extended.topRows(X.rows()) = X;
-                V_extended.row(X.rows()) = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
+                const Eigen::RowVector3d face_center = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
 
                 for (index_t le = 0; le < 3; le++) {
                     const index_t edge_id = mesh.faces_to_edges()(f, le);
@@ -376,10 +389,10 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                             continue;
                         }
 
-                        if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
-                            iter != collisions.edge_edge_collisions.end()) {
+                        if (auto iter = collisions.edge_edge_collisions_advanced.find(std::make_pair(edge_id, other_edge_id));
+                            iter != collisions.edge_edge_collisions_advanced.end()) {
 
-                            // collisions.edge_edge_collisions only contain EA_EB* type collision
+                            // collisions.edge_edge_collisions_advanced only contain EA_EB* type collision
                             // other types are ignored because the mollifier makes them vanish
 
                             Eigen::Vector<double, 12> positions;
@@ -395,15 +408,27 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 positionsT.row(0), positionsT.row(1),
                                 positionsT.row(2), positionsT.row(3), dtype));
 
+                            const T uv = closest_point_uv<T>(
+                                positionsT.row(0), positionsT.row(1),
+                                positionsT.row(2), positionsT.row(3), dtype);
+
+                            const Eigen::RowVector3<T> ee_closest_point_T = uv * (positionsT.row(1) - positionsT.row(0)) + positionsT.row(0);
+                            const Eigen::RowVector3<double> ee_closest_point(ee_closest_point_T(0).val, ee_closest_point_T(1).val, ee_closest_point_T(2).val);
+
                             T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
                             mollifier *= half_edge_edge_mollifier<T>(
                                 positionsT.row(0), positionsT.row(1),
                                 positionsT.row(2), positionsT.row(3),
-                                    dist * dist);
+                                    dtype);
 
-                            const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
-                            const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
-                            const Eigen::SparseMatrix<double> local_hess_1 = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(X, iter->second, params);
+                            ConcatMatrixView<3> X_extended(X, ee_closest_point);
+                            assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
+                            const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                X_extended, iter->second, params, dtype);
+                            const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
+                                X_extended, iter->second, params, Eigen::Vector4i(ea, eb, ec, ed), ee_closest_point_T, dtype);
+                            const Eigen::SparseMatrix<double> local_hess_1 = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
+                                X_extended, iter->second, params, Eigen::Vector4i(ea, eb, ec, ed), ee_closest_point_T, dtype);
 
                             local_hess += local_hess_1 * mollifier.val;
 
@@ -438,7 +463,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                     // face center
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                         local_hess += PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
-                            V_extended, mesh.faces().row(f), iter->second, params);
+                            ConcatMatrixView<3>(X, face_center), mesh.faces().row(f), iter->second, params);
                     }
 
                     // vertex ea
