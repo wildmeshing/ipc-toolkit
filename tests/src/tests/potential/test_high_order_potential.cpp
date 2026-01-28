@@ -412,11 +412,11 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
 {
     Eigen::MatrixXd V;
     Eigen::MatrixXi E;
-    double dhat = -1;
+    double dhat = 0.5;
+    HighOrderContactParameters params(dhat, 0., 1, GENERATE(2,4,20));
 
     SECTION("Corners")
     {
-        dhat = 0.5;
         V.resize(8, 2);
         E.resize(8, 2);
         V <<
@@ -440,7 +440,6 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
     }
 
     SECTION("squares") {
-        dhat = 0.4;
         V.resize(8, 2);
         E.resize(8, 2);
         SECTION("horizontal_squares") {
@@ -479,7 +478,6 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
     SECTION("debug1")
     {
         std::string mesh_name = (tests::DATA_DIR / "gcp" / "nonlinear_solve_iter020.obj").string();
-        dhat = 0.1;
         bool success = igl::readCSV(mesh_name + "-v.csv", V);
         success = success && igl::readCSV(mesh_name + "-e.csv", E);
         REQUIRE(success);
@@ -488,7 +486,6 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
     SECTION("debug2")
     {
         std::string mesh_name = (tests::DATA_DIR / "gcp" / "simple_2d.obj").string();
-        dhat = 0.1;
         bool success = igl::readCSV(mesh_name + "-v.csv", V);
         success = success && igl::readCSV(mesh_name + "-e.csv", E);
         REQUIRE(success);
@@ -498,8 +495,6 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
     CollisionMesh mesh(
         std::vector<bool>(V.rows(), true),
         std::vector<bool>(V.rows(), false), V, E, F);
-
-    HighOrderContactParameters params(dhat, 0., 1, 2);
 
     HighOrderCollisions collisions;
     collisions.build(mesh, V, params, false, make_default_broad_phase());
@@ -521,7 +516,9 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
         },
         fgrad, fd::AccuracyOrder::SECOND, 1e-8);
 
-    CHECK(fd::compare_gradient(grad, fgrad));
+    CAPTURE(grad.norm());
+    CAPTURE(fgrad.norm());
+    CHECK((grad - fgrad).norm() < 1e-4 * std::max({grad.norm(), fgrad.norm(), 1e-8}));
 
     Eigen::MatrixXd hess = potential.hessian(collisions, mesh, V);
     REQUIRE(hess.squaredNorm() > 1e-3);
@@ -536,5 +533,5 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
 
     CAPTURE(hess.norm());
     CAPTURE(fhess.norm());
-    CHECK(fd::compare_hessian(hess, fhess, 1e-2));
+    CHECK((hess - fhess).norm() < 1e-2 * std::max({hess.norm(), fhess.norm(), 1e-8}));
 }

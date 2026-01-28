@@ -7,38 +7,46 @@
 #include <stdexcept>
 #include <algorithm>
 #include <vector>
+#include <map>
+#include <mutex>
 
 namespace ipc {
 void lobatto_compute (int n, std::vector<double> & x, std::vector<double> & w);
 // Class to compute and cache nodes and weights for Gauss-Lobatto quadrature.
 class GaussLobatto {
 public:
-    using Rule = std::pair<std::vector<double>, std::vector<double>>;
-
-    /*/ Get the quadrature rule for a given order n.
-    static const Rule& get_rule(int n)
-    {
-        static std::map<int, Rule> cache;
-        if (cache.find(n) == cache.end()) {
-            cache[n] = compute_rule(n);
-        }
-        return cache.at(n);
-        return compute_rule(n);
-    } DISABLED CACHE FOR NOW - NOT THREAD SAFE */
+    using Rule = std::vector<std::pair<double, double>>;
+    //using Rule = std::pair<std::vector<double>, std::vector<double>>;
 
     // Get the quadrature rule for a given order n.
-    static Rule get_rule(int n)
+    static const Rule& get_rule(int n)
     {
-        return compute_rule(n);
+        if (n < 2) throw std::runtime_error("Order must be at least 2");
+
+        static std::map<int, Rule> cache;
+        static std::mutex mtx;
+
+        std::lock_guard<std::mutex> lock(mtx);
+        auto it = cache.find(n);
+        if (it == cache.end()) {
+            it = cache.emplace(n, compute_rule(n)).first;
+        }
+        return it->second;
     }
 
 private:
     // Computes the nodes and weights for Gauss-Lobatto quadrature of order n.
     static Rule compute_rule(int n)
     {
-        std::vector<double> nodes(n), weights(n);
+        std::vector<double> nodes, weights;
         lobatto_compute(n, nodes, weights);
-        return std::make_pair(nodes, weights);
+
+        Rule res;
+        res.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            res.emplace_back(nodes[i], weights[i]);
+        }
+        return res;
     }
 };
 
