@@ -325,323 +325,26 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
     }
 }
 
-/*
-TEST_CASE("High Order barrier potential codim", "[high_order_potential]")
+
+// 2D TESTS //
+
+TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_order_potential_2d]")
 {
-    const auto method = make_default_broad_phase();
-    double dhat = 2;
-    std::string mesh_name;
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi E;
+    double dhat = 1.;
+    HighOrderContactParameters params(dhat, 0., 1, GENERATE(2,4,20));
 
-    Eigen::MatrixXd vertices(4, 2);
-    Eigen::MatrixXi edges(2, 2), faces;
-
-    vertices << -1, 0, 0, 0, 1, 0, 1.5, 0.2;
-    edges << 0, 1, 1, 2;
-
-    CollisionMesh mesh;
-
-    HighOrderCollisions collisions;
-    mesh = CollisionMesh(
-        std::vector<bool>(vertices.rows(), true),
-        std::vector<bool>(vertices.rows(), false), vertices, edges, faces);
-    HighOrderContactParameters params(dhat, 0.85, 0.15, 2, 4);
-    collisions.build(mesh, vertices, params, false, method);
-    CAPTURE(dhat, method);
-    CHECK(!collisions.empty());
-    CHECK(!has_intersections(mesh, vertices));
-
-    HighOrderContactPotential potential(params);
-    std::cout << "energy: " << potential(collisions, mesh, vertices) << "\n";
-
-    // -------------------------------------------------------------------------
-    // Minimum distance
-    // -------------------------------------------------------------------------
-
-    CHECK(
-        collisions.compute_minimum_distance(mesh, vertices)
-        <= collisions.compute_active_minimum_distance(mesh, vertices)
-            * (1. + 1e-15));
-
-    // -------------------------------------------------------------------------
-    // Gradient
-    // -------------------------------------------------------------------------
-
-    const Eigen::VectorXd grad_b =
-        potential.gradient(collisions, mesh, vertices);
-
-    // Compute the gradient using finite differences
-    Eigen::VectorXd fgrad_b;
-    {
-        auto f = [&](const Eigen::VectorXd& x) {
-            return potential(
-                collisions, mesh, fd::unflatten(x, vertices.cols()));
-        };
-        fd::finite_gradient(
-            fd::flatten(vertices), f, fgrad_b, fd::AccuracyOrder::SECOND, 1e-8);
-    }
-
-    // REQUIRE(grad_b.squaredNorm() > 1e-8);
-    std::cout << "grad relative error "
-              << (grad_b - fgrad_b).norm() / grad_b.norm() << ", norms "
-              << grad_b.norm() << " " << fgrad_b.norm() << "\n";
-    CHECK((grad_b - fgrad_b).norm() / grad_b.norm() < 1e-5);
-
-    // -------------------------------------------------------------------------
-    // Hessian
-    // -------------------------------------------------------------------------
-
-    Eigen::MatrixXd hess_b = potential.hessian(collisions, mesh, vertices);
-
-    // Compute the gradient using finite differences
-    Eigen::MatrixXd fhess_b;
-    {
-        auto f = [&](const Eigen::VectorXd& x) {
-            return potential.gradient(
-                collisions, mesh, fd::unflatten(x, vertices.cols()));
-        };
-        fd::finite_jacobian(
-            fd::flatten(vertices), f, fhess_b, fd::AccuracyOrder::SECOND, 1e-8);
-    }
-
-    REQUIRE(hess_b.squaredNorm() > 1e-8);
-    std::cout << "hess relative error "
-              << (hess_b - fhess_b).norm() / hess_b.norm() << ", norms "
-              << hess_b.norm() << " " << fhess_b.norm() << "\n";
-    CHECK((hess_b - fhess_b).norm() / hess_b.norm() < 1e-5);
-}
-
-#if defined(NDEBUG) && !defined(WIN32)
-std::string tagsopt_ho = "[high_order_potential]";
-#else
-std::string tagsopt_ho = "[.][high_order_potential]";
-#endif
-
-TEST_CASE("High Order barrier potential full gradient and hessian 3D", tagsopt_ho)
-{
-    const auto method = make_default_broad_phase();
-    const bool adaptive_dhat = GENERATE(true, false);
-    const bool orientable = GENERATE(true, false);
-    double dhat = -1;
-    std::string mesh_name;
-    bool all_vertices_on_surface = true;
-
-    SECTION("two cubes far")
-    {
-        dhat = 1;
-        mesh_name = "two-cubes-far.ply";
-        all_vertices_on_surface = false;
-    }
-    SECTION("two cubes close")
-    {
-        dhat = 1e-1;
-        mesh_name = "two-cubes-close.ply";
-        all_vertices_on_surface = false;
-    }
-
-    double min_dist_ratio = 1.5;
-    Eigen::MatrixXd vertices;
-    Eigen::MatrixXi edges, faces;
-    bool success = tests::load_mesh(mesh_name, vertices, edges, faces);
-    vertices +=
-        Eigen::MatrixXd::Random(vertices.rows(), vertices.cols()) * 1e-3;
-    CAPTURE(mesh_name);
-    REQUIRE(success);
-
-    CollisionMesh mesh;
-
-    HighOrderCollisions collisions;
-    if (all_vertices_on_surface) {
-        mesh = CollisionMesh(
-            std::vector<bool>(vertices.rows(), true),
-            std::vector<bool>(vertices.rows(), orientable), vertices, edges,
-            faces);
-    } else {
-        mesh = CollisionMesh(
-            ipc::CollisionMesh::construct_is_on_surface(vertices.rows(), edges),
-            std::vector<bool>(vertices.rows(), orientable), vertices, edges,
-            faces);
-
-        vertices = mesh.vertices(vertices);
-    }
-
-    HighOrderContactParameters params(dhat, 0.85, 0.15, 2, 4);
-    params.set_adaptive_dhat_ratio(min_dist_ratio);
-    collisions.compute_adaptive_dhat(mesh, vertices, params, method);
-    collisions.build(mesh, vertices, params, adaptive_dhat, method);
-    CAPTURE(dhat, method, adaptive_dhat, all_vertices_on_surface);
-    CHECK(!collisions.empty());
-    CHECK(!has_intersections(mesh, vertices));
-
-    HighOrderContactPotential potential(params);
-    std::cout << "energy: " << potential(collisions, mesh, vertices) << "\n";
-
-    // -------------------------------------------------------------------------
-    // Minimum distance
-    // -------------------------------------------------------------------------
-
-    CHECK(
-        collisions.compute_minimum_distance(mesh, vertices)
-        <= collisions.compute_active_minimum_distance(mesh, vertices)
-            * (1. + 1e-15));
-
-    // -------------------------------------------------------------------------
-    // Gradient
-    // -------------------------------------------------------------------------
-
-    const Eigen::VectorXd grad_b =
-        potential.gradient(collisions, mesh, vertices);
-
-    // Compute the gradient using finite differences
-    Eigen::VectorXd fgrad_b;
-    {
-        auto f = [&](const Eigen::VectorXd& x) {
-            return potential(
-                collisions, mesh, fd::unflatten(x, vertices.cols()));
-        };
-        fd::finite_gradient(
-            fd::flatten(vertices), f, fgrad_b, fd::AccuracyOrder::SECOND, 1e-8);
-    }
-
-    // REQUIRE(grad_b.squaredNorm() > 1e-8);
-    std::cout << "grad relative error "
-              << (grad_b - fgrad_b).norm() / grad_b.norm() << ", norms "
-              << grad_b.norm() << " " << fgrad_b.norm() << "\n";
-    CHECK((grad_b - fgrad_b).norm() / grad_b.norm() < 1e-5);
-
-    // -------------------------------------------------------------------------
-    // Hessian
-    // -------------------------------------------------------------------------
-
-    Eigen::MatrixXd hess_b = potential.hessian(collisions, mesh, vertices);
-
-    // Compute the gradient using finite differences
-    Eigen::MatrixXd fhess_b;
-    {
-        auto f = [&](const Eigen::VectorXd& x) {
-            return potential.gradient(
-                collisions, mesh, fd::unflatten(x, vertices.cols()));
-        };
-        fd::finite_jacobian(
-            fd::flatten(vertices), f, fhess_b, fd::AccuracyOrder::SECOND, 1e-8);
-    }
-
-    REQUIRE(hess_b.squaredNorm() > 1e-8);
-    std::cout << "hess relative error "
-              << (hess_b - fhess_b).norm() / hess_b.norm() << ", norms "
-              << hess_b.norm() << " " << fhess_b.norm() << "\n";
-    CHECK((hess_b - fhess_b).norm() / hess_b.norm() < 1e-5);
-}
-*/
-
-void test_high_order_potential(
-    Eigen::MatrixXd& vertices,
-    Eigen::MatrixXi& edges,
-    double dhat,
-    bool shouldbe0 = false)
-{
-    const bool adaptive_dhat = false;
-    const bool orientable = false;
-    const auto method = make_default_broad_phase();
-    const double min_dist_ratio = 1.5;
-    Eigen::MatrixXi faces;
-
-    CollisionMesh mesh;
-    HighOrderContactParameters params(dhat, 0.1, 1, 2);
-    params.set_adaptive_dhat_ratio(min_dist_ratio);
-    HighOrderCollisions collisions;
-    mesh = CollisionMesh(
-        std::vector<bool>(vertices.rows(), true),
-        std::vector<bool>(vertices.rows(), orientable), vertices, edges, faces);
-    collisions.compute_adaptive_dhat(mesh, vertices, params, method);
-    collisions.build(mesh, vertices, params, adaptive_dhat, method);
-    CAPTURE(dhat, method, adaptive_dhat);
-    CHECK(!collisions.empty());
-    /*
-    std::cout << "high order collision candidate size " << collisions.size()
-        << "\n";
-    for (const auto& c : collisions.collisions) {
-        std::cout << "  - Collision type: " << c->name() << ", primitives: ("
-                  << (*c)[0] << ", " << (*c)[1] << ")\n";
-    }
-    */
-    CHECK(!has_intersections(mesh, vertices));
-
-    HighOrderContactPotential potential(params);
-    const auto energy = potential(collisions, mesh, vertices);
-    std::cout << "energy: " << energy << "\n";
-    if (shouldbe0) CHECK(energy == 0);
-    else CHECK(energy > 0);
-
-    // -------------------------------------------------------------------------
-    // Gradient
-    // -------------------------------------------------------------------------
-
-    const Eigen::VectorXd grad_b =
-        potential.gradient(collisions, mesh, vertices);
-
-    // Compute the gradient using finite differences
-    Eigen::VectorXd fgrad_b;
-    {
-        auto f = [&](const Eigen::VectorXd& x) {
-            return potential(
-                collisions, mesh, fd::unflatten(x, vertices.cols()));
-        };
-        fd::finite_gradient(
-            fd::flatten(vertices), f, fgrad_b, fd::AccuracyOrder::SECOND, 1e-8);
-    }
-
-    if (shouldbe0) REQUIRE(grad_b.squaredNorm() == 0);
-    else {
-        REQUIRE(grad_b.squaredNorm() > 1e-8);
-        std::cout << "grad relative error "
-              << (grad_b - fgrad_b).norm() / grad_b.norm() << "\n";
-        CHECK((grad_b - fgrad_b).norm() < 1e-6 * grad_b.norm());
-    }
-    // CHECK(fd::compare_gradient(grad_b, fgrad_b));
-
-    // -------------------------------------------------------------------------
-    // Hessian
-    // -------------------------------------------------------------------------
-
-    Eigen::MatrixXd hess_b = potential.hessian(collisions, mesh, vertices);
-
-    // Compute the gradient using finite differences
-    Eigen::MatrixXd fhess_b;
-    {
-        auto f = [&](const Eigen::VectorXd& x) {
-            return potential.gradient(
-                collisions, mesh, fd::unflatten(x, vertices.cols()));
-        };
-        fd::finite_jacobian(
-            fd::flatten(vertices), f, fhess_b, fd::AccuracyOrder::SECOND, 1e-8);
-    }
-
-    if (shouldbe0) REQUIRE(hess_b.squaredNorm() == 0);
-    else {
-        REQUIRE(hess_b.squaredNorm() > 1e-3);
-        std::cout << "hess relative error "
-              << (hess_b - fhess_b).norm() / hess_b.norm() << "\n";
-        CHECK((hess_b - fhess_b).norm() < 1e-6 * hess_b.norm());
-    }
-    // CHECK(fd::compare_hessian(hess_b, fhess_b, 1e-3));
-}
-
-TEST_CASE("High Order barrier potential no forces at rest", "[high_order_potential]")
-{
-    double dhat = -1;
-    Eigen::MatrixXd vertices;
-    Eigen::MatrixXi edges;
     SECTION("single_square")
     {
-        dhat = 2.0;
-        vertices.resize(4, 2);
-        edges.resize(4, 2);
-        vertices <<
-            0., 0.,
-            1., 0.,
+        V.resize(4, 2);
+        E.resize(4, 2);
+        V <<
+            -1., -1.,
+            1., -1.,
             1., 1.,
-            0., 1.;
-        edges <<
+            -1., 1.;
+        E <<
             0, 1,
             1, 2,
             2, 3,
@@ -649,19 +352,18 @@ TEST_CASE("High Order barrier potential no forces at rest", "[high_order_potenti
     }
     SECTION("single_square_2")
     {
-        dhat = 2.0;
-        vertices.resize(8, 2);
-        edges.resize(8, 2);
-        vertices <<
-            0., 0.,
-            .5, 0.,
+        V.resize(8, 2);
+        E.resize(8, 2);
+        V <<
+            -1., -1.,
+            0., -1.,
+            1., -1.,
             1., 0.,
-            1., .5,
             1., 1.,
-            .5, 1.,
             0., 1.,
-            0., .5;
-        edges <<
+            -1., 1.,
+            -1., 0.;
+        E <<
             0, 1,
             1, 2,
             2, 3,
@@ -671,74 +373,129 @@ TEST_CASE("High Order barrier potential no forces at rest", "[high_order_potenti
             6, 7,
             7, 0;
     }
+    SECTION("circle") {
+        const int n = GENERATE(10, 50, 100, 200);
+        V.resize(n, 2);
+        E.resize(n, 2);
+        for (int i = 0; i < n; i++) {
+            V(i, 0) = std::cos(2 * M_PI * i / n);
+            V(i, 1) = std::sin(2 * M_PI * i / n);
+        }
+        for (int i = 0; i < n; i++) {
+            E(i, 0) = i;
+            E(i, 1) = (i + 1) % n;
+        }
+    }
 
-    test_high_order_potential(vertices, edges, dhat, true);
+    Eigen::MatrixXi F;
+    CollisionMesh mesh(
+        std::vector<bool>(V.rows(), true),
+        std::vector<bool>(V.rows(), false), V, E, F);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params, false, make_default_broad_phase());
+
+    REQUIRE(!has_intersections(mesh, V));
+
+    HighOrderContactPotential potential(params);
+    double energy = potential(collisions, mesh, V);
+    CHECK(energy == 0);
+
+    Eigen::VectorXd grad = potential.gradient(collisions, mesh, V);
+    CHECK(grad.squaredNorm() == 0);
+
+    Eigen::MatrixXd hess = potential.hessian(collisions, mesh, V);
+    CHECK(hess.squaredNorm() == 0);
 }
 
-TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential]")
+TEST_CASE("High order potential 2D finite differences", "[high_order_potential], [high_order_potential_2d]")
 {
-    double dhat = -1;
-    Eigen::MatrixXd vertices;
-    Eigen::MatrixXi edges;
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi E;
+    double dhat = 0.6;
+    constexpr double BA = 1e-7; // a small constant to break perfect alignments
+    const int quadrature_order = GENERATE(2, 4, 20);
+    HighOrderContactParameters params(dhat, 0., 1, quadrature_order);
+    CAPTURE(quadrature_order);
 
-    /*
-    SECTION("simple_2_edges")
-    {
-        dhat = 2.0;
-        vertices.resize(4, 2);
-        edges.resize(2, 2);
-        vertices << -100., 0.,
-            200., 0.,
-            1., 1.,
-            0., 1.;
-        edges << 0, 1,
-            2, 3;
-    }
-    */
+    auto run_checks = [&]() {
+        Eigen::MatrixXi F;
+        CollisionMesh mesh(
+            std::vector<bool>(V.rows(), true),
+            std::vector<bool>(V.rows(), false), V, E, F);
 
-    /*
-    SECTION("wedge")
+        HighOrderCollisions collisions;
+        collisions.build(mesh, V, params, false, make_default_broad_phase());
+
+        REQUIRE(!collisions.empty());
+        REQUIRE(!has_intersections(mesh, V));
+
+        HighOrderContactPotential potential(params);
+        double energy = potential(collisions, mesh, V);
+        CHECK(energy > 0);
+
+        Eigen::VectorXd grad = potential.gradient(collisions, mesh, V);
+        REQUIRE(grad.squaredNorm() > 1e-8);
+        Eigen::VectorXd fgrad;
+        fd::finite_gradient(
+            fd::flatten(V),
+            [&](const Eigen::VectorXd& x) {
+                return potential(collisions, mesh, fd::unflatten(x, V.cols()));
+            },
+            fgrad, fd::AccuracyOrder::SECOND, 1e-8);
+
+        CAPTURE(grad.norm());
+        CAPTURE(fgrad.norm());
+        CHECK((grad - fgrad).norm() < 1e-6 * std::max({grad.norm(), fgrad.norm(), 1e-8}));
+
+        Eigen::MatrixXd hess = potential.hessian(collisions, mesh, V);
+        REQUIRE(hess.squaredNorm() > 1e-3);
+
+        Eigen::MatrixXd fhess;
+        fd::finite_jacobian(
+            fd::flatten(V),
+            [&](const Eigen::VectorXd& x) {
+                return potential.gradient(collisions, mesh, fd::unflatten(x, V.cols()));
+            },
+            fhess, fd::AccuracyOrder::SECOND, 1e-8);
+
+        CAPTURE(hess.norm());
+        CAPTURE(fhess.norm());
+        CHECK((hess - fhess).norm() < 1e-6 * std::max({hess.norm(), fhess.norm(), 1e-8}));
+    };
+
+    SECTION("Corners")
     {
-        dhat = 0.4;
-        vertices.resize(8, 2);
-        edges.resize(8, 2);
-        vertices <<
+        const double P0x = GENERATE(.01, -.01, 0.0);
+        const double P1y = GENERATE(.49, .5, .51);
+        CAPTURE(P0x, P1y);
+        V.resize(8, 2);
+        E.resize(8, 2);
+        V <<
             -1., 1.,
             -1., 0.,
             0., 0.,
+            P0x, .5 + BA,
             0., 1.,
-            .02, .5,
             1., 0.,
             1., 1.,
-            .01, .5;
-        edges <<
+            .02, P1y;
+        E <<
             0, 1,
             1, 2,
             2, 3,
-            3, 7,
-            7, 0,
-            4, 5,
+            3, 4,
+            4, 0,
             5, 6,
-            6, 4;
+            6, 7,
+            7, 5;
+        run_checks();
     }
-    */
 
-    /*
-    SECTION("horizontal_squares")
-    {
-        dhat = 0.4;
-        vertices.resize(8, 2);
-        edges.resize(8, 2);
-        vertices <<
-            -1., 1.1,
-            -1., 0.1,
-            -.1, 0.1,
-            -.1, 1.1,
-            .1, 1.,
-            .1, 0.,
-            1., 0.,
-            1., 1.;
-        edges <<
+    SECTION("squares") {
+        V.resize(8, 2);
+        E.resize(8, 2);
+        E <<
             0, 1,
             1, 2,
             2, 3,
@@ -747,111 +504,53 @@ TEST_CASE("High Order barrier potential real sim 2D C^2", "[high_order_potential
             5, 6,
             6, 7,
             7, 4;
+        SECTION("horizontal_squares") {
+            INFO("horizontal_squares");
+            V <<
+                -1., 1. + BA,
+                -1., 0. + BA,
+                -.1, 0. + BA,
+                -.1, 1. + BA,
+                .1, 1.,
+                .1, 0.,
+                1., 0.,
+                1., 1.;
+            run_checks();
+        }
+        SECTION("vertical_squares") {
+            INFO("vertical_squares");
+            V <<
+                0. + BA, -1.,
+                1. + BA, -1.,
+                1. + BA, -.1,
+                0. + BA, -.1,
+                0., .1,
+                1., .1,
+                1., 1.,
+                0., 1.;
+            run_checks();
+        }
     }
 
-    SECTION("vertical_squares")
+    SECTION("mesh_1")
     {
-        dhat = 0.4;
-        vertices.resize(8, 2);
-        edges.resize(8, 2);
-        vertices <<
-            -1., 1.,
-            -1., 0.,
-            -.1, 0.,
-            -.1, 1.,
-            -1., -.1,
-            -1., -1.,
-            -.1, -1.,
-            -.1, -.1;
-        edges <<
-            0, 1,
-            1, 2,
-            2, 3,
-            3, 0,
-            4, 5,
-            5, 6,
-            6, 7,
-            7, 4;
-    }
-
-    SECTION("debug1")
-    {
-        std::string mesh_name =
-            (tests::DATA_DIR / "gcp" / "nonlinear_solve_iter020.obj").string();
-        dhat = 3e-2;
-        bool success = igl::readCSV(mesh_name + "-v.csv", vertices);
-        success = success && igl::readCSV(mesh_name + "-e.csv", edges);
-        CAPTURE(mesh_name);
+        INFO("mesh 1");
+        std::string mesh_name = (tests::DATA_DIR / "gcp" / "nonlinear_solve_iter020.obj").string();
+        bool success = igl::readCSV(mesh_name + "-v.csv", V);
+        success = success && igl::readCSV(mesh_name + "-e.csv", E);
         REQUIRE(success);
+        V.col(0) += Eigen::VectorXd::Random(V.rows()) * BA;
+        run_checks();
     }
-    */
 
-    test_high_order_potential(vertices, edges, dhat, false);
-}
-
-TEST_CASE("High Order barrier potential real sim 2D C^1", "[high_order_potential]")
-{
-    const auto method = make_default_broad_phase();
-    //const bool adaptive_dhat = GENERATE(true, false);
-    const bool adaptive_dhat = false;
-
-    double dhat = -1;
-    std::string mesh_name;
-    SECTION("debug2")
+    SECTION("mesh_2")
     {
-        mesh_name = (tests::DATA_DIR / "gcp" / "simple_2d.obj").string();
-        dhat = 0.1;
+        INFO("mesh 2");
+        std::string mesh_name = (tests::DATA_DIR / "gcp" / "simple_2d.obj").string();
+        bool success = igl::readCSV(mesh_name + "-v.csv", V);
+        success = success && igl::readCSV(mesh_name + "-e.csv", E);
+        REQUIRE(success);
+        V.col(0) += Eigen::VectorXd::Random(V.rows()) * BA;
+        run_checks();
     }
-
-    double min_dist_ratio = 1.5;
-    Eigen::MatrixXd vertices;
-    Eigen::MatrixXi edges, faces;
-    bool success = igl::readCSV(mesh_name + "-v.csv", vertices);
-    success = success && igl::readCSV(mesh_name + "-e.csv", edges);
-    CAPTURE(mesh_name);
-    REQUIRE(success);
-
-    // std::cout << "\n" <<  vertices << "\n" << edges << "\n";
-
-    CollisionMesh mesh;
-    HighOrderContactParameters params(dhat, 0.9, 1, 4);
-    params.set_adaptive_dhat_ratio(min_dist_ratio);
-    HighOrderCollisions collisions;
-    mesh = CollisionMesh(vertices, edges, faces);
-    collisions.compute_adaptive_dhat(mesh, vertices, params, method);
-    collisions.build(mesh, vertices, params, adaptive_dhat, method);
-    CAPTURE(dhat, method, adaptive_dhat);
-    CHECK(!collisions.empty());
-    std::cout << "high order collision candidate size " << collisions.size()
-              << "\n";
-    //std::cout << collisions.to_string(mesh, vertices, params) << "\n";
-
-    CHECK(!has_intersections(mesh, vertices));
-
-    HighOrderContactPotential potential(params);
-    std::cout << "energy: " << potential(collisions, mesh, vertices) << "\n";
-
-    // -------------------------------------------------------------------------
-    // Gradient
-    // -------------------------------------------------------------------------
-
-    const Eigen::VectorXd grad_b =
-        potential.gradient(collisions, mesh, vertices);
-
-    // Compute the gradient using finite differences
-    Eigen::VectorXd fgrad_b;
-    {
-        auto f = [&](const Eigen::VectorXd& x) {
-            return potential(
-                collisions, mesh, fd::unflatten(x, vertices.cols()));
-        };
-        fd::finite_gradient(
-            fd::flatten(vertices), f, fgrad_b, fd::AccuracyOrder::SECOND, 1e-8);
-    }
-
-    REQUIRE(grad_b.squaredNorm() > 1e-8);
-    std::cout << "grad relative error "
-              << (grad_b - fgrad_b).norm() / grad_b.norm() << "\n";
-    CHECK((grad_b - fgrad_b).norm() < 1e-7 * grad_b.norm());
-    // CHECK(fd::compare_gradient(grad_b, fgrad_b));
 }
