@@ -729,48 +729,6 @@ void HighOrderCollisionsBuilder<3>::merge(
     logger().trace(
         "VV pairs: {}; VE pairs: {}; VF pairs: {}.",
         vert_vert_count, vert_edge_count, vert_face_count);
-
-
-    unordered_map<std::array<index_t, 3>, index_t> eev_3_to_id;
-    unordered_map<std::array<index_t, 3>, index_t> eee_3_to_id;
-    unordered_map<std::array<index_t, 3>, index_t> eef_3_to_id;
-
-    // size up the hash items
-    total = 0;
-    for (const auto& storage : local_storage) {
-        total += storage.triple_collisions.size();
-    }
-
-    merged_collisions.triple_collisions.reserve(total);
-
-    // merge
-    for (const auto& builder : local_storage) {
-        for (const auto& eev : builder.eev_3_to_id) {
-            add_collision<TriplePairCollision>(builder.triple_collisions[eev.second], eev_3_to_id, merged_collisions.triple_collisions);
-        }
-        for (const auto& eee : builder.eee_3_to_id) {
-            add_collision<TriplePairCollision>(builder.triple_collisions[eee.second], eee_3_to_id, merged_collisions.triple_collisions);
-        }
-        for (const auto& eef : builder.eef_3_to_id) {
-            add_collision<TriplePairCollision>(builder.triple_collisions[eef.second], eef_3_to_id, merged_collisions.triple_collisions);
-        }
-    }
-
-    merged_collisions.triple_collisions.erase(
-    std::remove_if(
-        merged_collisions.triple_collisions.begin(), merged_collisions.triple_collisions.end(),
-        [&](std::shared_ptr<TriplePairCollision> cc) {
-            return cc->weight == 0;
-        }),
-    merged_collisions.triple_collisions.end());
-
-    int eev_count = eev_3_to_id.size();
-    int eee_count = eee_3_to_id.size();
-    int eef_count = eef_3_to_id.size();
-
-    logger().trace(
-        "EEV pairs: {}; EEE pairs: {}; EEF pairs: {}.",
-        eev_count, eee_count, eef_count);
 }
 
 } // namespace ipc

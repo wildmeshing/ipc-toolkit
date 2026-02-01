@@ -42,15 +42,7 @@ double HighOrderContactPotential::operator()(
 
     if (mesh.dim() == 3) {
         if (!collisions.use_quadrature) {
-            tbb::parallel_for(
-                tbb::blocked_range<size_t>(size_t(0), collisions.triple_collisions.size()),
-                [&](const tbb::blocked_range<size_t>& r) {
-                    auto& local_potential = storage.local();
-                    for (size_t i = r.begin(); i < r.end(); i++) {
-                        // Quadrature weight is premultiplied by local potential
-                        local_potential += (*this)(*collisions.triple_collisions[i], collisions.triple_collisions[i]->dof(X));
-                    }
-                });
+            throw std::runtime_error("Not implemented!");
         }
         else {
             double total = 0;
@@ -169,22 +161,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
     if (mesh.dim() == 3) {
         if (!collisions.use_quadrature) {
-            maybe_parallel_for(
-                collisions.triple_collisions.size(), [&](int start, int end, int thread_id) {
-                    auto& global_grad = get_local_thread_storage(storage, thread_id);
-
-                    for (size_t i = start; i < end; i++) {
-                        const TriplePairCollision& collision = *collisions.triple_collisions[i];
-
-                        const Eigen::VectorXd local_grad =
-                            this->gradient(collision, collision.dof(X));
-
-                        const std::vector<index_t> vids = collision.vertex_ids();
-
-                        local_gradient_to_global_gradient(
-                            local_grad, vids, dim, global_grad);
-                    }
-                });
+            throw std::runtime_error("Not implemented!");
         }
         else {
             Eigen::VectorXd grad;
@@ -341,22 +318,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
     if (mesh.dim() == 3) {
         if (!collisions.use_quadrature) {
-            maybe_parallel_for(
-                collisions.triple_collisions.size(), [&](int start, int end, int thread_id) {
-                    auto& hess_triplets = get_local_thread_storage(storage, thread_id);
-
-                    for (size_t i = start; i < end; i++) {
-                        const TriplePairCollision& collision = *collisions.triple_collisions[i];
-
-                        const Eigen::MatrixXd local_hess = this->hessian(
-                            collisions[i], collisions[i].dof(X),
-                            project_hessian_to_psd);
-
-                        local_hessian_to_global_triplets(
-                            local_hess, collision.vertex_ids(), dim,
-                            *(hess_triplets.cache));
-                    }
-                });
+            throw std::runtime_error("Not implemented!");
         }
         else {
             // TODO: Implement project PSD

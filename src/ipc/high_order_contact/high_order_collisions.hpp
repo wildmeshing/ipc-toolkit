@@ -140,7 +140,6 @@ public:
 public:
     /// @brief (active) collision pairs
     std::vector<std::shared_ptr<HighOrderCollision>> collisions;
-    std::vector<std::shared_ptr<TriplePairCollision>> triple_collisions;
 
     /// @brief per-vertex adaptive dhat
     Eigen::VectorXd vert_adaptive_dhat;

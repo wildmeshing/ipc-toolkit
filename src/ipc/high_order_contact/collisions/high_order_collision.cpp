@@ -93,7 +93,7 @@ HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::HighOrderCollisionTemplate(
         m_area_b = mesh.edge_length(_primitive1);
     }
 
-    if constexpr (DIM == 3) {
+    if constexpr (DIM == 2) {
         auto is_obstacle = [&](const auto& primitive) {
             bool any_obstacle = false;
             bool all_obstacle = true;
@@ -182,31 +182,46 @@ template<>
 double HighOrderCollisionTemplate<Vertex3, Vertex3>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
-    assert(vertices.rows() > m_vertex_ids[0] && vertices.rows() > m_vertex_ids[1]);
-    return point_point_distance(
-        vertices.row(m_vertex_ids[0]), vertices.row(m_vertex_ids[n_vertices_a()]));
+    const int n_verts = vertices.rows();
+    if (n_verts > m_vertex_ids[0] && n_verts > m_vertex_ids[1]) {
+        return point_point_distance(
+            vertices.row(m_vertex_ids[0]), vertices.row(m_vertex_ids[n_vertices_a()]));
+    }
+    else {
+        return std::numeric_limits<double>::max();
+    }
 }
 
 template<>
 double HighOrderCollisionTemplate<Edge3P1, Vertex3>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
-    assert(vertices.rows() > m_vertex_ids[0] && vertices.rows() > m_vertex_ids[1] && vertices.rows() > m_vertex_ids[2]);
-    return point_edge_distance(
-        vertices.row(m_vertex_ids[n_vertices_a()]), vertices.row(m_vertex_ids[0]),
-        vertices.row(m_vertex_ids[1]));
+    const int n_verts = vertices.rows();
+    if (n_verts > m_vertex_ids[0] && n_verts > m_vertex_ids[1] && n_verts > m_vertex_ids[2]) {
+        return point_edge_distance(
+            vertices.row(m_vertex_ids[n_vertices_a()]), vertices.row(m_vertex_ids[0]),
+            vertices.row(m_vertex_ids[1]));
+    }
+    else {
+        return std::numeric_limits<double>::max();
+    }
 }
 
 template<>
 double HighOrderCollisionTemplate<Edge3P1, Edge3P1>::compute_distance(
     Eigen::ConstRef<Eigen::MatrixXd> vertices) const
 {
-    assert(vertices.rows() > m_vertex_ids[0] && vertices.rows() > m_vertex_ids[1] && vertices.rows() > m_vertex_ids[2] && vertices.rows() > m_vertex_ids[3]);
-    const auto& ea0 = vertices.row(m_vertex_ids[0]);
-    const auto& ea1 = vertices.row(m_vertex_ids[1]);
-    const auto& eb0 = vertices.row(m_vertex_ids[2]);
-    const auto& eb1 = vertices.row(m_vertex_ids[3]);
-    return edge_edge_distance(ea0, ea1, eb0, eb1);
+    const int n_verts = vertices.rows();
+    if (n_verts > m_vertex_ids[0] && n_verts > m_vertex_ids[1] && n_verts > m_vertex_ids[2] && n_verts > m_vertex_ids[3]) {
+        const auto& ea0 = vertices.row(m_vertex_ids[0]);
+        const auto& ea1 = vertices.row(m_vertex_ids[1]);
+        const auto& eb0 = vertices.row(m_vertex_ids[2]);
+        const auto& eb1 = vertices.row(m_vertex_ids[3]);
+        return edge_edge_distance(ea0, ea1, eb0, eb1);
+    }
+    else {
+        return std::numeric_limits<double>::max();
+    }
 }
 
 template<>
@@ -707,6 +722,7 @@ double HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::compute_distance(
 {
     // This generic implementation is not used.
     // Specializations will provide their own implementation.
+    log_and_throw_error("Not implemented");
     return 0;
 }
 

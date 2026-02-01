@@ -238,6 +238,11 @@ void HighOrderCollisions::build(
             return distance_sqr < offset_sqr;
         };
 
+        if (!mesh.is_watertight()) {
+            igl::write_triangle_mesh("non-watertight-mesh.obj", mesh.rest_positions(), mesh.faces());
+            log_and_throw_error("HighOrderCollisions 3D not implemented for non-watertight meshes!");
+        }
+
         if constexpr (!use_quadrature) {
             if (use_adaptive_dhat) {
                 log_and_throw_error("Adaptive dhat with exact cancellation is not implemented!");
@@ -538,12 +543,10 @@ void HighOrderCollisions::build(
 
 // ============================================================================
 size_t HighOrderCollisions::size() const { return collisions.size(); }
-bool HighOrderCollisions::empty() const { return collisions.empty() && triple_collisions.empty() && vertex_collisions.empty() && edge_edge_collisions_advanced.empty() && face_collisions.empty(); }
+bool HighOrderCollisions::empty() const { return collisions.empty() && vertex_collisions.empty() && edge_edge_collisions_advanced.empty() && face_collisions.empty(); }
 void HighOrderCollisions::clear()
 {
     collisions.clear();
-
-    triple_collisions.clear();
 
     vertex_collisions.clear();
     edge_edge_collisions_advanced.clear();
@@ -582,16 +585,46 @@ std::string HighOrderCollisions::to_string(
                 (*cc).gradient(cc->dof(vertices), params).norm());
         }
     }
-    for (const auto& cc : triple_collisions) {
-        ss << "\n";
-        {
-            ss << fmt::format(
-                "[{}]: ({} {} {}) weight {} potential {} grad {}", cc->name(),
-                (*cc)[0], (*cc)[1], (*cc)[2], cc->weight,
-                (*cc)(cc->dof(vertices), params),
-                (*cc).gradient(cc->dof(vertices), params).norm());
+
+    for (const auto& ccs : vertex_collisions) {
+        for (const auto& pair : ccs.second) {
+            const auto& cc = pair.second;
+            ss << "\n";
+            {
+                ss << fmt::format(
+                    "vert [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc->name(),
+                    (*cc)[0], (*cc)[1], cc->weight, cc->compute_distance(vertices),
+                    (*cc)(cc->dof(vertices), params),
+                    (*cc).gradient(cc->dof(vertices), params).norm());
+            }
         }
     }
+    for (const auto& ccs : edge_edge_collisions_advanced) {
+        for (const auto& pair : ccs.second) {
+            const auto& cc = pair.second;
+            ss << "\n";
+            {
+                ss << fmt::format(
+                    "edge [{}]: ({} {}) ({} {}) weight {}", cc->name(),
+                    ccs.first.first, ccs.first.second,
+                    (*cc)[0], (*cc)[1], cc->weight);
+            }
+        }
+    }
+    for (const auto& ccs : face_collisions) {
+        for (const auto& pair : ccs.second) {
+            const auto& cc = pair.second;
+            ss << "\n";
+            {
+                ss << fmt::format(
+                    "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc->name(),
+                    (*cc)[0], (*cc)[1], cc->weight, cc->compute_distance(vertices),
+                    (*cc)(cc->dof(vertices), params),
+                    (*cc).gradient(cc->dof(vertices), params).norm());
+            }
+        }
+    }
+
     return ss.str();
 }
 
