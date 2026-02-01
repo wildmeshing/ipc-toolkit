@@ -541,4 +541,41 @@ double CollisionMesh::max_edge_length() const
     }
     return val;
 }
+
+bool CollisionMesh::is_watertight() const
+{
+    if (dim() == 2) {
+        std::vector<int> vertex_appearance_count(num_vertices(), 0);
+        for (int e = 0; e < m_edges.rows(); e++) {
+            vertex_appearance_count[m_edges(e, 0)]++;
+            vertex_appearance_count[m_edges(e, 1)]++;
+        }
+
+        for (int c : vertex_appearance_count) {
+            if (c != 2) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+    else {
+        assert(dim() == 3);
+
+        std::vector<int> face_appearance_count(num_edges(), 0);
+        for (int f = 0; f < m_faces.rows(); f++) {
+            for (int i = 0; i < 3; i++) {
+                face_appearance_count[faces_to_edges()(f, i)]++;
+            }
+        }
+
+        for (int c : face_appearance_count) {
+            if (c != 2) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
 } // namespace ipc

@@ -351,6 +351,8 @@ public:
         Eigen::ConstRef<Eigen::MatrixXi> faces,
         Eigen::ConstRef<Eigen::MatrixXi> edges);
 
+    bool is_watertight() const;
+
     /// A function that takes two vertex IDs and returns true if the vertices
     /// (and faces or edges containing the vertices) can collide. By default all
     /// primitives can collide with all other primitives.
