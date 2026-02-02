@@ -242,36 +242,7 @@ double HighOrderCollisionTemplate<Face3P1, Vertex3>::compute_distance(
     }
 }
 
-template <typename T>
-std::tuple<Eigen::Matrix<T, Eigen::Dynamic, 2>, std::vector<double>, Eigen::Vector2<T>> sample_edge(
-    Eigen::ConstRef<Eigen::Matrix<T, 2, 2>> edge_positions, int quad_order, std::array<T, 2> window={{0.0, 1.0}}
-){
-    const Eigen::Vector2<T> p0 = edge_positions.row(0);
-	const Eigen::Vector2<T> p1 = edge_positions.row(1);
-	Eigen::Vector2<T> edge_vec = p1 - p0;
-	edge_vec.normalize();
-	const Eigen::Vector2<T> edge_normal(-edge_vec.y(), edge_vec.x());
-
-	Eigen::Matrix<T, Eigen::Dynamic, 2> M(quad_order, 2);
-	if (window[0] < 0.0 || window[1] > 1.0 || window[1] < window[0]) {
-        std::stringstream ss;
-        ss << "Invalid window: " << window[0] << ',' << window[1] << "!";
-        throw std::runtime_error(ss.str());
-	}
-
-    std::vector<double> nodes, weights;
-    std::tie(nodes, weights) = GaussLobatto::get_rule(quad_order);
-
-    const T center = (window[0] + window[1]) / 2;
-    const T halfw = (window[1] - window[0]) / 2;
-	for (size_t i = 0; i<quad_order; ++i) {
-        const T t = center + halfw * nodes.at(i);
-		const Eigen::Vector2<T> P = ((1-t) * p0 + t * p1);
-		M.row(i) = P.transpose();
-	}
-
-	return {M, weights, edge_normal};
-}namespace acp = alternating_contact_potential;
+namespace acp = alternating_contact_potential;
 
 
 // ----------------------------------------------------
