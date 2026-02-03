@@ -145,17 +145,17 @@ public:
 
     /// @brief Compute the value of the GCP potential
     virtual double operator()(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const = 0;
 
     /// @brief Compute the gradient of the GCP potential wrt. vertices involved
-    virtual Vector<double, -1, ELEMENT_SIZE> gradient(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    virtual VectorMax<double, ELEMENT_SIZE> gradient(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const = 0;
 
     /// @brief Compute the Hessian of the GCP potential wrt. vertices involved
     virtual MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const = 0;
 
     bool operator==(const HighOrderCollision& other) const
@@ -229,7 +229,7 @@ public:
         return {{static_cast<index_t>(type()), primitive0, primitive1}};
     }
 
-    Vector<int, N_CORE_DOFS> get_core_indices() const;
+    Eigen::Vector<int, N_CORE_DOFS> get_core_indices() const;
     std::array<index_t, N_CORE_DOFS> core_vertex_ids() const;
 
     int num_vertices() const override
@@ -247,7 +247,7 @@ public:
     double area_b() const { return m_area_b; }
 
     template <typename T>
-    Vector<T, N_CORE_DOFS> core_dof(const Eigen::MatrixX<T>& X) const
+    Eigen::Vector<T, N_CORE_DOFS> core_dof(const Eigen::MatrixX<T>& X) const
     {
         return this->dof(X)(get_core_indices());
     }
@@ -259,15 +259,15 @@ public:
     /// @param params GCP parameters
     /// @return GCP potential value
     double operator()(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
     /// @brief Compute the potential gradient wrt. positions
     /// @param positions Vertex positions
     /// @param params GCP parameters
     /// @return GCP potential gradient
-    Vector<double, -1, ELEMENT_SIZE> gradient(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    VectorMax<double, ELEMENT_SIZE> gradient(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
     /// @brief Compute the potential Hessian wrt. positions
@@ -275,7 +275,7 @@ public:
     /// @param params GCP parameters
     /// @return GCP potential Hessian
     MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
     // ---- distance ----

@@ -53,7 +53,7 @@ namespace ipc
 
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
     template <typename T>
-    auto TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::closest_point_pair_a(Eigen::ConstRef<Vector<T, -1, TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::ELEMENT_SIZE> > positions) const -> Eigen::Matrix<T, DIM, 1>
+    auto TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::closest_point_pair_a(Eigen::ConstRef<VectorMax<T, TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::ELEMENT_SIZE> > positions) const -> Eigen::Matrix<T, DIM, 1>
     {
         if (m_positions_init.size() > 0 && (m_positions_init - positions).array().abs().maxCoeff() > 0) {
             log_and_throw_error("Inconsistent positions wrt initialization!");
@@ -85,7 +85,7 @@ namespace ipc
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
     template <typename T>
     T TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::evaluate(
-        Eigen::ConstRef<Vector<T, N_DOFS>> positions,
+        Eigen::ConstRef<VectorMax<T, N_DOFS>> positions,
         const HighOrderContactParameters& params) const
     {
         const Eigen::Matrix<T, DIM, 1> closest_point = closest_point_pair_a<T>(positions);
@@ -143,7 +143,7 @@ namespace ipc
 
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
     double TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::operator()(
-        Eigen::ConstRef<Vector<double, -1, TriplePairCollision::ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, TriplePairCollision::ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const
     {
         assert(N_DOFS == positions.size());
@@ -151,9 +151,9 @@ namespace ipc
     }
 
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
-    Vector<double, -1, TriplePairCollision::ELEMENT_SIZE> TriplePairCollisionTemplate<
+    VectorMax<double, TriplePairCollision::ELEMENT_SIZE> TriplePairCollisionTemplate<
         PrimitiveA, PrimitiveB, PrimitiveC>::gradient(
-        Eigen::ConstRef<Vector<double, -1, TriplePairCollision::ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, TriplePairCollision::ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const
     {
         using T = ADGrad<N_DOFS>;
@@ -166,7 +166,7 @@ namespace ipc
     template <typename PrimitiveA, typename PrimitiveB, typename PrimitiveC>
     MatrixMax<double, TriplePairCollision::ELEMENT_SIZE, TriplePairCollision::ELEMENT_SIZE>
     TriplePairCollisionTemplate<PrimitiveA, PrimitiveB, PrimitiveC>::hessian(
-        Eigen::ConstRef<Vector<double, -1, TriplePairCollision::ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, TriplePairCollision::ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const
     {
         using T = ADHessian<N_DOFS>;

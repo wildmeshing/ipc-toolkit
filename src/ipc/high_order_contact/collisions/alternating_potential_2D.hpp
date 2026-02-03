@@ -260,7 +260,7 @@ namespace alternating_contact_potential {
     /// @param integration_area The length of the edge (optional).
     /// @return The potential value.
     double potential_EV(
-        Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
         const double integration_area = -1.0
     )
@@ -283,7 +283,7 @@ namespace alternating_contact_potential {
     /// @param integration_area The length of the edge (optional).
     /// @return The gradient vector.
     EV2GradType gradient_EV(
-        Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
         const double integration_area = -1.0
     )
@@ -307,7 +307,7 @@ namespace alternating_contact_potential {
     /// @param integration_area The length of the edge (optional).
     /// @return The Hessian matrix.
     EV2HessType hessian_EV(
-        Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
         const double integration_area = -1.0
     )
@@ -332,7 +332,7 @@ namespace alternating_contact_potential {
     /// @param integration_area The length of the first edge (optional).
     /// @return The potential value.
     double potential_EE(
-        Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
         const double integration_area = -1.0
     ) {
@@ -355,7 +355,7 @@ namespace alternating_contact_potential {
     /// @param integration_area The length of the first edge (optional).
     /// @return The gradient vector.
     EE2GradType gradient_EE(
-        Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
         const double integration_area = -1.0
     ) {
@@ -379,7 +379,7 @@ namespace alternating_contact_potential {
     /// @param integration_area The length of the first edge (optional).
     /// @return The Hessian matrix.
     EE2HessType hessian_EE(
-        Eigen::ConstRef<Vector<double, -1, HighOrderCollision::ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
         const double integration_area = -1.0
     ) {

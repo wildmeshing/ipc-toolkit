@@ -16,16 +16,16 @@ public:
     PointEdgeDistance& operator=(const PointEdgeDistance&) = delete;
 
     static scalar point_point_sqr_distance(
-        Eigen::ConstRef<Vector<scalar, dim>> a,
-        Eigen::ConstRef<Vector<scalar, dim>> b)
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> a,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> b)
     {
         return (a - b).squaredNorm();
     }
 
     static scalar point_line_sqr_distance(
-        Eigen::ConstRef<Vector<scalar, dim>> p,
-        Eigen::ConstRef<Vector<scalar, dim>> e0,
-        Eigen::ConstRef<Vector<scalar, dim>> e1)
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1)
     {
         if constexpr (dim == 2) {
             return Math<scalar>::sqr(Math<scalar>::cross2(e0 - p, e1 - p))
@@ -36,9 +36,9 @@ public:
     }
 
     static scalar point_edge_sqr_distance(
-        Eigen::ConstRef<Vector<scalar, dim>> p,
-        Eigen::ConstRef<Vector<scalar, dim>> e0,
-        Eigen::ConstRef<Vector<scalar, dim>> e1,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1,
         const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO)
     {
         switch (dtype) {
@@ -50,22 +50,22 @@ public:
             return point_point_sqr_distance(p, e1);
         case PointEdgeDistanceType::AUTO:
         default:
-            const Vector<scalar, dim> t = e1 - e0;
-            const Vector<scalar, dim> pos = p - e0;
+            const Eigen::Vector<scalar, dim> t = e1 - e0;
+            const Eigen::Vector<scalar, dim> pos = p - e0;
             const scalar s = pos.dot(t) / t.squaredNorm();
             return (pos - Math<scalar>::l_ns(s) * t).squaredNorm();
         }
     }
 
-    static Vector<scalar, dim> point_line_closest_point_direction(
-        Eigen::ConstRef<Vector<scalar, dim>> p,
-        Eigen::ConstRef<Vector<scalar, dim>> e0,
-        Eigen::ConstRef<Vector<scalar, dim>> e1);
+    static Eigen::Vector<scalar, dim> point_line_closest_point_direction(
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1);
 
-    static Vector<scalar, dim> point_edge_closest_point_direction(
-        Eigen::ConstRef<Vector<scalar, dim>> p,
-        Eigen::ConstRef<Vector<scalar, dim>> e0,
-        Eigen::ConstRef<Vector<scalar, dim>> e1,
+    static Eigen::Vector<scalar, dim> point_edge_closest_point_direction(
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1,
         const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
 };
 
@@ -76,36 +76,36 @@ public:
     PointEdgeDistanceDerivatives&
     operator=(const PointEdgeDistanceDerivatives&) = delete;
 
-    static std::tuple<Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
+    static std::tuple<Eigen::Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
     point_line_closest_point_direction_grad(
-        Eigen::ConstRef<Vector<double, dim>> p,
-        Eigen::ConstRef<Vector<double, dim>> e0,
-        Eigen::ConstRef<Vector<double, dim>> e1);
+        Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> e1);
 
     static std::tuple<
-        Vector<double, dim>,
+        Eigen::Vector<double, dim>,
         Eigen::Matrix<double, dim, 3 * dim>,
         std::array<Eigen::Matrix<double, 3 * dim, 3 * dim>, dim>>
     point_line_closest_point_direction_hessian(
-        Eigen::ConstRef<Vector<double, dim>> p,
-        Eigen::ConstRef<Vector<double, dim>> e0,
-        Eigen::ConstRef<Vector<double, dim>> e1);
+        Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> e1);
 
-    static std::tuple<Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
+    static std::tuple<Eigen::Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
     point_edge_closest_point_direction_grad(
-        Eigen::ConstRef<Vector<double, dim>> p,
-        Eigen::ConstRef<Vector<double, dim>> e0,
-        Eigen::ConstRef<Vector<double, dim>> e1,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> e1,
         const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
 
     static std::tuple<
-        Vector<double, dim>,
+        Eigen::Vector<double, dim>,
         Eigen::Matrix<double, dim, 3 * dim>,
         std::array<Eigen::Matrix<double, 3 * dim, 3 * dim>, dim>>
     point_edge_closest_point_direction_hessian(
-        Eigen::ConstRef<Vector<double, dim>> p,
-        Eigen::ConstRef<Vector<double, dim>> e0,
-        Eigen::ConstRef<Vector<double, dim>> e1,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<double, dim>> e1,
         const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
 };
 } // namespace ipc

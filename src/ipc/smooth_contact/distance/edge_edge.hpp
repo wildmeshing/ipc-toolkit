@@ -186,8 +186,8 @@ T closest_point_uv(
     Eigen::ConstRef<Eigen::Vector3<T>> e3,
     EdgeEdgeDistanceType dtype)
 {
-    Vector<T, 3> u = e1 - e0;
-    Vector<T, 3> v = e3 - e2;
+    Eigen::Vector<T, 3> u = e1 - e0;
+    Eigen::Vector<T, 3> v = e3 - e2;
 
     T uv(0.);
     if (dtype == EdgeEdgeDistanceType::EA_EB) {

@@ -75,17 +75,17 @@ public:
 
     /// @brief Compute the value of the GCP potential
     virtual double operator()(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const = 0;
 
     /// @brief Compute the gradient of the GCP potential wrt. vertices involved
-    virtual Vector<double, -1, ELEMENT_SIZE> gradient(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    virtual VectorMax<double, ELEMENT_SIZE> gradient(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const = 0;
 
     /// @brief Compute the Hessian of the GCP potential wrt. vertices involved
     virtual MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const = 0;
 
 public:
@@ -136,29 +136,29 @@ public:
     typename PairDistType<Vertex3, PrimitiveC>::type distance_type_2() const { return dtype2; }
 
     template <typename T>
-    T evaluate(Eigen::ConstRef<Vector<T, N_DOFS>> positions,
+    T evaluate(Eigen::ConstRef<VectorMax<T, N_DOFS>> positions,
         const HighOrderContactParameters& params) const;
 
     /// @brief Compute the value of the potential
     double operator()(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
     /// @brief Compute the gradient of the potential wrt. vertices involved
-    Vector<double, -1, ELEMENT_SIZE> gradient(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    VectorMax<double, ELEMENT_SIZE> gradient(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
     /// @brief Compute the Hessian of the potential wrt. vertices involved
     MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
-        Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
     double compute_distance(Eigen::ConstRef<Eigen::MatrixXd> positions) const override;
 
     /// @brief Compute the closest point pair between primitive A and B, for now only supports edge-edge
     template <typename T>
-    Eigen::Matrix<T, DIM, 1> closest_point_pair_a(Eigen::ConstRef<Vector<T, -1, ELEMENT_SIZE>> positions) const;
+    Eigen::Matrix<T, DIM, 1> closest_point_pair_a(Eigen::ConstRef<VectorMax<T, ELEMENT_SIZE>> positions) const;
 
 private:
     PrimitiveA primitive_a;

@@ -6,23 +6,23 @@
 namespace ipc {
 
 template <typename scalar, int dim>
-Vector<scalar, dim>
+Eigen::Vector<scalar, dim>
 PointEdgeDistance<scalar, dim>::point_line_closest_point_direction(
-    Eigen::ConstRef<Vector<scalar, dim>> p,
-    Eigen::ConstRef<Vector<scalar, dim>> e0,
-    Eigen::ConstRef<Vector<scalar, dim>> e1)
+    Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
+    Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
+    Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1)
 {
-    const Vector<scalar, dim> d = p - e0;
-    const Vector<scalar, dim> t = e1 - e0;
+    const Eigen::Vector<scalar, dim> d = p - e0;
+    const Eigen::Vector<scalar, dim> t = e1 - e0;
     return d - (d.dot(t) / t.squaredNorm()) * t;
 }
 
 template <typename scalar, int dim>
-Vector<scalar, dim>
+Eigen::Vector<scalar, dim>
 PointEdgeDistance<scalar, dim>::point_edge_closest_point_direction(
-    Eigen::ConstRef<Vector<scalar, dim>> p,
-    Eigen::ConstRef<Vector<scalar, dim>> e0,
-    Eigen::ConstRef<Vector<scalar, dim>> e1,
+    Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
+    Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
+    Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1,
     const PointEdgeDistanceType dtype)
 {
     switch (dtype) {
@@ -34,30 +34,30 @@ PointEdgeDistance<scalar, dim>::point_edge_closest_point_direction(
         return p - e1;
     case PointEdgeDistanceType::AUTO:
     default:
-        Vector<scalar, dim> t = e1 - e0;
-        const Vector<scalar, dim> pos = p - e0;
+        Eigen::Vector<scalar, dim> t = e1 - e0;
+        const Eigen::Vector<scalar, dim> pos = p - e0;
         const scalar s = pos.dot(t) / t.squaredNorm();
         return pos - Math<scalar>::l_ns(s) * t;
     }
 }
 
 template <int dim>
-std::tuple<Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
+std::tuple<Eigen::Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
 PointEdgeDistanceDerivatives<dim>::point_line_closest_point_direction_grad(
-    Eigen::ConstRef<Vector<double, dim>> p,
-    Eigen::ConstRef<Vector<double, dim>> e0,
-    Eigen::ConstRef<Vector<double, dim>> e1)
+    Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> e1)
 {
-    Vector<double, dim> val;
+    Eigen::Vector<double, dim> val;
     Eigen::Matrix<double, dim, 3 * dim> grad;
 #ifdef IPC_TOOLKIT_DEBUG_AUTODIFF
     using T = ADGrad<3 * dim>;
     ScalarBase::setVariableCount(3 * dim);
-    const Vector<T, dim> pT = slice_positions<T, 1, dim>(p);
-    const Vector<T, dim> e0T = slice_positions<T, 1, dim>(e0, dim);
-    const Vector<T, dim> e1T = slice_positions<T, 1, dim>(e1, 2 * dim);
+    const Eigen::Vector<T, dim> pT = slice_positions<T, 1, dim>(p);
+    const Eigen::Vector<T, dim> e0T = slice_positions<T, 1, dim>(e0, dim);
+    const Eigen::Vector<T, dim> e1T = slice_positions<T, 1, dim>(e1, 2 * dim);
 
-    const Vector<T, dim> out =
+    const Eigen::Vector<T, dim> out =
         PointEdgeDistance<T, dim>::point_line_closest_point_direction(
             pT, e0T, e1T);
     for (int i = 0; i < dim; i++) {
@@ -66,7 +66,7 @@ PointEdgeDistanceDerivatives<dim>::point_line_closest_point_direction_grad(
     }
 #else
     const double uv = point_edge_closest_point(p, e0, e1);
-    const Vector<double, 3 * dim> g =
+    const Eigen::Vector<double, 3 * dim> g =
         point_edge_closest_point_jacobian(p, e0, e1);
 
     val = (p - e0) - uv * (e1 - e0);
@@ -83,26 +83,26 @@ PointEdgeDistanceDerivatives<dim>::point_line_closest_point_direction_grad(
 
 template <int dim>
 std::tuple<
-    Vector<double, dim>,
+    Eigen::Vector<double, dim>,
     Eigen::Matrix<double, dim, 3 * dim>,
     std::array<Eigen::Matrix<double, 3 * dim, 3 * dim>, dim>>
 PointEdgeDistanceDerivatives<dim>::point_line_closest_point_direction_hessian(
-    Eigen::ConstRef<Vector<double, dim>> p,
-    Eigen::ConstRef<Vector<double, dim>> e0,
-    Eigen::ConstRef<Vector<double, dim>> e1)
+    Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> e1)
 {
-    Vector<double, dim> val;
+    Eigen::Vector<double, dim> val;
     Eigen::Matrix<double, dim, 3 * dim> grad;
     std::array<Eigen::Matrix<double, 3 * dim, 3 * dim>, dim> hess;
 
 #ifdef IPC_TOOLKIT_DEBUG_AUTODIFF
     using T = ADHessian<3 * dim>;
     ScalarBase::setVariableCount(3 * dim);
-    Vector<T, dim> pT = slice_positions<T, 1, dim>(p);
-    Vector<T, dim> e0T = slice_positions<T, 1, dim>(e0, dim);
-    Vector<T, dim> e1T = slice_positions<T, 1, dim>(e1, 2 * dim);
+    Eigen::Vector<T, dim> pT = slice_positions<T, 1, dim>(p);
+    Eigen::Vector<T, dim> e0T = slice_positions<T, 1, dim>(e0, dim);
+    Eigen::Vector<T, dim> e1T = slice_positions<T, 1, dim>(e1, 2 * dim);
 
-    Vector<T, dim> out =
+    Eigen::Vector<T, dim> out =
         PointEdgeDistance<T, dim>::point_line_closest_point_direction(
             pT, e0T, e1T);
     for (int i = 0; i < dim; i++) {
@@ -112,7 +112,7 @@ PointEdgeDistanceDerivatives<dim>::point_line_closest_point_direction_hessian(
     }
 #else
     const double uv = point_edge_closest_point(p, e0, e1);
-    const Vector<double, 3 * dim> g =
+    const Eigen::Vector<double, 3 * dim> g =
         point_edge_closest_point_jacobian(p, e0, e1);
     const Eigen::Matrix<double, 3 * dim, 3 * dim> h =
         point_edge_closest_point_hessian(p, e0, e1);
@@ -146,24 +146,24 @@ PointEdgeDistanceDerivatives<dim>::point_line_closest_point_direction_hessian(
 }
 
 template <int dim>
-std::tuple<Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
+std::tuple<Eigen::Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
 PointEdgeDistanceDerivatives<dim>::point_edge_closest_point_direction_grad(
-    Eigen::ConstRef<Vector<double, dim>> p,
-    Eigen::ConstRef<Vector<double, dim>> e0,
-    Eigen::ConstRef<Vector<double, dim>> e1,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> e1,
     const PointEdgeDistanceType dtype)
 {
-    Vector<double, dim> vec;
+    Eigen::Vector<double, dim> vec;
     Eigen::Matrix<double, dim, 3 * dim> grad =
         Eigen::Matrix<double, dim, 3 * dim>::Zero();
 #ifdef IPC_TOOLKIT_DEBUG_AUTODIFF
     using T = ADGrad<3 * dim>;
     ScalarBase::setVariableCount(3 * dim);
-    Vector<T, dim> pT = slice_positions<T, 1, dim>(p);
-    Vector<T, dim> e0T = slice_positions<T, 1, dim>(e0, dim);
-    Vector<T, dim> e1T = slice_positions<T, 1, dim>(e1, 2 * dim);
+    Eigen::Vector<T, dim> pT = slice_positions<T, 1, dim>(p);
+    Eigen::Vector<T, dim> e0T = slice_positions<T, 1, dim>(e0, dim);
+    Eigen::Vector<T, dim> e1T = slice_positions<T, 1, dim>(e1, 2 * dim);
 
-    Vector<T, dim> out =
+    Eigen::Vector<T, dim> out =
         PointEdgeDistance<T, dim>::point_edge_closest_point_direction(
             pT, e0T, e1T, dtype);
     for (int i = 0; i < dim; i++) {
@@ -196,16 +196,16 @@ PointEdgeDistanceDerivatives<dim>::point_edge_closest_point_direction_grad(
 
 template <int dim>
 std::tuple<
-    Vector<double, dim>,
+    Eigen::Vector<double, dim>,
     Eigen::Matrix<double, dim, 3 * dim>,
     std::array<Eigen::Matrix<double, 3 * dim, 3 * dim>, dim>>
 PointEdgeDistanceDerivatives<dim>::point_edge_closest_point_direction_hessian(
-    Eigen::ConstRef<Vector<double, dim>> p,
-    Eigen::ConstRef<Vector<double, dim>> e0,
-    Eigen::ConstRef<Vector<double, dim>> e1,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+    Eigen::ConstRef<Eigen::Vector<double, dim>> e1,
     const PointEdgeDistanceType dtype)
 {
-    Vector<double, dim> vec;
+    Eigen::Vector<double, dim> vec;
     Eigen::Matrix<double, dim, 3 * dim> grad =
         Eigen::Matrix<double, dim, 3 * dim>::Zero();
     std::array<Eigen::Matrix<double, 3 * dim, 3 * dim>, dim> hess;
@@ -215,11 +215,11 @@ PointEdgeDistanceDerivatives<dim>::point_edge_closest_point_direction_hessian(
 #ifdef IPC_TOOLKIT_DEBUG_AUTODIFF
     using T = ADHessian<3 * dim>;
     ScalarBase::setVariableCount(3 * dim);
-    Vector<T, dim> pT = slice_positions<T, 1, dim>(p);
-    Vector<T, dim> e0T = slice_positions<T, 1, dim>(e0, dim);
-    Vector<T, dim> e1T = slice_positions<T, 1, dim>(e1, 2 * dim);
+    Eigen::Vector<T, dim> pT = slice_positions<T, 1, dim>(p);
+    Eigen::Vector<T, dim> e0T = slice_positions<T, 1, dim>(e0, dim);
+    Eigen::Vector<T, dim> e1T = slice_positions<T, 1, dim>(e1, 2 * dim);
 
-    Vector<T, dim> out =
+    Eigen::Vector<T, dim> out =
         PointEdgeDistance<T, dim>::point_edge_closest_point_direction(
             pT, e0T, e1T);
 

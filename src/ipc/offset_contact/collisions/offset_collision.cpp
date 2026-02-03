@@ -37,9 +37,9 @@ Eigen::VectorXd OffsetCollision::dof(Eigen::ConstRef<Eigen::MatrixXd> X) const
 
 template <typename PrimitiveA, typename PrimitiveB>
 auto OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::get_core_indices() const
-    -> Vector<int, N_CORE_DOFS>
+    -> Eigen::Vector<int, N_CORE_DOFS>
 {
-    Vector<int, N_CORE_DOFS> core_indices;
+    Eigen::Vector<int, N_CORE_DOFS> core_indices;
     core_indices << Eigen::VectorXi::LinSpaced(
         N_CORE_DOFS_A, 0, N_CORE_DOFS_A - 1),
         Eigen::VectorXi::LinSpaced(
@@ -209,7 +209,7 @@ T compute_vertex_weight(const Eigen::Matrix<T, Eigen::Dynamic, 2>& v)
 
 template <typename T>
 T potential_VV(
-    Eigen::ConstRef<Vector<double, -1, OffsetCollision::ELEMENT_SIZE>>
+    Eigen::ConstRef<VectorMax<double, OffsetCollision::ELEMENT_SIZE>>
         positions,
     const OffsetContactParameters& params,
     const size_t n_vertices_a,
@@ -239,7 +239,7 @@ T potential_VV(
 
 template <typename T>
 T potential_VE(
-    Eigen::ConstRef<Vector<double, -1, OffsetCollision::ELEMENT_SIZE>>
+    Eigen::ConstRef<VectorMax<double, OffsetCollision::ELEMENT_SIZE>>
         positions,
     const OffsetContactParameters& params,
     const size_t n_vertices_a,
@@ -278,7 +278,7 @@ T potential_VE(
 
 template <typename PrimitiveA, typename PrimitiveB>
 double OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::operator()(
-    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
 {
     return 0;
@@ -286,16 +286,16 @@ double OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::operator()(
 
 template <typename PrimitiveA, typename PrimitiveB>
 auto OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::gradient(
-    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
-    -> Vector<double, -1, ELEMENT_SIZE>
+    -> VectorMax<double, ELEMENT_SIZE>
 {
-    return Vector<double, -1, ELEMENT_SIZE>::Zero(n_dofs());
+    return VectorMax<double, ELEMENT_SIZE>::Zero(n_dofs());
 }
 
 template <typename PrimitiveA, typename PrimitiveB>
 auto OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::hessian(
-    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
@@ -316,7 +316,7 @@ double OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::compute_distance(
 
 template <>
 double OffsetCollisionTemplate<ogcEdge2, ogcVert2>::operator()(
-    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
 {
     if (is_obstacle_b()) return 0.0;
@@ -326,11 +326,11 @@ double OffsetCollisionTemplate<ogcEdge2, ogcVert2>::operator()(
 
 template <>
 auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::gradient(
-    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const OffsetContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const OffsetContactParameters& params) const -> VectorMax<double, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
-    if (is_obstacle_b()) return Vector<double, -1, ELEMENT_SIZE>::Zero(n_dofs());
+    if (is_obstacle_b()) return VectorMax<double, ELEMENT_SIZE>::Zero(n_dofs());
     return potential_VE<ADGrad<-1>>(
                positions, params, primitive_a->n_vertices(), primitive_b->n_vertices(), area_b())
         .grad;
@@ -350,7 +350,7 @@ auto OffsetCollisionTemplate<PrimitiveA, PrimitiveB>::core_vertex_ids() const
 
 template <>
 auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::hessian(
-    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
@@ -362,7 +362,7 @@ auto OffsetCollisionTemplate<ogcEdge2, ogcVert2>::hessian(
 
 template <>
 double OffsetCollisionTemplate<ogcVert2, ogcVert2>::operator()(
-    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const
 {
     return potential_VV<double>(
@@ -371,8 +371,8 @@ double OffsetCollisionTemplate<ogcVert2, ogcVert2>::operator()(
 
 template <>
 auto OffsetCollisionTemplate<ogcVert2, ogcVert2>::gradient(
-    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
-    const OffsetContactParameters& params) const -> Vector<double, -1, ELEMENT_SIZE>
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const OffsetContactParameters& params) const -> VectorMax<double, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
     return potential_VV<ADGrad<-1>>(
@@ -381,7 +381,7 @@ auto OffsetCollisionTemplate<ogcVert2, ogcVert2>::gradient(
 
 template <>
 auto OffsetCollisionTemplate<ogcVert2, ogcVert2>::hessian(
-    Eigen::ConstRef<Vector<double, -1, ELEMENT_SIZE>> positions,
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const OffsetContactParameters& params) const -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     ScalarBase::setVariableCount(positions.rows());
