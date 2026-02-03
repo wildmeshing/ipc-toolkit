@@ -2,7 +2,7 @@
 
 #include "offset_primitives.hpp"
 #include <ipc/offset_contact/offset_contact_parameters.hpp>
-#include <ipc/utils/math.hpp>
+#include <ipc/math/math.hpp>
 #include <ipc/utils/autodiff_types.hpp>
 
 namespace ipc {

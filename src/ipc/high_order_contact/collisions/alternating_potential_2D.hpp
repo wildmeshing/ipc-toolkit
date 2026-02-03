@@ -2,7 +2,7 @@
 #include "high_order_quadrature.hpp"
 #include "high_order_primitives.hpp"
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
-#include <ipc/utils/math.hpp>
+#include <ipc/math/math.hpp>
 #include <ipc/distance/point_point.hpp>
 #include <ipc/distance/point_edge.hpp>
 

@@ -285,6 +285,12 @@ if(IPC_TOOLKIT_BUILD_TESTS)
   include(CTest)
   enable_testing()
   add_subdirectory(tests)
+  if(IPC_TOOLKIT_WITH_ROBIN_MAP)
+    target_link_libraries(ipc_toolkit_tests PRIVATE tsl::robin_map)
+  endif()
+  if(IPC_TOOLKIT_WITH_ABSEIL)
+    target_link_libraries(ipc_toolkit_tests PRIVATE absl::hash)
+  endif()
 endif()
 
 ################################################################################

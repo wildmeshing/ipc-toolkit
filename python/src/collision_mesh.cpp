@@ -18,7 +18,7 @@ struct PairHash {
 };
 
 using MapCanCollide =
-    std::unordered_map<std::pair<size_t, size_t>, bool, PairHash>;
+    unordered_map<std::pair<size_t, size_t>, bool, PairHash>;
 
 } // namespace
 

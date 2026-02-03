@@ -2,7 +2,7 @@
 
 #include "high_order_primitives.hpp"
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
-#include <ipc/utils/math.hpp>
+#include <ipc/math/math.hpp>
 #include <ipc/utils/autodiff_types.hpp>
 
 #include "pair_distance.hpp"

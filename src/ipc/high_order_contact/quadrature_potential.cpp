@@ -5,7 +5,7 @@
 #include "ipc/candidates/candidates.hpp"
 #include "ipc/distance/edge_edge.hpp"
 #include "ipc/high_order_contact/high_order_collisions_builder.hpp"
-#include "ipc/utils/area_gradient.hpp"
+#include "ipc/geometry/area.hpp"
 #include "ipc/smooth_contact/distance/point_face.hpp"
 #include "ipc/smooth_contact/distance/mollifier.hpp"
 
