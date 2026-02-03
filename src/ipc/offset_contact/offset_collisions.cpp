@@ -22,7 +22,7 @@ void OffsetCollisions::compute_adaptive_dhat(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices, // set to zero for rest pose
     const OffsetContactParameters params,
-    const std::shared_ptr<BroadPhase>& broad_phase)
+    const std::shared_ptr<BroadPhase> broad_phase)
 {
     assert(vertices.rows() == mesh.num_vertices());
 
@@ -198,7 +198,7 @@ void OffsetCollisions::build(
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
     const OffsetContactParameters params,
     const bool use_adaptive_dhat,
-    const std::shared_ptr<BroadPhase>& broad_phase)
+    const std::shared_ptr<BroadPhase> broad_phase)
 {
     assert(vertices.rows() == mesh.num_vertices());
 

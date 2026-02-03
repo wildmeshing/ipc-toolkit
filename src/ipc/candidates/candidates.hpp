@@ -26,7 +26,7 @@ public:
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
         const double inflation_radius = 0,
-        const std::shared_ptr<BroadPhase>& broad_phase =
+        const std::shared_ptr<BroadPhase> broad_phase =
             make_default_broad_phase(),
         const bool all_types = false);
 
@@ -42,7 +42,7 @@ public:
         Eigen::ConstRef<Eigen::MatrixXd> vertices_t0,
         Eigen::ConstRef<Eigen::MatrixXd> vertices_t1,
         const double inflation_radius = 0,
-        const std::shared_ptr<BroadPhase>& broad_phase =
+        const std::shared_ptr<BroadPhase> broad_phase =
             make_default_broad_phase(),
         const bool all_types = false);
 
@@ -122,7 +122,7 @@ public:
         Eigen::ConstRef<Eigen::MatrixXd> vertices_t1,
         const double dhat,
         const double min_distance = 0.0,
-        const std::shared_ptr<BroadPhase>& broad_phase =
+        const std::shared_ptr<BroadPhase> broad_phase =
             make_default_broad_phase(),
         const NarrowPhaseCCD& narrow_phase_ccd =
             DEFAULT_NARROW_PHASE_CCD) const;

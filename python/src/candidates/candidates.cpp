@@ -12,7 +12,7 @@ void define_candidates(py::module_& m)
             "build",
             py::overload_cast<
                 const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
-                const double, const std::shared_ptr<BroadPhase>&, const bool>(
+                const double, const std::shared_ptr<BroadPhase>, const bool>(
                 &Candidates::build),
             R"ipc_Qu8mg5v7(
             Initialize the set of discrete collision detection candidates.
@@ -31,7 +31,7 @@ void define_candidates(py::module_& m)
             py::overload_cast<
                 const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
                 Eigen::ConstRef<Eigen::MatrixXd>, const double,
-                const std::shared_ptr<BroadPhase>&, const bool>(&Candidates::build),
+                const std::shared_ptr<BroadPhase>, const bool>(&Candidates::build),
             R"ipc_Qu8mg5v7(
             Initialize the set of continuous collision detection candidates.
 

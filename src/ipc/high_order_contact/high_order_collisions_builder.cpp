@@ -12,7 +12,7 @@ namespace ipc {
 namespace {
     template <typename TCollision, typename THash>
     void add_collision(
-        const std::shared_ptr<TCollision>& pair,
+        const std::shared_ptr<TCollision> pair,
         unordered_map<THash, index_t>& cc_to_id,
         std::vector<std::shared_ptr<TCollision>>& collisions)
     {

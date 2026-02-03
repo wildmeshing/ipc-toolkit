@@ -25,7 +25,7 @@ void define_smooth_collisions(py::module_& m, std::string name)
             py::overload_cast<
                 const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
                 const SmoothContactParameters, const bool,
-                const std::shared_ptr<BroadPhase>&>(&SmoothCollisions::build),
+                const std::shared_ptr<BroadPhase>>(&SmoothCollisions::build),
             R"ipc_Qu8mg5v7(
             Initialize the set of collisions used to compute the barrier potential.
 
@@ -91,7 +91,7 @@ void define_high_order_collisions(py::module_& m)
             py::overload_cast<
                 const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
                 const HighOrderContactParameters, const bool,
-                const std::shared_ptr<BroadPhase>&>(&HighOrderCollisions::build),
+                const std::shared_ptr<BroadPhase>>(&HighOrderCollisions::build),
             R"ipc_Qu8mg5v7(
             Initialize the set of collisions used to compute the potential.
 
@@ -156,7 +156,7 @@ void define_normal_collisions(py::module_& m)
             "build",
             py::overload_cast<
                 const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
-                const double, const double, const std::shared_ptr<BroadPhase>&>(
+                const double, const double, const std::shared_ptr<BroadPhase>>(
                 &NormalCollisions::build),
             R"ipc_Qu8mg5v7(
             Initialize the set of collisions used to compute the barrier potential.
