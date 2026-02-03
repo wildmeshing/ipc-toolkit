@@ -15,6 +15,7 @@ namespace {
             cc_to_id,
         std::vector<std::shared_ptr<OffsetCollision>>& collisions)
     {
+        assert(pair != nullptr);
         if (pair->is_active()
             && cc_to_id.find(pair->get_hash()) == cc_to_id.end()) { // filters dupes
             // New collision, so add it to the end of collisions

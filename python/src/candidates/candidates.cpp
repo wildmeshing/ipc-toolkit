@@ -12,7 +12,7 @@ void define_candidates(py::module_& m)
             "build",
             py::overload_cast<
                 const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
-                const double, const std::shared_ptr<BroadPhase>, const bool>(
+                const double, BroadPhase*, const bool>(
                 &Candidates::build),
             R"ipc_Qu8mg5v7(
             Initialize the set of discrete collision detection candidates.
@@ -24,14 +24,14 @@ void define_candidates(py::module_& m)
                 broad_phase: Broad phase to use.
             )ipc_Qu8mg5v7",
             "mesh"_a, "vertices"_a, "inflation_radius"_a = 0,
-            "broad_phase"_a = make_default_broad_phase(),
+            "broad_phase"_a = nullptr,
             "all_types"_a = false)
         .def(
             "build",
             py::overload_cast<
                 const CollisionMesh&, Eigen::ConstRef<Eigen::MatrixXd>,
                 Eigen::ConstRef<Eigen::MatrixXd>, const double,
-                const std::shared_ptr<BroadPhase>, const bool>(&Candidates::build),
+                BroadPhase*, const bool>(&Candidates::build),
             R"ipc_Qu8mg5v7(
             Initialize the set of continuous collision detection candidates.
 
@@ -47,7 +47,7 @@ void define_candidates(py::module_& m)
             )ipc_Qu8mg5v7",
             "mesh"_a, "vertices_t0"_a, "vertices_t1"_a,
             "inflation_radius"_a = 0,
-            "broad_phase"_a = make_default_broad_phase(),
+            "broad_phase"_a = nullptr,
             "all_types"_a = false)
         .def("__len__", &Candidates::size)
         .def("empty", &Candidates::empty)
@@ -127,7 +127,7 @@ void define_candidates(py::module_& m)
             )ipc_Qu8mg5v7",
             "mesh"_a, "vertices_t0"_a, "vertices_t1"_a, "dhat"_a,
             "min_distance"_a = 0.0,
-            "broad_phase"_a = make_default_broad_phase(),
+            "broad_phase"_a = nullptr,
             "narrow_phase_ccd"_a = DEFAULT_NARROW_PHASE_CCD)
         .def(
             "save_obj", &Candidates::save_obj, "filename"_a, "vertices"_a,

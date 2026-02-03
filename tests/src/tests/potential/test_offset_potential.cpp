@@ -36,8 +36,8 @@ TEST_CASE("Offset barrier potential codim", "[offset_potential]")
         std::vector<bool>(vertices.rows(), true),
         std::vector<bool>(vertices.rows(), false), vertices, edges, faces);
     OffsetContactParameters params(dhat, 0.85, 0.15, 2, 4);
-    collisions.build(mesh, vertices, params, false, method);
-    CAPTURE(dhat, method);
+    collisions.build(mesh, vertices, params, false, method.get());
+    CAPTURE(dhat, method.get());
     CHECK(!collisions.empty());
     CHECK(!has_intersections(mesh, vertices));
 
@@ -157,8 +157,8 @@ TEST_CASE("Offset barrier potential full gradient and hessian 3D", tagsopt_ho)
 
     OffsetContactParameters params(dhat, 0.85, 0.15, 2, 4);
     params.set_adaptive_dhat_ratio(min_dist_ratio);
-    collisions.compute_adaptive_dhat(mesh, vertices, params, method);
-    collisions.build(mesh, vertices, params, adaptive_dhat, method);
+    collisions.compute_adaptive_dhat(mesh, vertices, params, method.get());
+    collisions.build(mesh, vertices, params, adaptive_dhat, method.get());
     CAPTURE(dhat, method, adaptive_dhat, all_vertices_on_surface);
     CHECK(!collisions.empty());
     CHECK(!has_intersections(mesh, vertices));
@@ -242,8 +242,8 @@ void test_offset_potential(
     mesh = CollisionMesh(
         std::vector<bool>(vertices.rows(), true),
         std::vector<bool>(vertices.rows(), orientable), vertices, edges, faces);
-    collisions.compute_adaptive_dhat(mesh, vertices, params, method);
-    collisions.build(mesh, vertices, params, adaptive_dhat, method);
+    collisions.compute_adaptive_dhat(mesh, vertices, params, method.get());
+    collisions.build(mesh, vertices, params, adaptive_dhat, method.get());
     CAPTURE(dhat, method, adaptive_dhat);
     CHECK(!collisions.empty());
     /*
@@ -446,8 +446,8 @@ TEST_CASE("Offset barrier potential real sim 2D C^1", "[offset_potential]")
     params.set_adaptive_dhat_ratio(min_dist_ratio);
     OffsetCollisions collisions;
     mesh = CollisionMesh(vertices, edges, faces);
-    collisions.compute_adaptive_dhat(mesh, vertices, params, method);
-    collisions.build(mesh, vertices, params, adaptive_dhat, method);
+    collisions.compute_adaptive_dhat(mesh, vertices, params, method.get());
+    collisions.build(mesh, vertices, params, adaptive_dhat, method.get());
     CAPTURE(dhat, method, adaptive_dhat);
     CHECK(!collisions.empty());
     std::cout << "Offset collision candidate size " << collisions.size()

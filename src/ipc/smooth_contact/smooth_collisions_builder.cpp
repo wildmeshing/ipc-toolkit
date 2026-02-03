@@ -17,6 +17,7 @@ namespace {
             cc_to_id,
         std::vector<std::shared_ptr<SmoothCollision>>& collisions)
     {
+        assert(pair != nullptr);
         if (pair->is_active()
             && cc_to_id.find(pair->get_hash()) == cc_to_id.end()) { // filters dupes
             // New collision, so add it to the end of collisions
@@ -30,6 +31,7 @@ namespace {
         const std::shared_ptr<TCollision> pair,
         std::vector<std::shared_ptr<SmoothCollision>>& collisions)
     {
+        assert(pair != nullptr);
         if (pair->is_active()) {
             collisions.push_back(pair);
         }

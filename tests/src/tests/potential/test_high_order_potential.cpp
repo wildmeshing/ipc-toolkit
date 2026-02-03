@@ -199,6 +199,7 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential]")
 
 TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
 {
+    const auto method = make_default_broad_phase();
     Eigen::MatrixXd V;
     Eigen::MatrixXi F, E;
     igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
@@ -210,7 +211,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
     HighOrderContactParameters params(dhat, 0., 2, 0);
 
     Candidates candidates;
-    candidates.build(mesh, V, dhat / 2, make_default_broad_phase(), true);
+    candidates.build(mesh, V, dhat / 2, method.get(), true);
     candidates.convert_candidates_to_sets();
     PointPotential point_potential(mesh, candidates, params);
 
@@ -260,6 +261,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
 
 TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
 {
+    const auto method = make_default_broad_phase();
     Eigen::MatrixXd V;
     Eigen::MatrixXi F, E;
     igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
@@ -271,7 +273,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
     HighOrderContactParameters params(dhat, 0., 2, 0);
 
     Candidates candidates;
-    candidates.build(mesh, V, dhat / 2, make_default_broad_phase(), true);
+    candidates.build(mesh, V, dhat / 2, method.get(), true);
     candidates.convert_candidates_to_sets();
     PointPotential point_potential(mesh, candidates, params);
 
@@ -330,6 +332,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
 
 TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_order_potential_2d]")
 {
+    const auto method = make_default_broad_phase();
     Eigen::MatrixXd V;
     Eigen::MatrixXi E;
     double dhat = 1.;
@@ -393,7 +396,7 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
         std::vector<bool>(V.rows(), false), V, E, F);
 
     HighOrderCollisions collisions;
-    collisions.build(mesh, V, params, false, make_default_broad_phase());
+    collisions.build(mesh, V, params, false, method.get());
 
     REQUIRE(!has_intersections(mesh, V));
 
@@ -410,6 +413,7 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
 
 TEST_CASE("High order potential 2D finite differences", "[high_order_potential], [high_order_potential_2d]")
 {
+    const auto method = make_default_broad_phase();
     Eigen::MatrixXd V;
     Eigen::MatrixXi E;
     double dhat = 0.6;
@@ -425,7 +429,7 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
             std::vector<bool>(V.rows(), false), V, E, F);
 
         HighOrderCollisions collisions;
-        collisions.build(mesh, V, params, false, make_default_broad_phase());
+        collisions.build(mesh, V, params, false, method.get());
 
         REQUIRE(!collisions.empty());
         REQUIRE(!has_intersections(mesh, V));

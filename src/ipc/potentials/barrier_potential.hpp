@@ -47,7 +47,7 @@ public:
 
     /// @brief Set the barrier function used to compute the potential.
     /// @param barrier The barrier function used to compute the potential.
-    void set_barrier(const std::shared_ptr<Barrier> barrier)
+    void set_barrier(const std::shared_ptr<Barrier>& barrier)
     {
         assert(barrier != nullptr);
         m_barrier = barrier;

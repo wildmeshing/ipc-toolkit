@@ -27,8 +27,7 @@ public:
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
         const HighOrderContactParameters params,
-        const std::shared_ptr<BroadPhase> broad_phase =
-            make_default_broad_phase());
+        BroadPhase* broad_phase = nullptr);
 
     /// @brief Initialize the set of collisions used to compute the barrier potential.
     /// @param mesh The collision mesh.
@@ -39,8 +38,7 @@ public:
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
         const HighOrderContactParameters params,
         const bool use_adaptive_dhat = false,
-        const std::shared_ptr<BroadPhase> broad_phase =
-            make_default_broad_phase());
+        BroadPhase* broad_phase = nullptr);
 
     /// @brief Initialize the set of collisions used to compute the barrier potential.
     /// @param candidates Distance candidates from which the collision set is built.

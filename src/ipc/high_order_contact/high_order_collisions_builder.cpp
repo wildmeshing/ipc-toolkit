@@ -16,6 +16,7 @@ namespace {
         unordered_map<THash, index_t>& cc_to_id,
         std::vector<std::shared_ptr<TCollision>>& collisions)
     {
+        assert(pair != nullptr);
         if (pair->is_active()) {
             // filters dupes
             auto found_item = cc_to_id.find(pair->get_hash());

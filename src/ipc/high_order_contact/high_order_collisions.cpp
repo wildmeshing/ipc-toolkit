@@ -92,7 +92,7 @@ void HighOrderCollisions::compute_adaptive_dhat(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices, // set to zero for rest pose
     const HighOrderContactParameters params,
-    const std::shared_ptr<BroadPhase> broad_phase)
+    BroadPhase* broad_phase)
 {
     assert(vertices.rows() == mesh.num_vertices());
 
@@ -569,7 +569,7 @@ void HighOrderCollisions::build(
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
     const HighOrderContactParameters params,
     const bool use_adaptive_dhat,
-    const std::shared_ptr<BroadPhase> broad_phase)
+    BroadPhase* broad_phase)
 {
     assert(vertices.rows() == mesh.num_vertices());
 
