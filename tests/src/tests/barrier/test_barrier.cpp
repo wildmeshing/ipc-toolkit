@@ -8,7 +8,7 @@
 #include <ipc/geometry/normal.hpp>
 #include <ipc/smooth_contact/primitives/point3.hpp>
 #include <ipc/utils/autodiff_types.hpp>
-#include <ipc/utils/math.hpp>
+#include <ipc/math/math.hpp>
 
 #include <finitediff.hpp>
 #include <igl/edges.h>
@@ -475,6 +475,7 @@ TEST_CASE("Barrier derivatives", "[barrier]")
         barrier = std::make_unique<ipc::ClampedLogSqBarrier>();
     }
     SECTION("Cubic") { barrier = std::make_unique<ipc::CubicBarrier>(); }
+    SECTION("TwoStage") { barrier = std::make_unique<ipc::TwoStageBarrier>(); }
 
     if (use_dist_sqr) {
         d_vec *= d;

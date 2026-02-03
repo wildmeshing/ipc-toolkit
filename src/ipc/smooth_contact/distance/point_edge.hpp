@@ -2,43 +2,45 @@
 
 #include <ipc/distance/distance_type.hpp>
 #include <ipc/distance/point_edge.hpp>
+#include <ipc/math/math.hpp>
 #include <ipc/smooth_contact/common.hpp>
 #include <ipc/utils/autodiff_types.hpp>
-#include <ipc/utils/math.hpp>
 
 #include <iostream>
 
 namespace ipc {
-template <typename scalar, int dim> class PointEdgeDistance {
+template <typename T, int dim> class PointEdgeDistance {
 public:
+    using VectorNT = Eigen::Vector<T, dim>;
+
     PointEdgeDistance() = delete;
     PointEdgeDistance(const PointEdgeDistance&) = delete;
     PointEdgeDistance& operator=(const PointEdgeDistance&) = delete;
 
-    static scalar point_point_sqr_distance(
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> a,
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> b)
+    static T point_point_sqr_distance(
+        Eigen::ConstRef<Eigen::Vector<T, dim>> a,
+        Eigen::ConstRef<Eigen::Vector<T, dim>> b)
     {
         return (a - b).squaredNorm();
     }
 
-    static scalar point_line_sqr_distance(
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1)
+    static T point_line_sqr_distance(
+        Eigen::ConstRef<Eigen::Vector<T, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<T, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<T, dim>> e1)
     {
         if constexpr (dim == 2) {
-            return Math<scalar>::sqr(Math<scalar>::cross2(e0 - p, e1 - p))
+            return Math<T>::sqr(Math<T>::cross2(e0 - p, e1 - p))
                 / (e1 - e0).squaredNorm();
         } else {
             return (e0 - p).cross(e1 - p).squaredNorm() / (e1 - e0).squaredNorm();
         }
     }
 
-    static scalar point_edge_sqr_distance(
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1,
+    static T point_edge_sqr_distance(
+        Eigen::ConstRef<Eigen::Vector<T, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<T, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<T, dim>> e1,
         const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO)
     {
         switch (dtype) {
@@ -50,27 +52,35 @@ public:
             return point_point_sqr_distance(p, e1);
         case PointEdgeDistanceType::AUTO:
         default:
-            const Eigen::Vector<scalar, dim> t = e1 - e0;
-            const Eigen::Vector<scalar, dim> pos = p - e0;
-            const scalar s = pos.dot(t) / t.squaredNorm();
-            return (pos - Math<scalar>::l_ns(s) * t).squaredNorm();
+            const Eigen::Vector<T, dim> t = e1 - e0;
+            const Eigen::Vector<T, dim> pos = p - e0;
+            const T s = pos.dot(t) / t.squaredNorm();
+            return (pos - Math<T>::l_ns(s) * t).squaredNorm();
         }
     }
 
-    static Eigen::Vector<scalar, dim> point_line_closest_point_direction(
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1);
+    static Eigen::Vector<T, dim> point_line_closest_point_direction(
+        Eigen::ConstRef<Eigen::Vector<T, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<T, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<T, dim>> e1);
 
-    static Eigen::Vector<scalar, dim> point_edge_closest_point_direction(
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> p,
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e0,
-        Eigen::ConstRef<Eigen::Vector<scalar, dim>> e1,
+    static Eigen::Vector<T, dim> point_edge_closest_point_direction(
+        Eigen::ConstRef<Eigen::Vector<T, dim>> p,
+        Eigen::ConstRef<Eigen::Vector<T, dim>> e0,
+        Eigen::ConstRef<Eigen::Vector<T, dim>> e1,
         const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
 };
 
 template <int dim> class PointEdgeDistanceDerivatives {
 public:
+    using VectorNd = Eigen::Vector<double, dim>;
+    using JacobianType =
+        std::tuple<VectorNd, Eigen::Matrix<double, dim, 3 * dim>>;
+    using HessianType = std::tuple<
+        VectorNd,
+        Eigen::Matrix<double, dim, 3 * dim>,
+        std::array<Eigen::Matrix<double, 3 * dim, 3 * dim>, dim>>;
+
     PointEdgeDistanceDerivatives() = delete;
     PointEdgeDistanceDerivatives(const PointEdgeDistanceDerivatives&) = delete;
     PointEdgeDistanceDerivatives&

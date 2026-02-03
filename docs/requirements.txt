@@ -1,4 +1,6 @@
-sphinx
+numpy
+scipy
+sphinx<9.0.0
 sphinx-sitemap
 sphinx-immaterial
 autoclasstoc

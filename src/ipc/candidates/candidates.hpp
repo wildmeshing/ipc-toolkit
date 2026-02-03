@@ -5,10 +5,12 @@
 #include <ipc/candidates/edge_vertex.hpp>
 #include <ipc/candidates/face_vertex.hpp>
 #include <ipc/candidates/vertex_vertex.hpp>
+#include <ipc/utils/unordered_map_and_set.hpp>
 
 #include <Eigen/Core>
 
 #include <vector>
+#include <set>
 
 namespace ipc {
 
@@ -101,6 +103,7 @@ public:
     /// @param mesh The collision mesh.
     /// @param displacements Surface vertex displacements (rowwise).
     /// @param dhat Barrier activation distance.
+    /// @return A step-size \f$\in [0, 1]\f$ that is collision free for non-candidate elements.
     double compute_noncandidate_conservative_stepsize(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> displacements,
@@ -114,6 +117,7 @@ public:
     /// @param min_distance The minimum distance allowable between any two elements.
     /// @param broad_phase The broad phase algorithm to use.
     /// @param narrow_phase_ccd The narrow phase CCD algorithm to use.
+    /// @returns A step-size \f$\in [0, 1]\f$ that is collision free.
     double compute_cfl_stepsize(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices_t0,
@@ -124,12 +128,86 @@ public:
         const NarrowPhaseCCD& narrow_phase_ccd =
             DEFAULT_NARROW_PHASE_CCD) const;
 
-    /// @brief Write collision candidates to a file.
-    /// @param filename The name of the file to write to.
-    /// @param vertices The vertex positions.
-    /// @param edges The edge connectivity.
-    /// @param faces The face connectivity.
-    /// @return True if the write was successful, false otherwise.
+    /// @brief Compute the maximum distance every vertex can move (independently) without colliding with any other element.
+    /// @note Cap the value at the inflation radius used to build the candidates.
+    /// @param mesh The collision mesh.
+    /// @param vertices Collision mesh vertex positions (rowwise).
+    /// @param inflation_radius The inflation radius used to build the candidates.
+    /// @param min_distance The minimum distance allowable between any two elements.
+    /// @return A vector of minimum distances, one for each vertex.
+    Eigen::VectorXd compute_per_vertex_safe_distances(
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> vertices,
+        const double inflation_radius,
+        const double min_distance = 0.0) const;
+
+    // clang-format off
+    // /// @brief Compute the maximum distance every vertex can move (independently) without colliding with any other element.
+    // /// @note Cap the value at one.
+    // /// @param mesh The collision mesh.
+    // /// @param vertices_t0 Surface vertex starting positions (rowwise).
+    // /// @param vertices_t1 Surface vertex ending positions (rowwise).
+    // /// @param min_distance The minimum distance allowable between any two elements.
+    // /// @return A vector of values in [0, 1], one for each vertex.
+    // Eigen::VectorXd compute_per_vertex_collision_free_stepsize(
+    //     const CollisionMesh& mesh,
+    //     Eigen::ConstRef<Eigen::MatrixXd> vertices_t0,
+    //     Eigen::ConstRef<Eigen::MatrixXd> vertices_t1,
+    //     const double min_distance = 0.0,
+    //     const NarrowPhaseCCD& narrow_phase_ccd =
+    //         DEFAULT_NARROW_PHASE_CCD) const;
+    // clang-format on
+
+    // == Convert to subelement candidates ====================================
+
+    /// @brief Convert edge-vertex candidates to vertex-vertex candidates.
+    /// @param mesh The collision mesh.
+    /// @param vertices Collision mesh vertex positions (rowwise).
+    /// @param is_active (Optional) Function to determine if a candidate is active.
+    /// @return Vertex-vertex candidates derived from edge-vertex candidates.
+    std::vector<VertexVertexCandidate> edge_vertex_to_vertex_vertex(
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> vertices,
+        const std::function<bool(double)>& is_active = default_is_active) const;
+
+    /// @brief Convert face-vertex candidates to vertex-vertex candidates.
+    /// @param mesh The collision mesh.
+    /// @param vertices Collision mesh vertex positions (rowwise).
+    /// @param is_active (Optional) Function to determine if a candidate is active.
+    /// @return Vertex-vertex candidates derived from face-vertex candidates.
+    std::vector<VertexVertexCandidate> face_vertex_to_vertex_vertex(
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> vertices,
+        const std::function<bool(double)>& is_active = default_is_active) const;
+
+    /// @brief Convert face-vertex candidates to edge-vertex candidates.
+    /// @param mesh The collision mesh.
+    /// @param vertices Collision mesh vertex positions (rowwise).
+    /// @param is_active (Optional) Function to determine if a candidate is active.
+    /// @return Edge-vertex candidates derived from face-vertex candidates.
+    std::vector<EdgeVertexCandidate> face_vertex_to_edge_vertex(
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> vertices,
+        const std::function<bool(double)>& is_active = default_is_active) const;
+
+    /// @brief Convert edge-edge candidates to edge-vertex candidates.
+    /// @param mesh The collision mesh.
+    /// @param vertices Collision mesh vertex positions (rowwise).
+    /// @param is_active (Optional) Function to determine if a candidate is active.
+    /// @return Edge-vertex candidates derived from edge-edge candidates.
+    std::vector<EdgeVertexCandidate> edge_edge_to_edge_vertex(
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> vertices,
+        const std::function<bool(double)>& is_active = default_is_active) const;
+
+    // == Save candidates to file =============================================
+
+    /// @brief Save the collision candidates to an OBJ file.
+    /// @param filename The name of the file to save the candidates to.
+    /// @param vertices Collision mesh vertex positions (rowwise).
+    /// @param edges Collision mesh edge indices (rowwise).
+    /// @param faces Collision mesh face indices (rowwise).
+    /// @return True if the file was saved successfully.
     bool save_obj(
         const std::string& filename,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
@@ -163,17 +241,19 @@ public:
 
     CollisionMesh mesh_;
 
-    std::unordered_map<index_t, std::set<index_t>> m_vv_set;
-    std::unordered_map<index_t, std::set<index_t>> m_ve_set;
-    std::unordered_map<index_t, std::set<index_t>> m_vf_set;
+    unordered_map<index_t, std::set<index_t>> m_vv_set;
+    unordered_map<index_t, std::set<index_t>> m_ve_set;
+    unordered_map<index_t, std::set<index_t>> m_vf_set;
 
-    std::unordered_map<index_t, std::set<index_t>> m_ev_set;
-    std::unordered_map<index_t, std::set<index_t>> m_ee_set;
-    std::unordered_map<index_t, std::set<index_t>> m_ef_set;
+    unordered_map<index_t, std::set<index_t>> m_ev_set;
+    unordered_map<index_t, std::set<index_t>> m_ee_set;
+    unordered_map<index_t, std::set<index_t>> m_ef_set;
 
-    std::unordered_map<index_t, std::set<index_t>> m_fv_set;
-    std::unordered_map<index_t, std::set<index_t>> m_fe_set;
-    std::unordered_map<index_t, std::set<index_t>> m_ff_set;
+    unordered_map<index_t, std::set<index_t>> m_fv_set;
+    unordered_map<index_t, std::set<index_t>> m_fe_set;
+    unordered_map<index_t, std::set<index_t>> m_ff_set;
+private:
+    static bool default_is_active(double candidate) { return true; }
 };
 
 } // namespace ipc

@@ -26,8 +26,7 @@ void brute_force_comparison(
     if (cached_bf_candidates.empty()
         || !load_candidates(cached_bf_candidates, bf_candidates)) {
         BruteForce bf;
-        bf_candidates.build(
-            mesh, V0, V1, inflation_radius, &bf);
+        bf_candidates.build(mesh, V0, V1, inflation_radius, &bf);
         if (!cached_bf_candidates.empty()) {
             save_candidates(cached_bf_candidates, bf_candidates);
         }

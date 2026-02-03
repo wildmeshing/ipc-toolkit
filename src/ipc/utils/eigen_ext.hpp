@@ -5,6 +5,13 @@
 
 #include <cassert>
 
+#ifdef EIGEN_DONT_VECTORIZE
+// NOTE: Avoid error about abs casting double to int. Eigen does this
+// internally but seemingly only if EIGEN_DONT_VECTORIZE is not defined.
+// TODO: We should always use std::abs to avoid this issue.
+EIGEN_USING_STD(abs); // using std::abs;
+#endif
+
 namespace Eigen {
 template <typename T> using RowRef = Ref<T, 0, Eigen::InnerStride<>>;
 template <typename T> using ConstRef = const Ref<const T>&;
@@ -30,7 +37,6 @@ using MatrixXb = Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>;
 
 /// @brief A dynamic size vector with a fixed maximum size.
 /// @tparam T The type of the vector elements.
-/// @tparam dim The size of the vector.
 /// @tparam max_dim The maximum size of the vector.
 template <typename T, int max_dim>
 using VectorMax =
@@ -38,7 +44,6 @@ using VectorMax =
 
 /// @brief A dynamic size row vector with a fixed maximum size.
 /// @tparam T The type of the vector elements.
-/// @tparam dim The size of the vector.
 /// @tparam max_dim The maximum size of the vector.
 template <typename T, int max_dim>
 using RowVectorMax =
@@ -219,10 +224,10 @@ project_to_psd(
 /// @brief Convert a 2D or 3D vector to a 3D vector.
 /// @param v Vector to convert, can be 2D or 3D.
 /// @return Converted 3D vector. If 2D, the z-component is set to 0.
-inline Eigen::Vector3d to_3D(Eigen::ConstRef<VectorMax3d> v)
+inline Eigen::Array3d to_3D(Eigen::ConstRef<ArrayMax3d> v)
 {
     assert(v.size() == 2 || v.size() == 3);
-    return v.size() == 2 ? Eigen::Vector3d(v.x(), v.y(), 0) : v.head<3>();
+    return v.size() == 2 ? Eigen::Array3d(v.x(), v.y(), 0) : v.head<3>();
 }
 
 // TODO: Change return type to Eigen::MatrixX3f
@@ -257,7 +262,7 @@ static const Eigen::IOFormat OBJ_VERTEX_FORMAT = Eigen::IOFormat(
 #if EIGEN_VERSION_AT_LEAST(3, 4, 90)
 namespace Eigen {
 // Move all back to the root namespace for compatibility with older versions
-static const Eigen::internal::all_t all = indexing::all;
+static const Eigen::internal::all_t all = indexing::all; // NOLINT
 } // namespace Eigen
 #endif
 

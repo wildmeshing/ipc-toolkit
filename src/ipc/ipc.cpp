@@ -3,7 +3,8 @@
 #include <ipc/config.hpp>
 #include <ipc/broad_phase/default_broad_phase.hpp>
 #include <ipc/candidates/candidates.hpp>
-#include <ipc/utils/intersection.hpp>
+#include <ipc/ccd/tight_inclusion_ccd.hpp>
+#include <ipc/geometry/intersection.hpp>
 #include <ipc/utils/world_bbox_diagonal_length.hpp>
 
 #ifdef IPC_TOOLKIT_WITH_CUDA
@@ -46,14 +47,14 @@ double compute_collision_free_stepsize(
     BroadPhase* broad_phase,
     const NarrowPhaseCCD& narrow_phase_ccd)
 {
+    assert(vertices_t0.rows() == mesh.num_vertices());
+    assert(vertices_t1.rows() == mesh.num_vertices());
+
     std::unique_ptr<BroadPhase> default_broad_phase;
     if (broad_phase == nullptr) {
         default_broad_phase = make_default_broad_phase();
         broad_phase = default_broad_phase.get();
     }
-
-    assert(vertices_t0.rows() == mesh.num_vertices());
-    assert(vertices_t1.rows() == mesh.num_vertices());
 
 #ifdef IPC_TOOLKIT_WITH_CUDA
     if (broad_phase->name() == "SweepAndTiniestQueue") {
@@ -61,11 +62,15 @@ double compute_collision_free_stepsize(
             throw std::runtime_error(
                 "Sweep and Tiniest Queue is only supported in 3D!");
         }
-        // TODO: Use correct min_distance
-        // TODO: Expose tolerance and max_iterations
-        constexpr double tolerance = TightInclusionCCD::DEFAULT_TOLERANCE;
-        constexpr long max_iterations =
-            TightInclusionCCD::DEFAULT_MAX_ITERATIONS;
+        // Extract tolerance and max_iterations from narrow_phase_ccd if it's
+        // TightInclusionCCD
+        double tolerance = TightInclusionCCD::DEFAULT_TOLERANCE;
+        long max_iterations = TightInclusionCCD::DEFAULT_MAX_ITERATIONS;
+        if (const TightInclusionCCD* ti_ccd =
+                dynamic_cast<const TightInclusionCCD*>(&narrow_phase_ccd)) {
+            tolerance = ti_ccd->tolerance;
+            max_iterations = ti_ccd->max_iterations;
+        }
         const double step_size = scalable_ccd::cuda::ipc_ccd_strategy(
             vertices_t0, vertices_t1, mesh.edges(), mesh.faces(),
             /*min_distance=*/0.0, max_iterations, tolerance);
@@ -98,13 +103,13 @@ bool has_intersections(
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
     BroadPhase* broad_phase)
 {
+    assert(vertices.rows() == mesh.num_vertices());
+
     std::unique_ptr<BroadPhase> default_broad_phase;
     if (broad_phase == nullptr) {
         default_broad_phase = make_default_broad_phase();
         broad_phase = default_broad_phase.get();
     }
-
-    assert(vertices.rows() == mesh.num_vertices());
 
     const double conservative_inflation_radius =
         1e-6 * world_bbox_diagonal_length(vertices);

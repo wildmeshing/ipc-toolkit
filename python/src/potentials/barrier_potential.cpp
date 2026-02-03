@@ -54,8 +54,7 @@ void define_smooth_potential(py::module_& m)
             Parameters:
                 dhat, alpha_t, beta_t, alpha_n, beta_n, r
             )ipc_Qu8mg5v7",
-            py::arg("dhat"), py::arg("alpha_t"), py::arg("beta_t"),
-            py::arg("alpha_n"), py::arg("beta_n"), py::arg("r"))
+            "dhat"_a, "alpha_t"_a, "beta_t"_a, "alpha_n"_a, "beta_n"_a, "r"_a)
         .def(
             py::init<const double, const double, const double, const int>(),
             R"ipc_Qu8mg5v7(
@@ -64,8 +63,7 @@ void define_smooth_potential(py::module_& m)
             Parameters:
                 dhat, alpha_t, beta_t, r
             )ipc_Qu8mg5v7",
-            py::arg("dhat"), py::arg("alpha_t"), py::arg("beta_t"),
-            py::arg("r"))
+            "dhat"_a, "alpha_t"_a, "beta_t"_a, "r"_a)
         .def_readonly("dhat", &SmoothContactParameters::dhat)
         .def_readonly("alpha_t", &SmoothContactParameters::alpha_t)
         .def_readonly("beta_t", &SmoothContactParameters::beta_t)
@@ -82,7 +80,7 @@ void define_smooth_potential(py::module_& m)
             Parameters:
                 param: A set of parameters.
             )ipc_Qu8mg5v7",
-            py::arg("param"))
+            "param"_a)
         .def(
             "__call__",
             py::overload_cast<
@@ -100,7 +98,7 @@ void define_smooth_potential(py::module_& m)
             Returns:
                 The sum of all barrier potentials (not scaled by the barrier stiffness).
             )ipc_Qu8mg5v7",
-            py::arg("collisions"), py::arg("mesh"), py::arg("vertices"))
+            "collisions"_a, "mesh"_a, "vertices"_a)
         .def(
             "gradient",
             py::overload_cast<
@@ -118,7 +116,7 @@ void define_smooth_potential(py::module_& m)
             Returns:
                 The gradient of all barrier potentials (not scaled by the barrier stiffness). This will have a size of |vertices|.
             )ipc_Qu8mg5v7",
-            py::arg("collisions"), py::arg("mesh"), py::arg("vertices"))
+            "collisions"_a, "mesh"_a, "vertices"_a)
         .def(
             "hessian",
             py::overload_cast<
@@ -137,8 +135,8 @@ void define_smooth_potential(py::module_& m)
             Returns:
                 The hessian of all barrier potentials (not scaled by the barrier stiffness). This will have a size of |vertices|x|vertices|.
             )ipc_Qu8mg5v7",
-            py::arg("collisions"), py::arg("mesh"), py::arg("vertices"),
-            py::arg("project_hessian_to_psd") = PSDProjectionMethod::NONE)
+            "collisions"_a, "mesh"_a, "vertices"_a,
+            "project_hessian_to_psd"_a = PSDProjectionMethod::NONE)
         .def(
             "__call__",
             py::overload_cast<
@@ -154,7 +152,7 @@ void define_smooth_potential(py::module_& m)
             Returns:
                 The potential.
             )ipc_Qu8mg5v7",
-            py::arg("collision"), py::arg("x"))
+            "collision"_a, "x"_a)
         .def(
             "gradient",
             py::overload_cast<
@@ -170,7 +168,7 @@ void define_smooth_potential(py::module_& m)
             Returns:
                 The gradient of the potential.
             )ipc_Qu8mg5v7",
-            py::arg("collision"), py::arg("x"))
+            "collision"_a, "x"_a)
         .def(
             "hessian",
             py::overload_cast<
@@ -187,8 +185,8 @@ void define_smooth_potential(py::module_& m)
             Returns:
                 The hessian of the potential.
             )ipc_Qu8mg5v7",
-            py::arg("collision"), py::arg("x"),
-            py::arg("project_hessian_to_psd") = PSDProjectionMethod::NONE);
+            "collision"_a, "x"_a,
+            "project_hessian_to_psd"_a = PSDProjectionMethod::NONE);
 }
 
 void define_high_order_potential(py::module &m)

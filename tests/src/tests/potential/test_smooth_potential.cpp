@@ -37,7 +37,7 @@ TEST_CASE("Smooth barrier potential codim", "[smooth_potential]")
 
     SmoothContactParameters params(dhat, 0.85, 0.5, 0.95, 0.6, 2);
     collisions.build(mesh, vertices, params, false, method.get());
-    CAPTURE(dhat, method.get());
+    CAPTURE(dhat, method);
     CHECK(!collisions.empty());
     CHECK(!has_intersections(mesh, vertices));
 
