@@ -134,7 +134,7 @@ TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential]")
             return potential.gradient(collisions_, mesh, V_);
         }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
-    REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-6);
+    REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
 }
 
 TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential]")

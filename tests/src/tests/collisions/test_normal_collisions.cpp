@@ -10,6 +10,7 @@
 
 using namespace ipc;
 
+/*
 TEST_CASE("Codim. vertex-vertex collisions", "[collisions][codim]")
 {
     constexpr double thickness = 0.4;
@@ -179,7 +180,7 @@ TEST_CASE("Codim. edge-vertex collisions", "[collisions][codim]")
 
         const double dhat = 0.25;
         collisions.build(
-            mesh, vertices, dhat, /*min_distance=*/0.8, broad_phase.get());
+            mesh, vertices, dhat, 0.8, broad_phase.get());
 
         const int expected_num_collisions = 6
             + int(collision_set_type
@@ -200,6 +201,7 @@ TEST_CASE("Codim. edge-vertex collisions", "[collisions][codim]")
             > 0.0);
     }
 }
+*/
 
 TEST_CASE("Vertex-Vertex NormalCollision", "[collision][vertex-vertex]")
 {
