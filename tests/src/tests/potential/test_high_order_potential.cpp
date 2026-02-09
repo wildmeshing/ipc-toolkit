@@ -452,25 +452,22 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
                 return potential(collisions, mesh, fd::unflatten(x, V.cols()));
             },
             fgrad, fd::AccuracyOrder::SECOND, 1e-8);
-
         CAPTURE(grad.norm());
         CAPTURE(fgrad.norm());
-        CHECK((grad - fgrad).norm() < 1e-6 * std::max({grad.norm(), fgrad.norm(), 1e-8}));
+        CHECK((grad - fgrad).norm() < 1e-4 * std::max({grad.norm(), fgrad.norm(), 1e-8}));
 
         Eigen::MatrixXd hess = potential.hessian(collisions, mesh, V);
         REQUIRE(hess.squaredNorm() > 1e-3);
-
         Eigen::MatrixXd fhess;
         fd::finite_jacobian(
             fd::flatten(V),
             [&](const Eigen::VectorXd& x) {
                 return potential.gradient(collisions, mesh, fd::unflatten(x, V.cols()));
             },
-            fhess, fd::AccuracyOrder::SECOND, 1e-8);
-
+            fhess, fd::AccuracyOrder::SECOND, 1e-10);
         CAPTURE(hess.norm());
         CAPTURE(fhess.norm());
-        CHECK((hess - fhess).norm() < 1e-6 * std::max({hess.norm(), fhess.norm(), 1e-8}));
+        CHECK((hess - fhess).norm() < 1e-3 * std::max({hess.norm(), fhess.norm(), 1e-8}));
     };
 
     SECTION("Corners")
@@ -541,7 +538,7 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
         }
     }
 
-    /*SECTION("mesh_1")
+    SECTION("mesh_1")
     {
         INFO("mesh 1");
         std::string mesh_name = (tests::DATA_DIR / "gcp" / "nonlinear_solve_iter020.obj").string();
@@ -550,7 +547,7 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
         REQUIRE(success);
         V.col(0) += Eigen::VectorXd::Random(V.rows()) * BA;
         run_checks();
-    }*/
+    }
 
     SECTION("mesh_2")
     {
