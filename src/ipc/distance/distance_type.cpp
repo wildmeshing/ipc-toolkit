@@ -73,30 +73,35 @@ PointTriangleDistanceType point_triangle_distance_type(
     const ExVec3 e1 = t2 - t1;
     const ExVec3 e2 = t0 - t2;
 
-    if (dot(p - t0, e0) <= 0 && dot(p - t0, -e2) <= 0) {
+    const ExVec3 r0 = p - t0;
+    const ExVec3 r1 = p - t1;
+    const ExVec3 r2 = p - t2;
+
+    if (dot(r0, e0) <= 0 && dot(r0, e2) >= 0) {
         return PointTriangleDistanceType::P_T0;
     }
-    if (dot(p - t1, e1) <= 0 && dot(p - t1, -e0) <= 0) {
+    if (dot(r1, e1) <= 0 && dot(r1, e0) >= 0) {
         return PointTriangleDistanceType::P_T1;
     }
-    if (dot(p - t2, e2) <= 0 && dot(p - t2, -e1) <= 0) {
+    if (dot(r2, e2) <= 0 && dot(r2, e1) >= 0) {
         return PointTriangleDistanceType::P_T2;
     }
 
-    const ExVec3 n = cross(e0, e1);
+    const ExVec3 n = cross(e0, -e1);
 
-    if (dot(p - t0, cross(n, e0)) <= 0 && dot(p - t0, e0) > 0 && dot(p - t1, -e0) > 0) {
+    if (dot(n, cross(r0, e0)) <= 0 && dot(r0, e0) > 0 && dot(r1, e0) < 0) {
         return PointTriangleDistanceType::P_E0;
     }
-    if (dot(p - t1, cross(n, e1)) <= 0 && dot(p - t1, e1) > 0 && dot(p - t2, -e1) > 0) {
+    if (dot(n, cross(r1, e1)) <= 0 && dot(r1, e1) > 0 && dot(r2, e1) < 0) {
         return PointTriangleDistanceType::P_E1;
     }
-    if (dot(p - t2, cross(n, e2)) <= 0 && dot(p - t2, e2) > 0 && dot(p - t0, -e2) > 0) {
+    if (dot(n, cross(r2, e2)) <= 0 && dot(r2, e2) > 0 && dot(r0, e2) < 0) {
         return PointTriangleDistanceType::P_E2;
     }
 
     return PointTriangleDistanceType::P_T;
 }
+
 
 bool is_parallel_edge_edge(
     Eigen::ConstRef<Eigen::Vector3d> ea0_,

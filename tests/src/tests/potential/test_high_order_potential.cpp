@@ -191,10 +191,13 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential]")
 
     HighOrderContactPotential potential(params);
     double val = potential(collisions, mesh, V);
-    REQUIRE(abs(val) < 1e-12);
+    REQUIRE(val == 0);
 
     auto g = potential.gradient(collisions, mesh, V);
-    REQUIRE(g.norm() < 1e-8);
+    REQUIRE(g.norm() == 0);
+
+    auto H = potential.hessian(collisions, mesh, V);
+    REQUIRE(H.norm() == 0);
 }
 
 TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
