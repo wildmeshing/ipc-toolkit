@@ -85,13 +85,13 @@ PointTriangleDistanceType point_triangle_distance_type(
 
     const ExVec3 n = cross(e0, e1);
 
-    if (dot(p - t0, cross(n, e0)) <= 0) {
+    if (dot(p - t0, cross(n, e0)) <= 0 && dot(p - t0, e0) > 0 && dot(p - t1, -e0) > 0) {
         return PointTriangleDistanceType::P_E0;
     }
-    if (dot(p - t1, cross(n, e1)) <= 0) {
+    if (dot(p - t1, cross(n, e1)) <= 0 && dot(p - t1, e1) > 0 && dot(p - t2, -e1) > 0) {
         return PointTriangleDistanceType::P_E1;
     }
-    if (dot(p - t2, cross(n, e2)) <= 0) {
+    if (dot(p - t2, cross(n, e2)) <= 0 && dot(p - t2, e2) > 0 && dot(p - t0, -e2) > 0) {
         return PointTriangleDistanceType::P_E2;
     }
 

@@ -211,7 +211,7 @@ T closest_point_uv(
     else
         log_and_throw_error("edge-edge dtype {} cannot handle!", static_cast<int>(dtype));
 
-    if (!(uv > 0 && uv < 1)) {
+    if (!(uv >= 0 && uv <= 1)) {
         throw std::invalid_argument("Invalid uv!");
     }
 
