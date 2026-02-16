@@ -8,6 +8,8 @@
 #include <ipc/distance/distance_type.hpp>
 #include <ipc/distance/point_triangle.hpp>
 
+#include "distance_type_exact.hpp"
+
 using namespace ipc;
 
 TEST_CASE("Point-edge distance type", "[distance][distance-type][point-edge]")
@@ -51,6 +53,45 @@ TEST_CASE("Point-edge distance type", "[distance][distance-type][point-edge]")
         } else {
             CHECK(dtype == PointEdgeDistanceType::P_E);
         }
+    }
+}
+
+TEST_CASE(
+    "Point-edge distance type random",
+    "[distance][distance-type][point-edge][exact]")
+{
+    const int num_random_tests = 1000000;
+
+    for (int i = 0; i < num_random_tests; ++i) {
+        const VectorMax3d p = Eigen::Vector3d::Random() * 1000;
+        const VectorMax3d e0 = Eigen::Vector3d::Random() * 1000;
+        const VectorMax3d e1 = Eigen::Vector3d::Random() * 1000;
+
+        const PointEdgeDistanceType dtype = point_edge_distance_type(p, e0, e1);
+        const PointEdgeDistanceType dtype_exact = point_edge_distance_type_exact(p, e0, e1);
+
+        CAPTURE(p.transpose(), e0.transpose(), e1.transpose());
+        CHECK(dtype == dtype_exact);
+    }
+}
+
+TEST_CASE(
+    "Point-triangle distance type random",
+    "[distance][distance-type][point-triangle][exact]")
+{
+    const int num_random_tests = 1000000;
+
+    for (int i = 0; i < num_random_tests; ++i) {
+        const VectorMax3d p = Eigen::Vector3d::Random() * 1000;
+        const VectorMax3d t0 = Eigen::Vector3d::Random() * 1000;
+        const VectorMax3d t1 = Eigen::Vector3d::Random() * 1000;
+        const VectorMax3d t2 = Eigen::Vector3d::Random() * 1000;
+
+        const PointTriangleDistanceType dtype = point_triangle_distance_type(p, t0, t1, t2);
+        const PointTriangleDistanceType dtype_exact = point_triangle_distance_type_exact(p, t0, t1, t2);
+
+        CAPTURE(p.transpose(), t0.transpose(), t1.transpose(), t2.transpose());
+        CHECK(dtype == dtype_exact);
     }
 }
 
