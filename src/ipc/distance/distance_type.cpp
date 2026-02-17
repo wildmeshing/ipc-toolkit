@@ -198,8 +198,8 @@ bool is_parallel_edge_edge(
     Eigen::ConstRef<Eigen::Vector3d> eb1_)
 {
     init_pck();
+    // TODO use a zero filter?
     if constexpr (PARALLEL_THRESHOLD == 0.0) {
-        // TODO use a zero filter?
         const int s = cross_null_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data());
         if (s != FPG_UNCERTAIN_VALUE) return false;
         const ExVec3 ea0 = make_exact(ea0_);
@@ -209,17 +209,20 @@ bool is_parallel_edge_edge(
         return cross(ea1 - ea0, eb1 - eb0).length2() == 0;
     }
     else {
+        // this computation can be approximate, as it is just an arbitrary threshold.
+        const Eigen::Vector3d ea = ea1_ - ea0_;
+        const Eigen::Vector3d eb = eb1_ - eb0_;
+        const double eal2 = ea.squaredNorm();
+        const double ebl2 = eb.squaredNorm();
+        const double z = std::max(1.0, eal2 * ebl2) * PARALLEL_THRESHOLD;
+        const int s = cross_almost_null_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data(), z);
+        if (s != FPG_UNCERTAIN_VALUE) return false;
         const ExVec3 ea0 = make_exact(ea0_);
         const ExVec3 ea1 = make_exact(ea1_);
         const ExVec3 eb0 = make_exact(eb0_);
         const ExVec3 eb1 = make_exact(eb1_);
-        const ExVec3 u = ea1 - ea0;
-        const ExVec3 v = eb1 - eb0;
-        const ExReal a = u.length2();
-        const ExReal c = v.length2();
-        const ExReal z = (a*c > 1.0) ? a*c : ExReal(1.0);
-        const ExReal cross_norm_sqr = cross(u, v).length2();
-        return cross_norm_sqr < z * PARALLEL_THRESHOLD;
+        const ExReal cross_norm_sqr = cross(ea1-ea0, eb1-eb0).length2();
+        return cross_norm_sqr < z;
     }
 }
 
