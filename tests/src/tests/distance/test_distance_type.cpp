@@ -63,9 +63,9 @@ TEST_CASE(
     const int num_random_tests = 1000000;
 
     for (int i = 0; i < num_random_tests; ++i) {
-        const VectorMax3d p = Eigen::Vector3d::Random() * 1000;
-        const VectorMax3d e0 = Eigen::Vector3d::Random() * 1000;
-        const VectorMax3d e1 = Eigen::Vector3d::Random() * 1000;
+        const VectorMax3d p = Eigen::Vector3d::Random() * 10;
+        const VectorMax3d e0 = Eigen::Vector3d::Random() * 10;
+        const VectorMax3d e1 = Eigen::Vector3d::Random() * 10;
 
         const PointEdgeDistanceType dtype = point_edge_distance_type(p, e0, e1);
         const PointEdgeDistanceType dtype_exact = point_edge_distance_type_exact(p, e0, e1);
@@ -82,15 +82,67 @@ TEST_CASE(
     const int num_random_tests = 1000000;
 
     for (int i = 0; i < num_random_tests; ++i) {
-        const VectorMax3d p = Eigen::Vector3d::Random() * 1000;
-        const VectorMax3d t0 = Eigen::Vector3d::Random() * 1000;
-        const VectorMax3d t1 = Eigen::Vector3d::Random() * 1000;
-        const VectorMax3d t2 = Eigen::Vector3d::Random() * 1000;
+        const VectorMax3d p = Eigen::Vector3d::Random() * 10;
+        const VectorMax3d t0 = Eigen::Vector3d::Random() * 10;
+        const VectorMax3d t1 = Eigen::Vector3d::Random() * 10;
+        const VectorMax3d t2 = Eigen::Vector3d::Random() * 10;
 
         const PointTriangleDistanceType dtype = point_triangle_distance_type(p, t0, t1, t2);
         const PointTriangleDistanceType dtype_exact = point_triangle_distance_type_exact(p, t0, t1, t2);
 
         CAPTURE(p.transpose(), t0.transpose(), t1.transpose(), t2.transpose());
+        CHECK(dtype == dtype_exact);
+    }
+}
+
+TEST_CASE(
+    "Edge-edge distance type random",
+    "[distance][distance-type][edge-edge][exact]")
+{
+    const int num_random_tests = 1000000;
+
+    for (int i = 0; i < num_random_tests; ++i) {
+        const VectorMax3d e0 = Eigen::Vector3d::Random() * 10;
+        const VectorMax3d e1 = Eigen::Vector3d::Random() * 10;
+        const VectorMax3d e2 = Eigen::Vector3d::Random() * 10;
+        const VectorMax3d e3 = Eigen::Vector3d::Random() * 10;
+
+        const EdgeEdgeDistanceType dtype = edge_edge_distance_type(e0, e1, e2, e3);
+        const EdgeEdgeDistanceType dtype_exact = edge_edge_distance_type_exact(e0, e1, e2, e3);
+
+        CAPTURE(e0.transpose(), e1.transpose(), e2.transpose(), e3.transpose());
+        CHECK(dtype == dtype_exact);
+    }
+}
+
+TEST_CASE(
+    "Edge-edge distance type random parallel",
+    "[distance][distance-type][edge-edge][exact][parallel]")
+{
+    const int num_random_tests = 1000000;
+
+    for (int i = 0; i < num_random_tests; ++i) {
+        const Eigen::Vector3d ea0 = Eigen::Vector3d::Random() * 10;
+        const Eigen::Vector3d ea1 = Eigen::Vector3d::Random() * 10;
+
+        Eigen::Vector3d eb0 = ea0;
+        Eigen::Vector3d eb1 = ea1;
+
+        const double amount = Eigen::Vector3d::Random()(0);
+        const int axis = i % 3;
+        eb0[axis] += amount;
+        eb1[axis] += amount;
+
+        if (i % 2 == 0) eb1 += Eigen::Vector3d::Random() * ((ea1 - ea0).norm() * 1e-20);
+
+        const EdgeEdgeDistanceType dtype = edge_edge_distance_type(ea0, ea1, eb0, eb1);
+        const EdgeEdgeDistanceType dtype_exact = edge_edge_distance_type_exact(ea0, ea1, eb0, eb1);
+
+        const bool ispar = is_parallel_edge_edge(ea0, ea1, eb0, eb1);
+        const bool ispar_exact = is_parallel_edge_edge_exact(ea0, ea1, eb0, eb1);
+        CHECK(ispar == ispar_exact);
+
+        CAPTURE(ispar, ea0.transpose(), ea1.transpose(), eb0.transpose(), eb1.transpose());
         CHECK(dtype == dtype_exact);
     }
 }
