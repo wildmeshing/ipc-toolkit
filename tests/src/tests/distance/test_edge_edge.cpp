@@ -253,6 +253,15 @@ TEST_CASE(
         std::swap(e10, e11);
     }
 
+    EdgeEdgeDistanceType dtype = edge_edge_distance_type(e00, e01, e10, e11);
+    CAPTURE(dtype);
+    REQUIRE((
+        (dtype == EdgeEdgeDistanceType::EA0_EB0) ||
+        (dtype == EdgeEdgeDistanceType::EA0_EB1) ||
+        (dtype == EdgeEdgeDistanceType::EA1_EB0) ||
+        (dtype == EdgeEdgeDistanceType::EA1_EB1)
+    ));
+
     double distance = edge_edge_distance(e00, e01, e10, e11);
     double expected_distance = point_point_distance(
         Eigen::Vector3d(gap, e0y, 0), Eigen::Vector3d(-gap, 0, 0));

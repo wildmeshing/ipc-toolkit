@@ -378,7 +378,6 @@ inline int dot3_2d_filter( const double* p0, const double* p1, const double* p2)
 	return int_tmp_result;
 }
 
-
 inline int dot3_3d_filter( const double* p0, const double* p1, const double* p2) {
 	double a11;
 	a11 = (p1[0] - p0[0]);
@@ -458,76 +457,6 @@ inline int dot3_3d_filter( const double* p0, const double* p1, const double* p2)
 	}
 	return int_tmp_result;
 }
-
-
-inline int dot4_2d_filter( const double* p0, const double* p1, const double* q0, const double* q1) {
-	double a11;
-	a11 = (p1[0] - p0[0]);
-	double a12;
-	a12 = (p1[1] - p0[1]);
-	double a21;
-	a21 = (q1[0] - q0[0]);
-	double a22;
-	a22 = (q1[1] - q0[1]);
-	double Delta;
-	Delta = ((a11 * a21) + (a12 * a22));
-	int int_tmp_result;
-	double eps;
-	double max1 = fabs(a11);
-	if( (max1 < fabs(a12)) )
-	{
-		max1 = fabs(a12);
-	}
-	double max2 = fabs(a21);
-	if( (max2 < fabs(a22)) )
-	{
-		max2 = fabs(a22);
-	}
-	double lower_bound_1;
-	double upper_bound_1;
-	lower_bound_1 = max1;
-	upper_bound_1 = max1;
-	if( (max2 < lower_bound_1) )
-	{
-		lower_bound_1 = max2;
-	}
-	else
-	{
-		if( (max2 > upper_bound_1) )
-		{
-			upper_bound_1 = max2;
-		}
-	}
-	if( (lower_bound_1 < 5.00368081960964802120e-147) )
-	{
-		return FPG_UNCERTAIN_VALUE;
-	}
-	else
-	{
-		if( (upper_bound_1 > 1.67597599124282389316e+153) )
-		{
-			return FPG_UNCERTAIN_VALUE;
-		}
-		eps = (8.88720573725927779595e-16 * (max1 * max2));
-		if( (Delta > eps) )
-		{
-			int_tmp_result = 1;
-		}
-		else
-		{
-			if( (Delta < -eps) )
-			{
-				int_tmp_result = -1;
-			}
-			else
-			{
-				return FPG_UNCERTAIN_VALUE;
-			}
-		}
-	}
-	return int_tmp_result;
-}
-
 
 inline int dot4_3d_filter( const double* p0, const double* p1, const double* q0, const double* q1) {
 	double a11;
@@ -609,79 +538,7 @@ inline int dot4_3d_filter( const double* p0, const double* p1, const double* q0,
 	return int_tmp_result;
 }
 
-
-inline int crossnull_2d_filter( const double* p0, const double* p1, const double* q0, const double* q1) {
-	double v_0;
-	v_0 = (p1[0] - p0[0]);
-	double v_1;
-	v_1 = (p1[1] - p0[1]);
-	double w_0;
-	w_0 = (q1[0] - q0[0]);
-	double w_1;
-	w_1 = (q1[1] - q0[1]);
-	double c_k;
-	c_k = ((v_0 * w_1) - (v_1 * w_0));
-	double cross;
-	cross = (c_k * c_k);
-	int int_tmp_result;
-	double eps;
-	double max1 = fabs(v_0);
-	if( (max1 < fabs(v_1)) )
-	{
-		max1 = fabs(v_1);
-	}
-	double max2 = fabs(w_0);
-	if( (max2 < fabs(w_1)) )
-	{
-		max2 = fabs(w_1);
-	}
-	double lower_bound_1;
-	double upper_bound_1;
-	lower_bound_1 = max1;
-	upper_bound_1 = max1;
-	if( (max2 < lower_bound_1) )
-	{
-		lower_bound_1 = max2;
-	}
-	else
-	{
-		if( (max2 > upper_bound_1) )
-		{
-			upper_bound_1 = max2;
-		}
-	}
-	if( (lower_bound_1 < 4.85665499827950474905e-74) )
-	{
-		return FPG_UNCERTAIN_VALUE;
-	}
-	else
-	{
-		if( (upper_bound_1 > 1.44740111546645180002e+76) )
-		{
-			return FPG_UNCERTAIN_VALUE;
-		}
-		eps = (3.99940529150189107628e-15 * (((max1 * max2) * max1) * max2));
-		if( (cross > eps) )
-		{
-			int_tmp_result = 1;
-		}
-		else
-		{
-			if( (cross < -eps) )
-			{
-				int_tmp_result = -1;
-			}
-			else
-			{
-				return FPG_UNCERTAIN_VALUE;
-			}
-		}
-	}
-	return int_tmp_result;
-}
-
-
-inline int crossnull_3d_filter( const double* p0, const double* p1, const double* q0, const double* q1) {
+inline int cross_null_3d_filter( const double* p0, const double* p1, const double* q0, const double* q1) {
 	double v_0;
 	v_0 = (p1[0] - p0[0]);
 	double v_1;

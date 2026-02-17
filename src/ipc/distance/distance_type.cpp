@@ -11,6 +11,8 @@ namespace ipc {
 
 using ExReal = GEO::expansion_nt; // exact scalar type
 using ExVec3 = GEO::vec3E; // exact vector type
+constexpr double PARALLEL_THRESHOLD {1e-20}; //TODO set to zero eventually
+//constexpr double PARALLEL_THRESHOLD {0};
 
 inline void init_pck() { // TODO init once in main
     static bool initialized = false;
@@ -195,15 +197,30 @@ bool is_parallel_edge_edge(
     Eigen::ConstRef<Eigen::Vector3d> eb0_,
     Eigen::ConstRef<Eigen::Vector3d> eb1_)
 {
-    // TODO use a proper zero filter?
     init_pck();
-    const int s = crossnull_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data());
-    if (s != FPG_UNCERTAIN_VALUE) return false;
-    const ExVec3 ea0 = make_exact(ea0_);
-    const ExVec3 ea1 = make_exact(ea1_);
-    const ExVec3 eb0 = make_exact(eb0_);
-    const ExVec3 eb1 = make_exact(eb1_);
-    return cross(ea1 - ea0, eb1 - eb0).length2() == 0;
+    if constexpr (PARALLEL_THRESHOLD == 0.0) {
+        // TODO use a zero filter?
+        const int s = cross_null_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data());
+        if (s != FPG_UNCERTAIN_VALUE) return false;
+        const ExVec3 ea0 = make_exact(ea0_);
+        const ExVec3 ea1 = make_exact(ea1_);
+        const ExVec3 eb0 = make_exact(eb0_);
+        const ExVec3 eb1 = make_exact(eb1_);
+        return cross(ea1 - ea0, eb1 - eb0).length2() == 0;
+    }
+    else {
+        const ExVec3 ea0 = make_exact(ea0_);
+        const ExVec3 ea1 = make_exact(ea1_);
+        const ExVec3 eb0 = make_exact(eb0_);
+        const ExVec3 eb1 = make_exact(eb1_);
+        const ExVec3 u = ea1 - ea0;
+        const ExVec3 v = eb1 - eb0;
+        const ExReal a = u.length2();
+        const ExReal c = v.length2();
+        const ExReal z = (a*c > 1.0) ? a*c : ExReal(1.0);
+        const ExReal cross_norm_sqr = cross(u, v).length2();
+        return cross_norm_sqr < z * PARALLEL_THRESHOLD;
+    }
 }
 
 
@@ -260,23 +277,23 @@ EdgeEdgeDistanceType edge_edge_parallel_distance_type(
     const int sb1 = dot3_3d(ea1, eb1, ea0);
     const int sab = dot4_3d(ea0, ea1, eb0, eb1);
 
-    if (sa0 < 0) {
+    if (sa0 <= 0) {
         if (sab <= 0) {
             return EdgeEdgeDistanceType::EA0_EB0;
         }
         if (sb1 >= 0) {
-            if (sb0 >= 0) return EdgeEdgeDistanceType::EA_EB1;
+            if (sb0 > 0) return EdgeEdgeDistanceType::EA_EB1;
             else return EdgeEdgeDistanceType::EA0_EB1;
         }
         return EdgeEdgeDistanceType::EA0_EB;
     } 
     
-    if (sa1 < 0) {
+    if (sa1 <= 0) {
         if (sab >= 0) {
             return EdgeEdgeDistanceType::EA1_EB0;
         }
         if (sb0 >= 0) {
-            if (sb1 >= 0) return EdgeEdgeDistanceType::EA_EB1;
+            if (sb1 > 0) return EdgeEdgeDistanceType::EA_EB1;
             else return EdgeEdgeDistanceType::EA1_EB1;
         }
         return EdgeEdgeDistanceType::EA1_EB;
