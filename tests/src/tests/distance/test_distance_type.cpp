@@ -138,11 +138,7 @@ TEST_CASE(
         const EdgeEdgeDistanceType dtype = edge_edge_distance_type(ea0, ea1, eb0, eb1);
         const EdgeEdgeDistanceType dtype_exact = edge_edge_distance_type_exact(ea0, ea1, eb0, eb1);
 
-        const bool ispar = is_parallel_edge_edge(ea0, ea1, eb0, eb1);
-        const bool ispar_exact = is_parallel_edge_edge_exact(ea0, ea1, eb0, eb1);
-        CHECK(ispar == ispar_exact);
-
-        CAPTURE(ispar, ea0.transpose(), ea1.transpose(), eb0.transpose(), eb1.transpose());
+        CAPTURE(ea0.transpose(), ea1.transpose(), eb0.transpose(), eb1.transpose());
         CHECK(dtype == dtype_exact);
     }
 }

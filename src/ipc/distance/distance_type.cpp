@@ -11,8 +11,8 @@ namespace ipc {
 
 using ExReal = GEO::expansion_nt; // exact scalar type
 using ExVec3 = GEO::vec3E; // exact vector type
-constexpr double PARALLEL_THRESHOLD {1e-20}; //TODO set to zero eventually
-//constexpr double PARALLEL_THRESHOLD {0};
+//constexpr double PARALLEL_THRESHOLD {1e-20}; //TODO set to zero eventually
+constexpr double PARALLEL_THRESHOLD {0};
 
 inline void init_pck() { // TODO init once in main
     static bool initialized = false;
@@ -206,7 +206,8 @@ bool is_parallel_edge_edge(
         const ExVec3 ea1 = make_exact(ea1_);
         const ExVec3 eb0 = make_exact(eb0_);
         const ExVec3 eb1 = make_exact(eb1_);
-        return cross(ea1 - ea0, eb1 - eb0).length2() == 0;
+        const ExReal cross_norm_sqr = cross(ea1-ea0, eb1-eb0).length2();
+        return cross_norm_sqr == 0;
     }
     else {
         // this computation can be approximate, as it is just an arbitrary threshold.
@@ -234,8 +235,6 @@ EdgeEdgeDistanceType edge_edge_distance_type(
     Eigen::ConstRef<Eigen::Vector3d> eb1)
 {
     init_pck();
-    if (is_parallel_edge_edge(ea0, ea1, eb0, eb1))
-        return edge_edge_parallel_distance_type(ea0, ea1, eb0, eb1);
 
     const PointEdgeDistanceType dt_ea0 = point_edge_distance_type(ea0, eb0, eb1);
     const PointEdgeDistanceType dt_ea1 = point_edge_distance_type(ea1, eb0, eb1);
@@ -249,11 +248,6 @@ EdgeEdgeDistanceType edge_edge_distance_type(
     if (dt_ea1 == PointEdgeDistanceType::P_E1 && dot3_3d(ea1, eb1, ea0) <= 0)
         return EdgeEdgeDistanceType::EA1_EB1;
 
-    if (dt_ea0 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea0, eb0, eb1, ea1) >= 0)
-        return EdgeEdgeDistanceType::EA0_EB;
-    if (dt_ea1 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea1, eb0, eb1, ea0) >= 0)
-        return EdgeEdgeDistanceType::EA1_EB;
-
     const PointEdgeDistanceType dt_eb0 = point_edge_distance_type(eb0, ea0, ea1);
     const PointEdgeDistanceType dt_eb1 = point_edge_distance_type(eb1, ea0, ea1);
 
@@ -261,6 +255,10 @@ EdgeEdgeDistanceType edge_edge_distance_type(
         return EdgeEdgeDistanceType::EA_EB0;
     if (dt_eb1 == PointEdgeDistanceType::P_E && cross_dot_cross_2(eb1, ea0, ea1, eb0) >= 0)
         return EdgeEdgeDistanceType::EA_EB1;
+    if (dt_ea0 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea0, eb0, eb1, ea1) >= 0)
+        return EdgeEdgeDistanceType::EA0_EB;
+    if (dt_ea1 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea1, eb0, eb1, ea0) >= 0)
+        return EdgeEdgeDistanceType::EA1_EB;
 
     return EdgeEdgeDistanceType::EA_EB;
 }
