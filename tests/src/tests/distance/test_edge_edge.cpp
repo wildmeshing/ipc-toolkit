@@ -193,16 +193,14 @@ TEST_CASE("Edge-edge distance parallel", "[distance][edge-edge][parallel]")
             (ea1 - ea0).cross(eb1 - eb0).norm()
             == Catch::Approx(0).margin(1e-14));
 
-        const EdgeEdgeDistanceType actual_dtype = edge_edge_distance_type(ea0, ea1, eb0, eb1);
-        const double distance = edge_edge_distance(ea0, ea1, eb0, eb1, actual_dtype);
+        const double distance = edge_edge_distance(ea0, ea1, eb0, eb1);
         CAPTURE(ea0.transpose(), ea1.transpose(), eb0.transpose(), eb1.transpose());
-        CAPTURE(alpha, s, i);
         CHECK(distance == Catch::Approx(s * s).margin(1e-15));
 
         for (int dtype = 0; dtype < int(EdgeEdgeDistanceType::EA_EB); dtype++) {
             const double distance2 = edge_edge_distance(
                 ea0, ea1, eb0, eb1, EdgeEdgeDistanceType(dtype));
-            CAPTURE(dtype, actual_dtype);
+            CAPTURE(dtype);
             CHECK(distance <= Catch::Approx(distance2));
         }
     }
