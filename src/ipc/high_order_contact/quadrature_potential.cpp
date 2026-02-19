@@ -1,7 +1,5 @@
 #include "quadrature_potential.hpp"
 
-#include <absl/strings/str_format.h>
-
 #include "ipc/candidates/candidates.hpp"
 #include "ipc/distance/edge_edge.hpp"
 #include "ipc/high_order_contact/high_order_collisions_builder.hpp"
