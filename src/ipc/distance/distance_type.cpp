@@ -37,7 +37,7 @@ int dot3_3d(
     // Evaluates the sign of dot(p1-p0, p2-p0)
     const int s = dot3_3d_filter(p0_.data(), p1_.data(), p2_.data());
     if (s != FPG_UNCERTAIN_VALUE) return s;
-    logger().debug("dot3_3d filter uncertain - fallback to exact arithmetic");
+    logger().trace("dot3_3d filter uncertain - fallback to exact arithmetic");
     const ExVec3 p0 = make_exact(p0_);
     const ExVec3 p1 = make_exact(p1_);
     const ExVec3 p2 = make_exact(p2_);
@@ -53,7 +53,7 @@ int dot3_2d(
     // Evaluates the sign of dot(p1-p0, p2-p0)
     const int s = dot3_2d_filter(p0_.data(), p1_.data(), p2_.data());
     if (s != FPG_UNCERTAIN_VALUE) return s;
-    logger().debug("dot3_2d filter uncertain - fallback to exact arithmetic");
+    logger().trace("dot3_2d filter uncertain - fallback to exact arithmetic");
     const ExVec3 p0 = make_exact(p0_);
     const ExVec3 p1 = make_exact(p1_);
     const ExVec3 p2 = make_exact(p2_);
@@ -70,7 +70,7 @@ int dot4_3d(
     // Evaluates the sign of dot(p1-p0, p3-p2)
     const int s = dot4_3d_filter(p0_.data(), p1_.data(), p2_.data(), p3_.data());
     if (s != FPG_UNCERTAIN_VALUE) return s;
-    logger().debug("dot4_3d filter uncertain - fallback to exact arithmetic");
+    logger().trace("dot4_3d filter uncertain - fallback to exact arithmetic");
     const ExVec3 p0 = make_exact(p0_);
     const ExVec3 p1 = make_exact(p1_);
     const ExVec3 p2 = make_exact(p2_);
@@ -91,7 +91,7 @@ int cross_dot_cross_1(
     */
     const int s = cross_dot_cross_1_3d_filter(p0_.data(), p1_.data(), p2_.data(), p3_.data());
     if (s != FPG_UNCERTAIN_VALUE) return s;
-    logger().debug("cross_dot_cross_1 filter uncertain - fallback to exact arithmetic");
+    logger().trace("cross_dot_cross_1 filter uncertain - fallback to exact arithmetic");
     const ExVec3 p0 = make_exact(p0_);
     const ExVec3 p1 = make_exact(p1_);
     const ExVec3 p2 = make_exact(p2_);
@@ -112,7 +112,7 @@ int cross_dot_cross_2(
     */
     const int s = cross_dot_cross_2_3d_filter(p0_.data(), p1_.data(), p2_.data(), p3_.data());
     if (s != FPG_UNCERTAIN_VALUE) return s;
-    logger().debug("cross_dot_cross_1 filter uncertain - fallback to exact arithmetic");
+    logger().trace("cross_dot_cross_1 filter uncertain - fallback to exact arithmetic");
     const ExVec3 p0 = make_exact(p0_);
     const ExVec3 p1 = make_exact(p1_);
     const ExVec3 p2 = make_exact(p2_);
