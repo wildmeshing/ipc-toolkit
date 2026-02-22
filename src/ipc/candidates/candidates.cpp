@@ -486,6 +486,8 @@ void Candidates::clear()
     ev_candidates.clear();
     ee_candidates.clear();
     fv_candidates.clear();
+    ef_candidates.clear();
+    ff_candidates.clear();
 }
 
 CollisionStencil& Candidates::operator[](size_t i)
