@@ -4,7 +4,6 @@
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 #include <ipc/math/math.hpp>
 #include <ipc/utils/autodiff_types.hpp>
-#include <ipc/utils/unordered_map_and_set.hpp>
 
 namespace ipc {
 
@@ -295,8 +294,5 @@ private:
     double m_area_a = 0;
     double m_area_b = 0;
 };
-
-template <int N>
-using HighOrderCollisionDict = unordered_map<std::array<index_t, N>, std::shared_ptr<HighOrderCollision>>;
 
 } // namespace ipc

@@ -2,6 +2,7 @@
 
 #include <ipc/collision_mesh.hpp>
 #include <ipc/high_order_contact/high_order_collisions.hpp>
+#include <ipc/high_order_contact/collisions/triple_pair_collision.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
 namespace ipc {
