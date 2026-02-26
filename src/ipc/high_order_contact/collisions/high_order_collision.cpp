@@ -68,8 +68,8 @@ auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::get_core_indices() cons
     core_indices << Eigen::VectorXi::LinSpaced(
         N_CORE_DOFS_A, 0, N_CORE_DOFS_A - 1),
         Eigen::VectorXi::LinSpaced(
-            N_CORE_DOFS_B, primitive_a->n_dofs(),
-            primitive_a->n_dofs() + N_CORE_DOFS_B - 1);
+            N_CORE_DOFS_B, primitive_a.n_dofs(),
+            primitive_a.n_dofs() + N_CORE_DOFS_B - 1);
     return core_indices;
 }
 
@@ -81,11 +81,10 @@ HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::HighOrderCollisionTemplate(
     const HighOrderContactParameters& params,
     const double _dhat,
     const Eigen::MatrixXd& V)
-    : HighOrderCollision(_primitive0, _primitive1, _dhat, mesh)
+    : HighOrderCollision(_primitive0, _primitive1, _dhat, mesh),
+        primitive_a(_primitive0, mesh, V),
+        primitive_b(_primitive1, mesh, V)
 {
-    primitive_a = std::make_unique<PrimitiveA>(_primitive0, mesh, V);
-    primitive_b = std::make_unique<PrimitiveB>(_primitive1, mesh, V);
-
     if constexpr (std::is_same_v<PrimitiveA, Edge2P1>) {
         m_area_a = mesh.edge_length(_primitive0);
     }
@@ -98,7 +97,7 @@ HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::HighOrderCollisionTemplate(
         auto is_obstacle = [&](const auto& primitive) {
             bool any_obstacle = false;
             bool all_obstacle = true;
-            for (const index_t vid : primitive->vertex_ids()) {
+            for (const index_t vid : primitive.vertex_ids()) {
                 if (mesh.is_obstacle_vertex(vid)) {
                     any_obstacle = true;
                 } else {
@@ -114,24 +113,24 @@ HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::HighOrderCollisionTemplate(
         m_is_obstacle_b = is_obstacle(primitive_b);
     }
 
-    if ((primitive_a->n_vertices() + primitive_b->n_vertices()) * DIM
+    if ((primitive_a.n_vertices() + primitive_b.n_vertices()) * DIM
         > ELEMENT_SIZE) {
         logger().error(
             "Too many neighbors for collision pair! {} > {}! Increase MAX_VERT_3D in common.hpp",
-            primitive_a->n_vertices() + primitive_b->n_vertices(), MAX_VERT_3D);
+            primitive_a.n_vertices() + primitive_b.n_vertices(), MAX_VERT_3D);
     }
 
     int i = 0;
     m_vertex_ids.assign(
-        primitive_a->n_vertices() + primitive_b->n_vertices(),
+        primitive_a.n_vertices() + primitive_b.n_vertices(),
         -1);
-    for (auto& v : primitive_a->vertex_ids()) {
+    for (auto& v : primitive_a.vertex_ids()) {
         m_vertex_ids[i++] = v;
     }
-    for (auto& v : primitive_b->vertex_ids()) {
+    for (auto& v : primitive_b.vertex_ids()) {
         m_vertex_ids[i++] = v;
     }
-    assert(i == primitive_a->n_vertices() + primitive_b->n_vertices());
+    assert(i == primitive_a.n_vertices() + primitive_b.n_vertices());
 
     const double dist_sq = compute_distance(V);
     m_is_active = dist_sq < m_dhat * m_dhat;

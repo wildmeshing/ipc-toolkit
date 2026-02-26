@@ -220,7 +220,7 @@ public:
 
     int n_dofs() const override
     {
-        return primitive_a->n_dofs() + primitive_b->n_dofs();
+        return primitive_a.n_dofs() + primitive_b.n_dofs();
     }
     HighOrderCollisionType type() const override;
 
@@ -234,11 +234,11 @@ public:
 
     int num_vertices() const override
     {
-        return primitive_a->n_vertices() + primitive_b->n_vertices();
+        return primitive_a.n_vertices() + primitive_b.n_vertices();
     }
 
-    size_t n_vertices_a() const override { return primitive_a->n_vertices(); }
-    size_t n_vertices_b() const override { return primitive_b->n_vertices(); }
+    size_t n_vertices_a() const override { return primitive_a.n_vertices(); }
+    size_t n_vertices_b() const override { return primitive_b.n_vertices(); }
 
     bool is_obstacle_a() const { return m_is_obstacle_a; }
     bool is_obstacle_b() const { return m_is_obstacle_b; }
@@ -286,9 +286,9 @@ public:
 
 private:
     /// @brief The first primitive in the contact pair
-    std::unique_ptr<PrimitiveA> primitive_a;
+    PrimitiveA primitive_a;
     /// @brief The second primitive in the contact pair
-    std::unique_ptr<PrimitiveB> primitive_b;
+    PrimitiveB primitive_b;
     bool m_is_obstacle_a = false;
     bool m_is_obstacle_b = false;
     double m_area_a = 0;
