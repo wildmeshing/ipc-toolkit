@@ -3,6 +3,7 @@
 #include <ipc/collision_mesh.hpp>
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 #include <ipc/utils/eigen_ext.hpp>
+#include <ipc/math/span.hpp>
 
 namespace ipc {
 
@@ -15,6 +16,7 @@ namespace ipc {
  */
 class HighOrderPrimitive {
 public:
+    constexpr static int MAX_NUM_VERTS = 3;
     HighOrderPrimitive(const index_t id)
         : m_id(id)
     {
@@ -37,11 +39,14 @@ public:
     virtual int n_dofs() const = 0;
 
     /// @brief Get the vertex IDs of the primitive's stencil.
-    const std::vector<index_t>& vertex_ids() const { return m_vertex_ids; }
+    span<const index_t> vertex_ids() const {
+        assert(MAX_NUM_VERTS >= n_vertices());
+        return span<const index_t>(&(m_vertex_ids[0]), n_vertices());
+    }
 
 protected:
     /// @brief Vertex IDs of the stencil for this primitive.
-    std::vector<index_t> m_vertex_ids;
+    std::array<index_t, MAX_NUM_VERTS> m_vertex_ids;
     /// @brief The ID of this primitive.
     index_t m_id;
 };
@@ -82,15 +87,19 @@ public:
         const Eigen::MatrixXd& V)
         : HighOrderPrimitive(id)
     {
-        m_vertex_ids.push_back(id);
+        n_verts = 0;
+        m_vertex_ids[n_verts++] = id;
         std::vector<index_t> neighbors = find_vertex_neighbors_2D(mesh, id);
         for (const auto& neighbor_id : neighbors) {
-            m_vertex_ids.push_back(neighbor_id);
+            m_vertex_ids[n_verts++] = neighbor_id;
         }
     }
 
-    int n_vertices() const override { return m_vertex_ids.size(); }
+    int n_vertices() const override { return n_verts; }
     int n_dofs() const override { return n_vertices() * DIM; }
+
+private:
+    int n_verts;
 };
 
 class Edge2P1 : public HighOrderPrimitive {
@@ -106,10 +115,11 @@ public:
         const Eigen::MatrixXd& V)
         : HighOrderPrimitive(id)
     {
-        m_vertex_ids = { mesh.edges()(id, 0), mesh.edges()(id, 1) };
+        m_vertex_ids[0] = mesh.edges()(id, 0);
+        m_vertex_ids[1] = mesh.edges()(id, 1);
     }
 
-    int n_vertices() const override { return m_vertex_ids.size(); }
+    int n_vertices() const override { return 2; }
     int n_dofs() const override { return n_vertices() * DIM; }
 };
 
@@ -126,10 +136,10 @@ public:
         const Eigen::MatrixXd& V)
         : HighOrderPrimitive(id)
     {
-        m_vertex_ids.push_back(id);
+        m_vertex_ids[0] = id;
     }
 
-    int n_vertices() const override { return m_vertex_ids.size(); }
+    int n_vertices() const override { return 1; }
     int n_dofs() const override { return n_vertices() * DIM; }
 };
 
@@ -146,10 +156,11 @@ public:
         const Eigen::MatrixXd& V)
         : HighOrderPrimitive(id)
     {
-        m_vertex_ids = { mesh.edges()(id, 0), mesh.edges()(id, 1) };
+        m_vertex_ids[0] = mesh.edges()(id, 0);
+        m_vertex_ids[1] = mesh.edges()(id, 1);
     }
 
-    int n_vertices() const override { return m_vertex_ids.size(); }
+    int n_vertices() const override { return 2; }
     int n_dofs() const override { return n_vertices() * DIM; }
 };
 
@@ -166,10 +177,12 @@ public:
         const Eigen::MatrixXd& V)
         : HighOrderPrimitive(id)
     {
-        m_vertex_ids = { mesh.faces()(id, 0), mesh.faces()(id, 1), mesh.faces()(id, 2) };
+        m_vertex_ids[0] = mesh.faces()(id, 0);
+        m_vertex_ids[1] = mesh.faces()(id, 1);
+        m_vertex_ids[2] = mesh.faces()(id, 2);
     }
 
-    int n_vertices() const override { return m_vertex_ids.size(); }
+    int n_vertices() const override { return 3; }
     int n_dofs() const override { return n_vertices() * DIM; }
 };
 
