@@ -41,7 +41,7 @@ public:
     /// @brief Get the vertex IDs of the primitive's stencil.
     span<const index_t> vertex_ids() const {
         assert(MAX_NUM_VERTS >= n_vertices());
-        return span<const index_t>(&(m_vertex_ids[0]), n_vertices());
+        return span<const index_t>(m_vertex_ids.data(), n_vertices());
     }
 
 protected:
