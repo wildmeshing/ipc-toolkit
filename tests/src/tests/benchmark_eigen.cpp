@@ -1,3 +1,4 @@
+#include <absl/strings/str_format.h>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 
@@ -6,6 +7,9 @@
 #include <ipc/distance/point_triangle.hpp>
 
 #include <Eigen/Geometry>
+
+#include "ipc/collisions/normal/face_vertex.hpp"
+#include "ipc/collisions/normal/normal_collision.hpp"
 
 using namespace ipc;
 
@@ -176,5 +180,81 @@ TEST_CASE("Return type", "[!benchmark][eigen][return]")
         Matrix12d hess;
         line_line_distance_hessian(ea0, ea1, eb0, eb1, hess);
         return hess;
+    };
+}
+
+TEST_CASE("Pointers vs instances", "[!benchmark][eigen]")
+{
+    const Eigen::MatrixXd V = Eigen::MatrixXd::Random(100, 3);
+
+    int N = 1000;
+    int vi = 0, t0i = 50, t1i = 75, t2i = 99;
+
+    Eigen::MatrixXi E;
+    Eigen::MatrixXi F(1, 3);
+    F << t0i, t1i, t2i;
+
+    auto barrier = [](const double d) {
+        return -(1 - d) * (1 - d) * log(d);
+    };
+
+    BENCHMARK("Vector of pointers")
+    {
+        std::vector<std::unique_ptr<ipc::FaceVertexCandidate>> collisions;
+
+        for (int i = 0; i < N; ++i) {
+            collisions.emplace_back(std::make_unique<ipc::FaceVertexCandidate>(
+                0, vi));
+        }
+
+        double total = 0.;
+        for (int i = 0; i < N; ++i) {
+            const auto& cc = *(collisions[i]);
+            const double d = cc.compute_distance(cc.dof(V, E, F));
+            total += barrier(d);
+        }
+
+        return total;
+    };
+
+    BENCHMARK("Unordered map of pointers")
+    {
+        std::unordered_map<int, std::unique_ptr<ipc::FaceVertexCandidate>> collisions;
+
+        for (int i = 0; i < N; ++i) {
+            collisions[i] = std::make_unique<ipc::FaceVertexCandidate>(
+                0, vi);
+        }
+
+        double total = 0.;
+        for (auto& pair : collisions) {
+            const auto& cc = *(pair.second);
+            const double d = cc.compute_distance(cc.dof(V, E, F));
+            total += barrier(d);
+        }
+
+        return total;
+    };
+
+    BENCHMARK("Vector of instances")
+    {
+        std::vector<ipc::FaceVertexCandidate> collisions;
+
+        for (int i = 0; i < N; ++i) {
+            collisions.emplace_back(ipc::FaceVertexCandidate(
+                0, vi));
+        }
+
+        // simulate deep copy
+        auto collisions2 = collisions;
+
+        double total = 0.;
+        for (int i = 0; i < N; ++i) {
+            const auto& cc = collisions2[i];
+            const double d = cc.compute_distance(cc.dof(V, E, F));
+            total += barrier(d);
+        }
+
+        return total;
     };
 }
