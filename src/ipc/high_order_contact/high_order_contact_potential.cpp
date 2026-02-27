@@ -181,6 +181,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
                     const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
 
+                    // TODO: Collect local DoFs instead of directly using SparseMatrix
                     Eigen::SparseMatrix<double> local_grad(X.size(), 1);
                     for (index_t other_edge_id : close_edges) {
                         const index_t ec = mesh.edges()(other_edge_id, 0);
@@ -228,8 +229,13 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
                             const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                 X_extended, iter->second, params, dtype);
-                            const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<ADGrad<12>>(
-                                X_extended, iter->second, params, Eigen::Vector4i(ea, eb, ec, ed), ee_closest_point_T, dtype);
+                            Eigen::SparseMatrix<double> local_grad_1;
+                            {
+                                Eigen::VectorXd tmp = Eigen::VectorXd::Zero(X.size());
+                                tmp(iter->second.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
+                                X_extended, iter->second, params, ee_closest_point_T);
+                                local_grad_1 = tmp.sparseView();
+                            }
                             
                             local_grad += mollifier.val * local_grad_1;
                             const Vector12d local_grad_2 = local_potential_1 * mollifier.grad;
@@ -248,20 +254,26 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
                     // face center
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
-                        local_grad += PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                            ConcatMatrixView<3>(X, face_center), mesh.faces().row(f), iter->second, params);
+                        Eigen::VectorXd tmp = Eigen::VectorXd::Zero(local_grad.size());
+                        tmp(iter->second.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
+                            ConcatMatrixView<3>(X, face_center), iter->second, params);
+                        local_grad += tmp.sparseView();
                     }
 
                     // vertex ea
                     if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
-                        local_grad += PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                        Eigen::VectorXd tmp = Eigen::VectorXd::Zero(local_grad.size());
+                        tmp(iter->second.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
                             X, iter->second, params);
+                        local_grad += tmp.sparseView();
                     }
 
                     // vertex eb
                     if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
-                        local_grad += PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                        Eigen::VectorXd tmp = Eigen::VectorXd::Zero(local_grad.size());
+                        tmp(iter->second.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
                             X, iter->second, params);
+                        local_grad += tmp.sparseView();
                     }
 
                     grad += local_grad * (area / 9.);
@@ -383,18 +395,26 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 positionsT.row(2), positionsT.row(3),
                                     dtype);
 
+                            const HighOrderCollisionDict<PointType::EDGE>& dict = iter->second;
+                            std::vector<int> vids = dict.vertex_ids();
+
                             ConcatMatrixView<3> X_extended(X, ee_closest_point);
                             assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
                             const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                X_extended, iter->second, params, dtype);
-                            const Eigen::SparseMatrix<double> local_grad_1 = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
-                                X_extended, iter->second, params, Eigen::Vector4i(ea, eb, ec, ed), ee_closest_point_T, dtype);
+                                X_extended, dict, params, dtype);
+                            Eigen::SparseMatrix<double> local_grad_1;
+                            {
+                                Eigen::VectorXd tmp = Eigen::VectorXd::Zero(X.size());
+                                tmp(dict.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
+                                X_extended, dict, params, ee_closest_point_T);
+                                local_grad_1 = tmp.sparseView();
+                            }
                             const Eigen::SparseMatrix<double> local_hess_1 = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
-                                X_extended, iter->second, params, Eigen::Vector4i(ea, eb, ec, ed), ee_closest_point_T, dtype);
+                                X_extended, dict, params, Eigen::Vector4i(ea, eb, ec, ed), ee_closest_point_T, dtype);
 
                             local_hess += local_hess_1 * mollifier.val;
 
-                            std::array<index_t, 4> ee_indices = {{ea, eb, ec, ed}};
+                            const std::array<index_t, 4> ee_indices{ea, eb, ec, ed};
                             const Matrix12d local_hess_2 = local_potential_1 * mollifier.Hess;
                             for (index_t i = 0; i < 4; i++) {
                                 for (index_t j = 0; j < 4; j++) {
@@ -425,19 +445,19 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                     // face center
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                         local_hess += PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
-                            ConcatMatrixView<3>(X, face_center), mesh.faces().row(f), iter->second, params);
+                            ConcatMatrixView<3>(X, face_center), mesh.faces().row(f), iter->second, params, project_hessian_to_psd);
                     }
 
                     // vertex ea
                     if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
                         local_hess += PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                            X, iter->second, params);
+                            X, iter->second, params, project_hessian_to_psd);
                     }
 
                     // vertex eb
                     if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
                         local_hess += PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                            X, iter->second, params);
+                            X, iter->second, params, project_hessian_to_psd);
                     }
 
                     hess += local_hess * (area / 9.);

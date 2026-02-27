@@ -227,23 +227,18 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
 
         std::vector<int> indices;
         {
-            Eigen::SparseMatrix<double> g_sparse =
+            Eigen::VectorXd local_grad =
                 PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
                     V, collisions, params);
-            for (index_t k = 0; k < g_sparse.outerSize(); ++k) {
-                for (Eigen::SparseMatrix<double>::InnerIterator it(g_sparse, k); it; ++it) {
-                    assert(it.col() == 0);
-                    indices.push_back(it.row());
-                }
-            }
+            indices = collisions.dofs();
 
-            if (g_sparse.norm() < 1e-10) {
+            if (local_grad.norm() < 1e-10) {
                 continue;
             }
         }
 
         Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-            V, collisions, params);
+            V, collisions, params, PSDProjectionMethod::NONE);
         h = h(indices, indices).eval();
 
         Eigen::MatrixXd fh;
@@ -253,9 +248,8 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
                 y_(indices) = y;
                 Eigen::MatrixXd V_fd = fd::unflatten(y_, 3);
 
-                Eigen::VectorXd g = Eigen::MatrixXd(PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                    V_fd, collisions, params)).col(0);
-                return g(indices);
+                return PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                    V_fd, collisions, params);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
         REQUIRE((h - fh).norm() < 1e-6 * std::max({h.norm(), fh.norm(), 1e-8}));
@@ -297,20 +291,17 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
 
         std::vector<int> indices;
         {
-            Eigen::SparseMatrix<double> g_sparse = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_extended, vids, collisions, params);
-            for (index_t k = 0; k < g_sparse.outerSize(); ++k) {
-                for (Eigen::SparseMatrix<double>::InnerIterator it(g_sparse, k); it; ++it) {
-                    assert(it.col() == 0);
-                    indices.push_back(it.row());
-                }
-            }
+            Eigen::VectorXd local_grad =
+                PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
+                    V_extended, collisions, params);
+            indices = collisions.dofs();
 
-            if (g_sparse.norm() < 1e-10) {
+            if (local_grad.norm() < 1e-10) {
                 continue;
             }
         }
 
-        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, vids, collisions, params);
+        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, vids, collisions, params, PSDProjectionMethod::NONE);
         h = h(indices, indices).eval();
 
         Eigen::MatrixXd fh;
@@ -322,8 +313,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
                 Eigen::RowVector3d face_center_fd = (V_fd.row(vids[0]) + V_fd.row(vids[1]) + V_fd.row(vids[2])) / 3.;
                 ConcatMatrixView<3> V_fd_extended(V_fd, face_center_fd);
 
-                Eigen::VectorXd g = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_fd_extended, vids, collisions, params);
-                return g(indices);
+                return PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_fd_extended, collisions, params);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
         REQUIRE((h - fh).norm() < 1e-6 * std::max({h.norm(), fh.norm(), 1e-8}));

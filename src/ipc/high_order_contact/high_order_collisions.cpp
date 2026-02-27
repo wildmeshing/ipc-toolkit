@@ -17,6 +17,7 @@
 #include <tbb/parallel_sort.h>
 
 #include <stdexcept> // std::out_of_range
+#include <utility>
 
 namespace ipc {
 namespace
@@ -627,40 +628,40 @@ std::string HighOrderCollisions::to_string(
     }
 
     for (const auto& ccs : vertex_collisions) {
-        for (const auto& pair : ccs.second) {
-            const auto& cc = pair.second;
+        for (int i = 0; i < ccs.second.size(); i++) {
+            const auto& cc = ccs.second[i];
             ss << "\n";
             {
                 ss << fmt::format(
-                    "vert [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc->name(),
-                    (*cc)[0], (*cc)[1], cc->weight, cc->compute_distance(vertices),
-                    (*cc)(cc->dof(vertices), params),
-                    (*cc).gradient(cc->dof(vertices), params).norm());
+                    "vert [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
+                    cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
+                    cc(cc.dof(vertices), params),
+                    cc.gradient(cc.dof(vertices), params).norm());
             }
         }
     }
     for (const auto& ccs : edge_edge_collisions_advanced) {
-        for (const auto& pair : ccs.second) {
-            const auto& cc = pair.second;
+        for (int i = 0; i < ccs.second.size(); i++) {
+            const auto& cc = ccs.second[i];
             ss << "\n";
             {
                 ss << fmt::format(
-                    "edge [{}]: ({} {}) ({} {}) weight {}", cc->name(),
+                    "edge [{}]: ({} {}) ({} {}) weight {}", cc.name(),
                     ccs.first.first, ccs.first.second,
-                    (*cc)[0], (*cc)[1], cc->weight);
+                    cc[0], cc[1], cc.weight);
             }
         }
     }
     for (const auto& ccs : face_collisions) {
-        for (const auto& pair : ccs.second) {
-            const auto& cc = pair.second;
+        for (int i = 0; i < ccs.second.size(); i++) {
+            const auto& cc = ccs.second[i];
             ss << "\n";
             {
                 ss << fmt::format(
-                    "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc->name(),
-                    (*cc)[0], (*cc)[1], cc->weight, cc->compute_distance(vertices),
-                    (*cc)(cc->dof(vertices), params),
-                    (*cc).gradient(cc->dof(vertices), params).norm());
+                    "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
+                    cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
+                    cc(cc.dof(vertices), params),
+                    cc.gradient(cc.dof(vertices), params).norm());
             }
         }
     }
@@ -730,8 +731,9 @@ double HighOrderCollisions::compute_active_minimum_distance(
     else {
         double min_dist = std::numeric_limits<double>::max();
         for (const auto& map : vertex_collisions) {
-            for (const auto& cc : map.second) {
-                min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
+            for (int i = 0; i < map.second.size(); i++) {
+                const auto& cc = map.second[i];
+                min_dist = std::min(min_dist, cc.compute_distance(vertices));
             }
         }
 

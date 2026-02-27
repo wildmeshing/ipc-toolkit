@@ -148,10 +148,10 @@ public:
     /// @brief collision sets for 3D quadrature
 
     // vertex_collisions[vi] provides the contact set for vertex vi
-    unordered_map<index_t, HighOrderCollisionDict<3>> vertex_collisions;
+    unordered_map<index_t, HighOrderCollisionDict<PointType::VERTEX>> vertex_collisions;
     // edge_edge_collisions[(ei, ej)] provides the contact set for the closest point on ei, between edge ei and ej.
-    unordered_map<std::pair<index_t, index_t>, HighOrderCollisionDict<3>> edge_edge_collisions_advanced;
+    unordered_map<std::pair<index_t, index_t>, HighOrderCollisionDict<PointType::EDGE>> edge_edge_collisions_advanced;
     // face_collisions[fi] provides the contact set for center of face fi
-    unordered_map<index_t, HighOrderCollisionDict<3>> face_collisions;
+    unordered_map<index_t, HighOrderCollisionDict<PointType::FACE>> face_collisions;
 };
 }

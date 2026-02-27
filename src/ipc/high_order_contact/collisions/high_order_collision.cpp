@@ -93,6 +93,7 @@ HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::HighOrderCollisionTemplate(
         m_area_b = mesh.edge_length(_primitive1);
     }
 
+    // TODO: In 3D, there are virtual vertices that are beyond the collision mesh vertices
     if constexpr (DIM == 2) {
         auto is_obstacle = [&](const auto& primitive) {
             bool any_obstacle = false;

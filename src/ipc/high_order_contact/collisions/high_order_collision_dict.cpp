@@ -1,49 +1,134 @@
 #include "high_order_collision_dict.hpp"
 
-namespace ipc {
-
-template <int N, int dim>
-std::vector<index_t> HighOrderCollisionDict<N, dim>::vertex_ids() const {
-  std::set<index_t> vids;
-  for (const auto& [key, val] : map) {
-    for (const index_t vid : val->vertex_ids()) {
-      vids.insert(vid);
-    }
-  }
-
-  std::vector<index_t> out(vids.size());
-  out.assign(vids.begin(), vids.end());
-  assert(std::is_sorted(out.begin(), out.end()));
-  return out;
-}
-
-template <int N, int dim>
-Eigen::VectorXd HighOrderCollisionDict<N, dim>::dof(Eigen::ConstRef<Eigen::MatrixXd> X) const
+namespace ipc
 {
-  const std::vector<index_t> vids = vertex_ids();
-  Eigen::VectorXd out(vids.size() * dim);
-  for (index_t i = 0; i < vids.size(); ++i) {
-      assert(vids[i] < X.rows());
-      assert(X.cols() == dim);
-      out.segment<dim>(i * dim) = X.row(vids[i]);
-  }
-  return out;
-}
+    template <PointType pType>
+    void HighOrderCollisionDict<pType>::initialize(
+        const std::vector<index_t>& primary_vertex_ids,
+        const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& map
+    )
+    {
+        assert(primary_vertex_ids.size() <= m_primary_vertex_ids.size());
+        for (int i = 0; i < primary_vertex_ids.size(); i++) {
+            m_primary_vertex_ids[i] = primary_vertex_ids[i];
+        }
 
-template <int N, int dim>
-void HighOrderCollisionDict<N, dim>::insert_pair(ValueType&& collision)
-{
-  if (auto iter = map.find(collision->get_typed_hash()); iter != map.end()) {
-    iter->second->weight += collision->weight;
-    if (iter->second->weight == 0) {
-      map.erase(iter);
+        std::set<index_t> vids;
+        for (const auto& [key, val] : map) {
+            for (const index_t vid : val->vertex_ids()) {
+                vids.insert(vid);
+            }
+        }
+
+        // Erase virtual vertex id, which is the largest in all ids
+        if (pType != PointType::VERTEX && map.size() > 0) {
+            auto iter = std::prev(vids.end());
+            auto ptr = map.begin().value();
+            vids.erase(iter);
+        }
+
+        // Insert primary ids
+        for (index_t vi : primary_vertex_ids) {
+            vids.insert(vi);
+        }
+
+        m_vertex_ids.assign(vids.begin(), vids.end());
+        assert(std::is_sorted(m_vertex_ids.begin(), m_vertex_ids.end()));
+
+        for (int i = 0; i < m_vertex_ids.size(); i++) {
+            m_vertex_ids_inverse[m_vertex_ids[i]] = i;
+        }
+
+        // Convert unordered_map to vectors
+        for (const auto& [key, val] : map) {
+            switch (val->type()) {
+            case HighOrderCollisionType::VERTEX_VERTEX:
+                {
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Vertex3, Vertex3>>(val);
+                    assert(ptr);
+                    vv_collisions.push_back(*ptr);
+                    break;
+                }
+            case HighOrderCollisionType::EDGE_VERTEX:
+                {
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(val);
+                    assert(ptr);
+                    ev_collisions.push_back(*ptr);
+                    break;
+                }
+            case HighOrderCollisionType::FACE_VERTEX:
+                {
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Face3P1, Vertex3>>(val);
+                    assert(ptr);
+                    fv_collisions.push_back(*ptr);
+                    break;
+                }
+            default:
+                log_and_throw_error("Invalid PointType!");
+            }
+        }
     }
-  }
-  else {
-    map[collision->get_typed_hash()] = std::move(collision);
-  }
-}
 
-template class HighOrderCollisionDict<3, 3>;
+    template <PointType pType>
+    HighOrderCollision& HighOrderCollisionDict<pType>::operator[](int i)
+    {
+        return const_cast<HighOrderCollision&>(
+            static_cast<const HighOrderCollisionDict&>(*this)[i]
+        );
+    }
 
-}
+    template <PointType pType>
+    const HighOrderCollision& HighOrderCollisionDict<pType>::operator[](int i) const
+    {
+        if (i < vv_collisions.size()) {
+            return vv_collisions[i];
+        }
+        else {
+            i -= vv_collisions.size();
+            if (i < ev_collisions.size()) {
+                return ev_collisions[i];
+            }
+            else {
+                i -= ev_collisions.size();
+                if (i < fv_collisions.size()) {
+                    return fv_collisions[i];
+                }
+                else {
+                    log_and_throw_error("Invalid index!");
+                }
+            }
+        }
+    }
+
+    template <PointType pType>
+    const std::vector<index_t>& HighOrderCollisionDict<pType>::vertex_ids() const
+    {
+        return m_vertex_ids;
+    }
+
+    template <PointType pType>
+    std::vector<index_t> HighOrderCollisionDict<pType>::dofs() const
+    {
+        std::vector<index_t> dofs(m_vertex_ids.size() * dim);
+        for (int i = 0; i < m_vertex_ids.size(); i++) {
+            for (int d = 0; d < dim; d++) {
+                dofs[i * dim + d] = m_vertex_ids[i] * dim + d;
+            }
+        }
+        return dofs;
+    }
+
+    template <PointType pType>
+    index_t HighOrderCollisionDict<pType>::vertex_ids_inverse(index_t id) const
+    {
+        auto iter = m_vertex_ids_inverse.find(id);
+        if (iter == m_vertex_ids_inverse.end()) {
+            return -1;
+        }
+        return iter->second;
+    }
+
+    template class HighOrderCollisionDict<PointType::VERTEX>;
+    template class HighOrderCollisionDict<PointType::EDGE>;
+    template class HighOrderCollisionDict<PointType::FACE>;
+} // namespace ipc
