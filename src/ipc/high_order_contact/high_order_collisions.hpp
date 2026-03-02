@@ -13,6 +13,7 @@ public:
     using value_type = HighOrderCollision;
 
     constexpr static bool use_quadrature = true;
+    constexpr static bool use_parallel_build = true;
 
 public:
     HighOrderCollisions() = default;

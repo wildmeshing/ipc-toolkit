@@ -1,4 +1,5 @@
 #include "high_order_collisions_builder.hpp"
+#include <ipc/high_order_contact/quadrature_potential.hpp>
 
 #include <ipc/distance/distance_type.hpp>
 #include <ipc/distance/point_edge.hpp>
@@ -726,6 +727,125 @@ void HighOrderCollisionsBuilder<3>::merge(
     logger().trace(
         "VV pairs: {}; VE pairs: {}; VF pairs: {}.",
         vert_vert_count, vert_edge_count, vert_face_count);
+}
+
+
+// ============================================================================
+// QuadratureCollisionsBuilder
+
+QuadratureCollisionsBuilder::QuadratureCollisionsBuilder(
+    const CollisionMesh& mesh,
+    const Candidates& candidates,
+    const HighOrderContactParameters& params)
+    : point_potential(
+        std::make_shared<PointPotential>(mesh, candidates, params))
+{
+}
+
+QuadratureCollisionsBuilder::~QuadratureCollisionsBuilder() = default;
+
+void QuadratureCollisionsBuilder::build_vertex_collisions(
+    const Eigen::MatrixXd& vertices,
+    const std::vector<index_t>& vertex_indices,
+    const size_t start_i,
+    const size_t end_i)
+{
+    for (size_t i = start_i; i < end_i; i++) {
+        const index_t vi = vertex_indices[i];
+        vertex_collisions[vi] = point_potential->build_collisions_at_vertex(vertices, vi);
+    }
+}
+
+void QuadratureCollisionsBuilder::build_face_collisions(
+    const Eigen::MatrixXd& vertices,
+    const std::vector<index_t>& face_indices,
+    const size_t start_i,
+    const size_t end_i)
+{
+    for (size_t i = start_i; i < end_i; i++) {
+        const index_t fi = face_indices[i];
+        face_collisions[fi] = point_potential->build_collisions_at_face_center(vertices, fi);
+    }
+}
+
+void QuadratureCollisionsBuilder::build_edge_edge_collisions(
+    const Eigen::MatrixXd& vertices,
+    const std::vector<EdgeEdgeCandidate>& ee_candidates,
+    const size_t start_i,
+    const size_t end_i)
+{
+    const HighOrderContactParameters& params = point_potential->params;
+    const CollisionMesh& mesh = point_potential->mesh;
+
+    for (size_t i = start_i; i < end_i; i++) {
+        const auto& candidate = ee_candidates[i];
+        const index_t ei = candidate.edge0_id;
+        const index_t ej = candidate.edge1_id;
+
+        const index_t ea = mesh.edges()(ei, 0);
+        const index_t eb = mesh.edges()(ei, 1);
+        const index_t ec = mesh.edges()(ej, 0);
+        const index_t ed = mesh.edges()(ej, 1);
+
+        if (ea == ec || ea == ed || eb == ec || eb == ed) {
+            continue;
+        }
+
+        const auto dtype = edge_edge_distance_type(
+            vertices.row(ea), vertices.row(eb),
+            vertices.row(ec), vertices.row(ed));
+
+        const double dist_sq = edge_edge_distance(
+            vertices.row(ea), vertices.row(eb),
+            vertices.row(ec), vertices.row(ed), dtype);
+
+        if (dist_sq >= params.dhat * params.dhat) {
+            continue;
+        }
+
+        if (is_parallel_edge_edge(
+            vertices.row(ea), vertices.row(eb),
+            vertices.row(ec), vertices.row(ed))) {
+            continue;
+        }
+
+        if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
+            if (edge_edge_collisions_advanced.find(std::make_pair(ei, ej)) == edge_edge_collisions_advanced.end()) {
+                edge_edge_collisions_advanced[std::make_pair(ei, ej)] = point_potential->build_collisions_at_edge_edge_closest_point_advanced(vertices, ei, ej);
+            }
+        }
+
+        if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
+            if (edge_edge_collisions_advanced.find(std::make_pair(ej, ei)) == edge_edge_collisions_advanced.end()) {
+                edge_edge_collisions_advanced[std::make_pair(ej, ei)] = point_potential->build_collisions_at_edge_edge_closest_point_advanced(vertices, ej, ei);
+            }
+        }
+    }
+}
+
+void QuadratureCollisionsBuilder::merge(
+    const ParallelCacheType<QuadratureCollisionsBuilder>& local_storage,
+    HighOrderCollisions& merged_collisions)
+{
+    // Reserve space
+    size_t total_v = 0, total_ee = 0, total_f = 0;
+    for (const auto& storage : local_storage) {
+        total_v += storage.vertex_collisions.size();
+        total_ee += storage.edge_edge_collisions_advanced.size();
+        total_f += storage.face_collisions.size();
+    }
+    merged_collisions.vertex_collisions.reserve(total_v);
+    merged_collisions.edge_edge_collisions_advanced.reserve(total_ee);
+    merged_collisions.face_collisions.reserve(total_f);
+
+    for (const auto& storage : local_storage) {
+        merged_collisions.vertex_collisions.insert(
+            storage.vertex_collisions.begin(), storage.vertex_collisions.end());
+        merged_collisions.edge_edge_collisions_advanced.insert(
+            storage.edge_edge_collisions_advanced.begin(), storage.edge_edge_collisions_advanced.end());
+        merged_collisions.face_collisions.insert(
+            storage.face_collisions.begin(), storage.face_collisions.end());
+    }
 }
 
 } // namespace ipc

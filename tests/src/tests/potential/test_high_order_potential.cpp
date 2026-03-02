@@ -606,3 +606,38 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
         run_checks();
     }
 }
+
+/*
+TEST_CASE("Benchmark HighOrderCollisions build", "[!benchmark][high_order_potential]")
+{
+    const auto method = make_default_broad_phase();
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
+
+    igl::edges(F, E);
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.15;
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    Candidates candidates;
+    candidates.build(mesh, V, dhat / 2, method.get(), true);
+
+    HighOrderCollisions collisions;
+
+    BENCHMARK("Serial Build")
+    {
+        HighOrderCollisions::use_parallel_build = false;
+        collisions.build(candidates, mesh, V, params);
+    };
+
+    BENCHMARK("Parallel Build")
+    {
+        HighOrderCollisions::use_parallel_build = true;
+        collisions.build(candidates, mesh, V, params);
+    };
+
+    HighOrderCollisions::use_parallel_build = true;
+}
+*/

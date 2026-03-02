@@ -7,11 +7,14 @@
 
 #include <Eigen/Core>
 
+#include <memory>
 #include "collisions/triple_pair_collision.hpp"
 
 namespace ipc {
 
 template <int dim> class HighOrderCollisionsBuilder;
+class PointPotential;
+class QuadratureCollisionsBuilder;
 
 template <> class HighOrderCollisionsBuilder<2> {
 public:
@@ -179,5 +182,41 @@ public:
     unordered_map<std::array<index_t, 3>, index_t> eev_3_to_id;
     unordered_map<std::array<index_t, 3>, index_t> eef_3_to_id;
     unordered_map<std::array<index_t, 3>, index_t> eee_3_to_id;
+};
+
+class QuadratureCollisionsBuilder {
+public:
+    QuadratureCollisionsBuilder(
+        const CollisionMesh& mesh,
+        const Candidates& candidates,
+        const HighOrderContactParameters& params);
+    ~QuadratureCollisionsBuilder();
+
+    void build_vertex_collisions(
+        const Eigen::MatrixXd& vertices,
+        const std::vector<index_t>& vertex_indices,
+        size_t start, size_t end);
+
+    void build_face_collisions(
+        const Eigen::MatrixXd& vertices,
+        const std::vector<index_t>& face_indices,
+        size_t start, size_t end);
+
+    void build_edge_edge_collisions(
+        const Eigen::MatrixXd& vertices,
+        const std::vector<EdgeEdgeCandidate>& ee_candidates,
+        const size_t start_i,
+        const size_t end_i);
+
+    static void merge(
+        const ParallelCacheType<QuadratureCollisionsBuilder>& local_storage,
+        HighOrderCollisions& merged_collisions);
+
+    // Local storage
+    unordered_map<index_t, HighOrderCollisionDict<PointType::VERTEX>> vertex_collisions;
+    unordered_map<std::pair<index_t, index_t>, HighOrderCollisionDict<PointType::EDGE>> edge_edge_collisions_advanced;
+    unordered_map<index_t, HighOrderCollisionDict<PointType::FACE>> face_collisions;
+
+    std::shared_ptr<PointPotential> point_potential;
 };
 } // namespace ipc
