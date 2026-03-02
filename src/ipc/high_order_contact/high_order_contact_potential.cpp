@@ -414,7 +414,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                             local_hess += local_hess_1 * mollifier.val;
 
-                            const std::array<index_t, 4> ee_indices{ea, eb, ec, ed};
+                            const std::array<index_t, 4> ee_indices{{ea, eb, ec, ed}};
                             const Matrix12d local_hess_2 = local_potential_1 * mollifier.Hess;
                             for (index_t i = 0; i < 4; i++) {
                                 for (index_t j = 0; j < 4; j++) {

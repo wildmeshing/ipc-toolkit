@@ -46,7 +46,7 @@ public:
 
 protected:
     /// @brief Vertex IDs of the stencil for this primitive.
-    std::array<index_t, MAX_NUM_VERTS> m_vertex_ids{-1, -1, -1};
+    std::array<index_t, MAX_NUM_VERTS> m_vertex_ids{{-1, -1, -1}};
     /// @brief The ID of this primitive.
     index_t m_id;
 };

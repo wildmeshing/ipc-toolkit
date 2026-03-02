@@ -57,7 +57,7 @@ private:
     ///     - an edge point, this is the four vertices of the edge-edge pair
     ///     - a face point, this is the three vertices of the face
     /// When the size is smaller than 4, append -1 to entries not used.
-    std::array<index_t, 4> m_primary_vertex_ids{-1,-1,-1,-1};
+    std::array<index_t, 4> m_primary_vertex_ids{{-1,-1,-1,-1}};
 
     /// @brief Collection of all vertices in collision pairs, including the primary vertices, but not the virtual vertex
     std::vector<index_t> m_vertex_ids;
