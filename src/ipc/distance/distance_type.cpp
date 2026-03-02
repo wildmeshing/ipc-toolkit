@@ -7,12 +7,15 @@
 #include <geogram/numerics/exact_geometry.h>
 #include "fp_filters.h"
 
-namespace ipc {
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
+#include <geogram/numerics/exact_geometry.h>
+#include "fp_filters.h"
+#endif
 
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
+namespace ipc {
 using ExReal = GEO::expansion_nt; // exact scalar type
 using ExVec3 = GEO::vec3E; // exact vector type
-//constexpr double PARALLEL_THRESHOLD {1e-20}; //TODO set to zero eventually
-constexpr double PARALLEL_THRESHOLD {0};
 
 inline void init_pck() { // TODO init once in main
     static bool initialized = false;
@@ -61,24 +64,6 @@ int dot3_2d(
     return (ss > 0) ? 1 : ((ss < 0) ? -1 : 0);
 }
 
-int dot4_3d(
-    Eigen::ConstRef<VectorMax3d> p0_,
-    Eigen::ConstRef<VectorMax3d> p1_,
-    Eigen::ConstRef<VectorMax3d> p2_,
-    Eigen::ConstRef<VectorMax3d> p3_
-) {
-    // Evaluates the sign of dot(p1-p0, p3-p2)
-    const int s = dot4_3d_filter(p0_.data(), p1_.data(), p2_.data(), p3_.data());
-    if (s != FPG_UNCERTAIN_VALUE) return s;
-    logger().trace("dot4_3d filter uncertain - fallback to exact arithmetic");
-    const ExVec3 p0 = make_exact(p0_);
-    const ExVec3 p1 = make_exact(p1_);
-    const ExVec3 p2 = make_exact(p2_);
-    const ExVec3 p3 = make_exact(p3_);
-    const ExReal ss = dot(p1 - p0, p3 - p2);
-    return (ss > 0) ? 1 : ((ss < 0) ? -1 : 0);
-}
-
 int cross_dot_cross_1(
     Eigen::ConstRef<VectorMax3d> p0_,
     Eigen::ConstRef<VectorMax3d> p1_,
@@ -121,21 +106,122 @@ int cross_dot_cross_2(
     return (ss > 0) ? 1 : ((ss < 0) ? -1 : 0);
 }
 
-int dot_4(
-    Eigen::ConstRef<VectorMax3d> p0_,
-    Eigen::ConstRef<VectorMax3d> p1_,
-    Eigen::ConstRef<VectorMax3d> p2_,
-    Eigen::ConstRef<VectorMax3d> p3_)
+
+PointEdgeDistanceType point_edge_distance_type(
+    Eigen::ConstRef<VectorMax3d> p,
+    Eigen::ConstRef<VectorMax3d> e0,
+    Eigen::ConstRef<VectorMax3d> e1)
 {
     init_pck();
-    const ExVec3 p0 = make_exact(p0_);
-    const ExVec3 p1 = make_exact(p1_);
-    const ExVec3 p2 = make_exact(p2_);
-    const ExVec3 p3 = make_exact(p3_);
-    const ExReal ss = dot(p1 - p0, p3 - p2);
-    return (ss > 0) ? 1 : ((ss < 0) ? -1 : 0);
+    assert(p.size() == e0.size() && p.size() == e1.size());
+    if (p.size() == 2) {
+        if (dot3_2d(e0, p, e1) <= 0) return PointEdgeDistanceType::P_E0;
+        else if (dot3_2d(e1, p, e0) <= 0) return PointEdgeDistanceType::P_E1;
+        else return PointEdgeDistanceType::P_E;
+    }
+    else {
+        if (dot3_3d(e0, p, e1) <= 0) return PointEdgeDistanceType::P_E0;
+        else if (dot3_3d(e1, p, e0) <= 0) return PointEdgeDistanceType::P_E1;
+        else return PointEdgeDistanceType::P_E;
+    }
 }
 
+
+PointTriangleDistanceType point_triangle_distance_type(
+    Eigen::ConstRef<Eigen::Vector3d> p,
+    Eigen::ConstRef<Eigen::Vector3d> t0,
+    Eigen::ConstRef<Eigen::Vector3d> t1,
+    Eigen::ConstRef<Eigen::Vector3d> t2)
+{
+    init_pck();
+    const int dot01 = dot3_3d(t0, p, t1);
+    const int dot02 = dot3_3d(t0, p, t2);
+    if (dot01 <= 0 && dot02 <= 0) {
+        return PointTriangleDistanceType::P_T0;
+    }
+    const int dot12 = dot3_3d(t1, p, t2);
+    const int dot10 = dot3_3d(t1, p, t0);
+    if (dot12 <= 0 && dot10 <= 0) {
+        return PointTriangleDistanceType::P_T1;
+    }
+    const int dot20 = dot3_3d(t2, p, t0);
+    const int dot21 = dot3_3d(t2, p, t1);
+    if (dot20 <= 0 && dot21 <= 0) {
+        return PointTriangleDistanceType::P_T2;
+    }
+
+    if (cross_dot_cross_1(t0, t1, t2, p) >= 0 && dot01 > 0 && dot10 > 0)
+        return PointTriangleDistanceType::P_E0;
+    if (cross_dot_cross_1(t1, t2, t0, p) >= 0 && dot12 > 0 && dot21 > 0)
+        return PointTriangleDistanceType::P_E1;
+    if (cross_dot_cross_1(t2, t0, t1, p) >= 0 && dot20 > 0 && dot02 > 0)
+        return PointTriangleDistanceType::P_E2;
+
+    return PointTriangleDistanceType::P_T;
+}
+
+
+bool is_parallel_edge_edge(
+    Eigen::ConstRef<Eigen::Vector3d> ea0_,
+    Eigen::ConstRef<Eigen::Vector3d> ea1_,
+    Eigen::ConstRef<Eigen::Vector3d> eb0_,
+    Eigen::ConstRef<Eigen::Vector3d> eb1_)
+{
+    init_pck();
+    // TODO use a zero filter?
+    const int s = cross_null_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data());
+    if (s != FPG_UNCERTAIN_VALUE) return false;
+    const ExVec3 ea0 = make_exact(ea0_);
+    const ExVec3 ea1 = make_exact(ea1_);
+    const ExVec3 eb0 = make_exact(eb0_);
+    const ExVec3 eb1 = make_exact(eb1_);
+    const ExReal cross_norm_sqr = cross(ea1-ea0, eb1-eb0).length2();
+    return cross_norm_sqr == 0;
+}
+
+
+EdgeEdgeDistanceType edge_edge_distance_type(
+    Eigen::ConstRef<Eigen::Vector3d> ea0,
+    Eigen::ConstRef<Eigen::Vector3d> ea1,
+    Eigen::ConstRef<Eigen::Vector3d> eb0,
+    Eigen::ConstRef<Eigen::Vector3d> eb1)
+{
+    init_pck();
+
+    const PointEdgeDistanceType dt_ea0 = point_edge_distance_type(ea0, eb0, eb1);
+    const PointEdgeDistanceType dt_ea1 = point_edge_distance_type(ea1, eb0, eb1);
+
+    if (dt_ea0 == PointEdgeDistanceType::P_E0 && dot3_3d(ea0, eb0, ea1) <= 0)
+        return EdgeEdgeDistanceType::EA0_EB0;
+    if (dt_ea0 == PointEdgeDistanceType::P_E1 && dot3_3d(ea0, eb1, ea1) <= 0)
+        return EdgeEdgeDistanceType::EA0_EB1;
+    if (dt_ea1 == PointEdgeDistanceType::P_E0 && dot3_3d(ea1, eb0, ea0) <= 0)
+        return EdgeEdgeDistanceType::EA1_EB0;
+    if (dt_ea1 == PointEdgeDistanceType::P_E1 && dot3_3d(ea1, eb1, ea0) <= 0)
+        return EdgeEdgeDistanceType::EA1_EB1;
+
+    const PointEdgeDistanceType dt_eb0 = point_edge_distance_type(eb0, ea0, ea1);
+    const PointEdgeDistanceType dt_eb1 = point_edge_distance_type(eb1, ea0, ea1);
+
+    if (dt_eb0 == PointEdgeDistanceType::P_E && cross_dot_cross_2(eb0, ea0, ea1, eb1) >= 0)
+        return EdgeEdgeDistanceType::EA_EB0;
+    if (dt_eb1 == PointEdgeDistanceType::P_E && cross_dot_cross_2(eb1, ea0, ea1, eb0) >= 0)
+        return EdgeEdgeDistanceType::EA_EB1;
+    if (dt_ea0 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea0, eb0, eb1, ea1) >= 0)
+        return EdgeEdgeDistanceType::EA0_EB;
+    if (dt_ea1 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea1, eb0, eb1, ea0) >= 0)
+        return EdgeEdgeDistanceType::EA1_EB;
+
+    return EdgeEdgeDistanceType::EA_EB;
+}
+EdgeEdgeDistanceType edge_edge_parallel_distance_type(
+    Eigen::ConstRef<Eigen::Vector3d> ea0,
+    Eigen::ConstRef<Eigen::Vector3d> ea1,
+    Eigen::ConstRef<Eigen::Vector3d> eb0,
+    Eigen::ConstRef<Eigen::Vector3d> eb1)
+{ return edge_edge_distance_type(ea0, ea1, eb0, eb1); }
+
+#else
 
 PointEdgeDistanceType point_edge_distance_type(
     Eigen::ConstRef<VectorMax3d> p,
@@ -302,5 +388,7 @@ EdgeEdgeDistanceType edge_edge_parallel_distance_type(
 
     return EdgeEdgeDistanceType::EA_EB0;
 }
+
+#endif
 
 } // namespace ipc

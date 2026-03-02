@@ -248,6 +248,7 @@ endif()
 # Geogram
 if(IPC_TOOLKIT_WITH_GEOGRAM)
   include(geogram)
+  target_compile_definitions(ipc_toolkit PRIVATE IPC_TOOLKIT_WITH_GEOGRAM=1)
   target_link_libraries(ipc_toolkit PUBLIC geogram::geogram)
 endif()
 
@@ -282,6 +283,25 @@ endif()
 
 # Use C++17
 target_compile_features(ipc_toolkit PUBLIC cxx_std_17)
+
+################################################################################
+# CUDA
+################################################################################
+
+# CUDA support
+if(IPC_TOOLKIT_WITH_CUDA)
+  # If CMAKE_CUDA_ARCHITECTURES was not specified, set it to native.
+  if(DEFINED CMAKE_CUDA_ARCHITECTURES)
+    message(STATUS "CMAKE_CUDA_ARCHITECTURES was specified, skipping auto-detection")
+  else()
+    message(STATUS "CMAKE_CUDA_ARCHITECTURES was not specified, set it to native")
+    set(CMAKE_CUDA_ARCHITECTURES "native")
+  endif()
+  message(STATUS "Targeting CUDA_ARCHITECTURES \"${CMAKE_CUDA_ARCHITECTURES}\"")
+
+  # Enable CUDA support
+  enable_language(CUDA)
+endif()
 
 ################################################################################
 # Tests
