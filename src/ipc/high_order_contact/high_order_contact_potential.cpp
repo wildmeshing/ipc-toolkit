@@ -353,7 +353,6 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                     const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
 
-                    Eigen::SparseMatrix<double> local_hess(X.size(), X.size());
                     for (index_t other_edge_id : close_edges) {
                         const index_t ec = mesh.edges()(other_edge_id, 0);
                         const index_t ed = mesh.edges()(other_edge_id, 1);
@@ -396,43 +395,37 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     dtype);
 
                             const HighOrderCollisionDict<PointType::EDGE>& dict = iter->second;
-                            std::vector<int> vids = dict.vertex_ids();
 
                             ConcatMatrixView<3> X_extended(X, ee_closest_point);
                             assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
                             const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                 X_extended, dict, params, dtype);
-                            Eigen::SparseMatrix<double> local_grad_1;
-                            {
-                                Eigen::VectorXd tmp = Eigen::VectorXd::Zero(X.size());
-                                tmp(dict.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
+                            const Eigen::VectorXd local_grad = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
                                 X_extended, dict, params, ee_closest_point_T);
-                                local_grad_1 = tmp.sparseView();
-                            }
-                            const Eigen::SparseMatrix<double> local_hess_1 = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
-                                X_extended, dict, params, Eigen::Vector4i(ea, eb, ec, ed), ee_closest_point_T, dtype);
+                            Eigen::MatrixXd local_hess = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
+                                X_extended, dict, params, ee_closest_point_T) * mollifier.val;
 
-                            local_hess += local_hess_1 * mollifier.val;
-
-                            const std::array<index_t, 4> ee_indices{{ea, eb, ec, ed}};
-                            const Matrix12d local_hess_2 = local_potential_1 * mollifier.Hess;
                             for (index_t i = 0; i < 4; i++) {
                                 for (index_t j = 0; j < 4; j++) {
-                                    for (index_t di = 0; di < 3; di++) {
-                                        for (index_t dj = 0; dj < 3; dj++) {
-                                            triplets.emplace_back(ee_indices[i] * 3 + di, ee_indices[j] * 3 + dj, local_hess_2(i * 3 + di, j * 3 + dj) * (area / 9.));
-                                        }
-                                    }
+                                    local_hess.block<3, 3>(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, dict.vertex_ids_inverse(dict.primary_vertex_ids()[j]) * 3) += local_potential_1 * mollifier.Hess.block<3, 3>(i * 3, j * 3);
                                 }
                             }
 
-                            for (index_t k = 0; k < local_grad_1.outerSize(); ++k) {
-                                for (Eigen::SparseMatrix<double>::InnerIterator it(local_grad_1, k); it; ++it) {
-                                    for (index_t i = 0; i < 12; i++) {
-                                        assert(it.col() == 0);
-                                        index_t id = ee_indices[i / 3] * 3 + i % 3;
-                                        triplets.emplace_back(id, it.row(), mollifier.grad(i) * it.value() * (area / 9.));
-                                        triplets.emplace_back(it.row(), id, mollifier.grad(i) * it.value() * (area / 9.));
+                            Eigen::MatrixXd tmp;
+                            for (index_t i = 0; i < 4; i++) {
+                                tmp = mollifier.grad.segment<3>(i * 3) * local_grad.transpose();
+                                local_hess.middleRows(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, 3) += tmp;
+                                local_hess.middleCols(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, 3) += tmp.transpose();
+                            }
+
+                            if (project_hessian_to_psd != PSDProjectionMethod::NONE) {
+                                local_hess = project_to_psd(local_hess, project_hessian_to_psd);
+                            }
+
+                            for (int i = 0; i < local_hess.rows(); i++) {
+                                for (int j = 0; j < local_hess.cols(); j++) {
+                                    if (local_hess(i, j) != 0) {
+                                        triplets.emplace_back(dict.dofs()[i], dict.dofs()[j], local_hess(i, j) * area / 9.);
                                     }
                                 }
                             }
@@ -444,23 +437,42 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                     // face center
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
-                        local_hess += PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
-                            ConcatMatrixView<3>(X, face_center), mesh.faces().row(f), iter->second, params, project_hessian_to_psd);
+                        const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
+                            ConcatMatrixView<3>(X, face_center), iter->second, params, project_hessian_to_psd);
+                        for (int i = 0; i < h.rows(); i++) {
+                            index_t row = iter->second.dofs()[i];
+                            for (int j = 0; j < h.cols(); j++) {
+                                index_t col = iter->second.dofs()[j];
+                                triplets.emplace_back(row, col, h(i, j) * (area / 9.));
+                            }
+                        }
                     }
 
                     // vertex ea
                     if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
-                        local_hess += PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+                        const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
                             X, iter->second, params, project_hessian_to_psd);
+                        for (int i = 0; i < h.rows(); i++) {
+                            index_t row = iter->second.dofs()[i];
+                            for (int j = 0; j < h.cols(); j++) {
+                                index_t col = iter->second.dofs()[j];
+                                triplets.emplace_back(row, col, h(i, j) * (area / 9.));
+                            }
+                        }
                     }
 
                     // vertex eb
                     if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
-                        local_hess += PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+                        const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
                             X, iter->second, params, project_hessian_to_psd);
+                        for (int i = 0; i < h.rows(); i++) {
+                            index_t row = iter->second.dofs()[i];
+                            for (int j = 0; j < h.cols(); j++) {
+                                index_t col = iter->second.dofs()[j];
+                                triplets.emplace_back(row, col, h(i, j) * (area / 9.));
+                            }
+                        }
                     }
-
-                    hess += local_hess * (area / 9.);
                 }
             }
 

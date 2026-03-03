@@ -24,7 +24,7 @@
 using namespace ipc;
 
 // When the edge-edge closest point approaches the end points of the edge, the potential should converge to a finite number
-TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential]")
+TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential], [high_order_potential_3d]")
 {
     Eigen::MatrixXd V;
     Eigen::MatrixXi F, E;
@@ -100,7 +100,7 @@ TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential]")
     REQUIRE(g.norm() < 200);
 }
 
-TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential]")
+TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential], [high_order_potential_3d]")
 {
     Eigen::MatrixXd V;
     Eigen::MatrixXi F, E;
@@ -137,7 +137,7 @@ TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential]")
     REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
 }
 
-TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential]")
+TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential], [high_order_potential_3d]")
 {
     Eigen::MatrixXd V;
     Eigen::MatrixXi F, E;
@@ -174,7 +174,7 @@ TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential]")
     REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-6);
 }
 
-TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential]")
+TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential], [high_order_potential_3d]")
 {
     Eigen::MatrixXd V;
     Eigen::MatrixXi F, E;
@@ -201,7 +201,7 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential]")
 }
 
 
-TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
+TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high_order_potential_3d]")
 {
     const auto method = make_default_broad_phase();
     Eigen::MatrixXd V;
@@ -240,7 +240,6 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
 
         Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
             V, collisions, params, PSDProjectionMethod::NONE);
-        h = h(indices, indices).eval();
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
@@ -257,7 +256,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
     }
 }
 
-TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
+TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_order_potential_3d]")
 {
     const auto method = make_default_broad_phase();
     Eigen::MatrixXd V;
@@ -302,8 +301,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
             }
         }
 
-        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, vids, collisions, params, PSDProjectionMethod::NONE);
-        h = h(indices, indices).eval();
+        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, collisions, params, PSDProjectionMethod::NONE);
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(

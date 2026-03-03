@@ -1,5 +1,6 @@
 #include "quadrature_potential.hpp"
 
+#include "absl/strings/internal/str_format/extension.h"
 #include "ipc/candidates/candidates.hpp"
 #include "ipc/distance/edge_edge.hpp"
 #include "ipc/high_order_contact/high_order_collisions_builder.hpp"
@@ -103,41 +104,37 @@ namespace ipc
         return grad;
     }
 
-    Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+    Eigen::MatrixXd PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX>& collisions,
         const HighOrderContactParameters& params,
         PSDProjectionMethod project_to_psd)
     {
-        std::vector<Eigen::Triplet<double>> triplets;
+        Eigen::MatrixXd H = Eigen::MatrixXd::Zero(collisions.vertex_ids().size() * 3, collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
             Eigen::MatrixXd h = cc.hessian(cc.dof(V), params);
-            if (project_to_psd != PSDProjectionMethod::NONE) {
-                h = ipc::project_to_psd(h, project_to_psd);
-            }
+            // The following code can be used only if all weights are positive
+            // if (project_to_psd != PSDProjectionMethod::NONE) {
+            //     h = ipc::project_to_psd(h, project_to_psd);
+            // }
             h *= cc.weight;
 
             assert(h.rows() == cc.vertex_ids().size() * 3);
             assert(h.cols() == cc.vertex_ids().size() * 3);
             for (index_t i = 0; i < cc.vertex_ids().size(); i++) {
-                for (index_t di = 0; di < 3; di++) {
-                    for (index_t j = 0; j < cc.vertex_ids().size(); j++) {
-                        for (index_t dj = 0; dj < 3; dj++) {
-                            triplets.emplace_back(
-                                3 * cc.vertex_ids()[i] + di,
-                                3 * cc.vertex_ids()[j] + dj,
-                                h(3 * i + di, 3 * j + dj));
-                        }
-                    }
+                const index_t li = collisions.vertex_ids_inverse(cc.vertex_ids()[i]);
+                for (index_t j = 0; j < cc.vertex_ids().size(); j++) {
+                    const index_t lj = collisions.vertex_ids_inverse(cc.vertex_ids()[j]);
+                    H.block<3, 3>(3 * li, 3 * lj) += h.block<3, 3>(3 * i, 3 * j);
                 }
             }
         }
 
-        Eigen::SparseMatrix<double> hess(V.size(), V.size());
-        hess.setFromTriplets(triplets.begin(), triplets.end());
-
-        return hess;
+        if (project_to_psd != PSDProjectionMethod::NONE) {
+            H = ipc::project_to_psd(H, project_to_psd);
+        }
+        return H;
     }
 
     HighOrderCollisionDict<PointType::EDGE>
@@ -407,17 +404,15 @@ namespace ipc
         const HighOrderContactParameters& params,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q);
 
-    Eigen::SparseMatrix<double>
+    Eigen::MatrixXd
     PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
         ConcatMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
-        Eigen::ConstRef<Eigen::Vector4i> vids,
-        Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
-        EdgeEdgeDistanceType dtype)
+        Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
-        std::vector<Eigen::Triplet<double>> triplets;
+        Eigen::MatrixXd H = Eigen::MatrixXd::Zero(collisions.vertex_ids().size() * 3, collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
             Eigen::MatrixXd h = cc.weight * cc.hessian(cc.dof(V_extended), params);
@@ -441,14 +436,11 @@ namespace ipc
                             }
                         }
 
-                        for (index_t di = 0; di < 3; di++) {
-                            for (index_t dj = 0; dj < 3; dj++) {
-                                for (index_t li = 0; li < 4; li++) {
-                                    for (index_t lj = 0; lj < 4; lj++) {
-                                        triplets.emplace_back(vids[li] * 3 + di, vids[lj] * 3 + dj,
-                                                              local_hess(3 * li + di, 3 * lj + dj));
-                                    }
-                                }
+                        for (index_t li = 0; li < 4; li++) {
+                            for (index_t lj = 0; lj < 4; lj++) {
+                                H.block<3, 3>(collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[li]) * 3,
+                                    collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[lj]) * 3) +=
+                                        local_hess.block<3, 3>(3 * li, 3 * lj);
                             }
                         }
                     }
@@ -459,13 +451,10 @@ namespace ipc
                             tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
                             local_hess = tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j);
                         }
-                        for (index_t di = 0; di < 3; di++) {
-                            for (index_t dj = 0; dj < 3; dj++) {
-                                for (index_t li = 0; li < 4; li++) {
-                                    triplets.emplace_back(vids[li] * 3 + di, gj * 3 + dj, local_hess(3 * li + di, dj));
-                                    triplets.emplace_back(gj * 3 + dj, vids[li] * 3 + di, local_hess(3 * li + di, dj));
-                                }
-                            }
+                        for (index_t li = 0; li < 4; li++) {
+                            const index_t lli = collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[li]);
+                            H.block<3, 3>(lli * 3, collisions.vertex_ids_inverse(gj) * 3) += local_hess.block<3, 3>(3 * li, 0);
+                            H.block<3, 3>(collisions.vertex_ids_inverse(gj) * 3, lli * 3) += local_hess.block<3, 3>(3 * li, 0).transpose();
                         }
                     }
                     else if (gj == n_real_vertices) {
@@ -474,20 +463,13 @@ namespace ipc
                     else {
                         assert(gi < n_real_vertices);
                         assert(gj < n_real_vertices);
-                        for (index_t di = 0; di < 3; di++) {
-                            for (index_t dj = 0; dj < 3; dj++) {
-                                triplets.emplace_back(3 * gi + di, 3 * gj + dj, h(3 * i + di, 3 * j + dj));
-                            }
-                        }
+                        H.block<3, 3>(3 * collisions.vertex_ids_inverse(gi), 3 * collisions.vertex_ids_inverse(gj)) += h.block<3, 3>(3 * i, 3 * j);
                     }
                 }
             }
         }
 
-        Eigen::SparseMatrix<double> hess(n_real_vertices * 3, n_real_vertices * 3);
-        hess.setFromTriplets(triplets.begin(), triplets.end());
-
-        return hess;
+        return H;
     }
 
     HighOrderCollisionDict<PointType::FACE>
@@ -568,21 +550,20 @@ namespace ipc
         return grad;
     }
 
-    Eigen::SparseMatrix<double> PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
+    Eigen::MatrixXd PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
         ConcatMatrixView<3> V_extended,
-        Eigen::ConstRef<Eigen::Vector3<index_t>> vids,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
         PSDProjectionMethod project_to_psd)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
-        std::vector<Eigen::Triplet<double>> triplets;
+        Eigen::MatrixXd H = Eigen::MatrixXd::Zero(collisions.vertex_ids().size() * 3, collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
             Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params);
-            if (project_to_psd != PSDProjectionMethod::NONE) {
-                h = ipc::project_to_psd(h, project_to_psd);
-            }
+            // if (project_to_psd != PSDProjectionMethod::NONE) {
+            //     h = ipc::project_to_psd(h, project_to_psd);
+            // }
             h *= cc.weight;
 
             for (index_t i = 0; i < cc.vertex_ids().size(); i++) {
@@ -591,54 +572,41 @@ namespace ipc
                     const index_t gj = cc.vertex_ids()[j];
                     if (gi == n_real_vertices && gj == n_real_vertices) {
                         // distribute grad wrt virtual vertex to real face vertices
-                        for (index_t di = 0; di < 3; di++) {
-                            for (index_t dj = 0; dj < 3; dj++) {
-                                for (index_t li = 0; li < 3; li++) {
-                                    for (index_t lj = 0; lj < 3; lj++) {
-                                        triplets.emplace_back(vids[li] * 3 + di, vids[lj] * 3 + dj,
-                                                              h(3 * i + di, 3 * j + dj) / 9.);
-                                    }
-                                }
+                        for (index_t li = 0; li < 3; li++) {
+                            for (index_t lj = 0; lj < 3; lj++) {
+                                H.block<3, 3>(collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[li]) * 3,
+                                              collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[lj]) * 3) +=
+                                    h.block<3, 3>(3 * i, 3 * j) / 9.;
                             }
                         }
                     }
                     else if (gi == n_real_vertices) {
-                        for (index_t di = 0; di < 3; di++) {
-                            for (index_t dj = 0; dj < 3; dj++) {
-                                for (index_t li = 0; li < 3; li++) {
-                                    triplets.emplace_back(vids[li] * 3 + di, gj * 3 + dj,
-                                                          h(3 * i + di, 3 * j + dj) / 3.);
-                                }
-                            }
+                        for (index_t li = 0; li < 3; li++) {
+                            H.block<3, 3>(collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[li]) * 3,
+                                collisions.vertex_ids_inverse(gj) * 3) +=
+                                h.block<3, 3>(3 * i, 3 * j) / 3.;
                         }
                     }
                     else if (gj == n_real_vertices) {
-                        for (index_t di = 0; di < 3; di++) {
-                            for (index_t dj = 0; dj < 3; dj++) {
-                                for (index_t lj = 0; lj < 3; lj++) {
-                                    triplets.emplace_back(gi * 3 + di, vids[lj] * 3 + dj,
-                                                          h(3 * i + di, 3 * j + dj) / 3.);
-                                }
-                            }
+                        for (index_t lj = 0; lj < 3; lj++) {
+                            H.block<3, 3>(collisions.vertex_ids_inverse(gi) * 3,
+                                collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[lj]) * 3) +=
+                                h.block<3, 3>(3 * i, 3 * j) / 3.;
                         }
                     }
                     else {
                         assert(gi < n_real_vertices);
                         assert(gj < n_real_vertices);
-                        for (index_t di = 0; di < 3; di++) {
-                            for (index_t dj = 0; dj < 3; dj++) {
-                                triplets.emplace_back(3 * gi + di, 3 * gj + dj, h(3 * i + di, 3 * j + dj));
-                            }
-                        }
+                        H.block<3, 3>(3 * collisions.vertex_ids_inverse(gi), 3 * collisions.vertex_ids_inverse(gj)) += h.block<3, 3>(3 * i, 3 * j);
                     }
                 }
             }
         }
 
-        Eigen::SparseMatrix<double> hess(n_real_vertices * 3, n_real_vertices * 3);
-        hess.setFromTriplets(triplets.begin(), triplets.end());
-
-        return hess;
+        if (project_to_psd != PSDProjectionMethod::NONE) {
+            H = ipc::project_to_psd(H, project_to_psd);
+        }
+        return H;
     }
 
     double PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
