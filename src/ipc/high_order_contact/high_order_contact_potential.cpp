@@ -171,7 +171,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
             for (index_t f = 0; f < mesh.num_faces(); f++) {
                 const double area = mesh.face_areas()(f);
-
+                const double weight = area / 9.;
                 const Eigen::RowVector3d face_center = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
 
                 for (index_t le = 0; le < 3; le++) {
@@ -181,8 +181,6 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
                     const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
 
-                    // TODO: Collect local DoFs instead of directly using SparseMatrix
-                    Eigen::SparseMatrix<double> local_grad(X.size(), 1);
                     for (index_t other_edge_id : close_edges) {
                         const index_t ec = mesh.edges()(other_edge_id, 0);
                         const index_t ed = mesh.edges()(other_edge_id, 1);
@@ -224,28 +222,18 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 positionsT.row(2), positionsT.row(3),
                                     dtype);
 
+                            const HighOrderCollisionDict<PointType::EDGE>& dict = iter->second;
+
                             ConcatMatrixView<3> X_extended(X, ee_closest_point);
                             assert(X_extended.rows() == X.rows() + 1);
                             assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
                             const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                X_extended, iter->second, params, dtype);
-                            Eigen::SparseMatrix<double> local_grad_1;
-                            {
-                                Eigen::VectorXd tmp = Eigen::VectorXd::Zero(X.size());
-                                tmp(iter->second.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
-                                X_extended, iter->second, params, ee_closest_point_T);
-                                local_grad_1 = tmp.sparseView();
-                            }
+                                X_extended, dict, params, dtype);
+                            const Eigen::VectorXd local_grad = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
+                                X_extended, dict, params, ee_closest_point_T);
                             
-                            local_grad += mollifier.val * local_grad_1;
-                            const Vector12d local_grad_2 = local_potential_1 * mollifier.grad;
-                            for (int d = 0; d < 3; d++) {
-                                local_grad.coeffRef(ea * 3 + d, 0) += local_grad_2(d + 0);
-                                local_grad.coeffRef(eb * 3 + d, 0) += local_grad_2(d + 3);
-
-                                local_grad.coeffRef(ec * 3 + d, 0) += local_grad_2(d + 6);
-                                local_grad.coeffRef(ed * 3 + d, 0) += local_grad_2(d + 9);
-                            }
+                            grad(dict.dofs()) += (mollifier.val * weight) * local_grad;
+                            grad(dict.primary_dofs()) += (local_potential_1 * weight) * mollifier.grad;
                         }
                         else {
                             /* P(q) = 0 */
@@ -254,29 +242,24 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
                     // face center
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
-                        Eigen::VectorXd tmp = Eigen::VectorXd::Zero(local_grad.size());
-                        tmp(iter->second.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
+                        Eigen::VectorXd tmp = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
                             ConcatMatrixView<3>(X, face_center), iter->second, params);
-                        local_grad += tmp.sparseView();
+                        grad(iter->second.dofs()) += tmp * weight;
                     }
 
                     // vertex ea
                     if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
-                        Eigen::VectorXd tmp = Eigen::VectorXd::Zero(local_grad.size());
-                        tmp(iter->second.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                        Eigen::VectorXd tmp = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
                             X, iter->second, params);
-                        local_grad += tmp.sparseView();
+                        grad(iter->second.dofs()) += tmp * weight;
                     }
 
                     // vertex eb
                     if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
-                        Eigen::VectorXd tmp = Eigen::VectorXd::Zero(local_grad.size());
-                        tmp(iter->second.dofs()) = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                        Eigen::VectorXd tmp = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
                             X, iter->second, params);
-                        local_grad += tmp.sparseView();
+                        grad(iter->second.dofs()) += tmp * weight;
                     }
-
-                    grad += local_grad * (area / 9.);
                 }
             }
 

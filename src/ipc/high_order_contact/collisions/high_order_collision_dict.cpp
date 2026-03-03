@@ -107,6 +107,22 @@ namespace ipc
     }
 
     template <PointType pType>
+    std::vector<index_t> HighOrderCollisionDict<pType>::primary_dofs() const
+    {
+        std::vector<index_t> dofs;
+        dofs.reserve(m_primary_vertex_ids.size() * 3);
+        for (index_t i : m_primary_vertex_ids) {
+            if (i < 0) {
+                break;
+            }
+            for (index_t d = 0; d < dim; d++) {
+                dofs.push_back(i * dim + d);
+            }
+        }
+        return dofs;
+    }
+
+    template <PointType pType>
     std::vector<index_t> HighOrderCollisionDict<pType>::dofs() const
     {
         std::vector<index_t> dofs(m_vertex_ids.size() * dim);

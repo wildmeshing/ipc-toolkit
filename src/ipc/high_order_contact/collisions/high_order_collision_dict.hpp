@@ -41,6 +41,7 @@ public:
 
     // Global indices of DoFs
     std::vector<index_t> dofs() const;
+    std::vector<index_t> primary_dofs() const;
     // Global indices of vertices
     const std::vector<index_t>& vertex_ids() const;
     // Map from global vertex index to local vertex index
