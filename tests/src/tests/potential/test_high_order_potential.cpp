@@ -240,7 +240,6 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential]")
 
         Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
             V, collisions, params, PSDProjectionMethod::NONE);
-        h = h(indices, indices).eval();
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
@@ -302,8 +301,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential]")
             }
         }
 
-        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, vids, collisions, params, PSDProjectionMethod::NONE);
-        h = h(indices, indices).eval();
+        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, collisions, params, PSDProjectionMethod::NONE);
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
