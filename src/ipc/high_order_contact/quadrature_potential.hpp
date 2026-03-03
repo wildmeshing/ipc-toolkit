@@ -19,7 +19,7 @@ namespace ipc
             const HighOrderCollisionDict<PointType::VERTEX>& collisions,
             const HighOrderContactParameters& params);
 
-        Eigen::MatrixXd evaluate_potential_hessian_at_vertex_with_cached_collisions(
+        Eigen::SparseMatrix<double> evaluate_potential_hessian_at_vertex_with_cached_collisions(
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX>& collisions,
             const HighOrderContactParameters& params,
@@ -62,8 +62,9 @@ namespace ipc
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params);
 
-        Eigen::MatrixXd evaluate_potential_hessian_at_face_center_with_cached_collisions(
+        Eigen::SparseMatrix<double> evaluate_potential_hessian_at_face_center_with_cached_collisions(
             ConcatMatrixView<3> V_extended,
+            Eigen::ConstRef<Eigen::Vector3<index_t>> vids,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
             PSDProjectionMethod project_to_psd);
