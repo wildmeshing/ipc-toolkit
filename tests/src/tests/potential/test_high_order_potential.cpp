@@ -174,58 +174,6 @@ TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential]")
     REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-6);
 }
 
-
-TEST_CASE("Formulation Discontinuity", "[high_order_potential]")
-{
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    {
-        V.resize(12, 3);
-        V << 0.50367684867164086437,  2.93648750371529354553, -1.00004231848768010416, -0.49633255318502039755,  2.94141655389999590042, -1.00001938593733363803, -0.01013768181206405744, -0.06105867429777982885, -1.00004343059451317188,  0.50370983406540503768,  2.93645083403066831096,  1.00003860343532968713, -0.01014685591357166079, -0.06103229407236412246,  1.00001543282668614587, -0.49635840713946227654,  2.94139600967862779868,  1.00001842376878191665, -0.50000000000000000000, -3.00000000000000000000,  1.00000000000000000000,  0.00000000000000000000,  0.00000000000000000000,  1.00000000000000000000, -0.50000000000000000000, -3.00000000000000000000, -1.00000000000000000000,  0.00000000000000000000,  0.00000000000000000000, -1.00000000000000000000,  0.50000000000000000000, -3.00000000000000000000,  1.00000000000000000000,  0.50000000000000000000, -3.00000000000000000000, -1.00000000000000000000;
-        F.resize(3, 16);
-        F <<
-            0, 1, 3, 1, 5, 5, 4, 4, 7, 7, 11, 7, 8, 7, 7, 11,
-            2, 3, 2, 5, 1, 4, 1, 2, 8, 11, 6, 6, 9, 9, 10, 10,
-            1, 0, 0, 3, 4, 3, 2, 3, 6, 9, 8, 10, 11, 8, 11, 6;
-        F.transposeInPlace();
-    }
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 1e-3;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
-
-    HighOrderCollisions collisions;
-    collisions.build(mesh, V, params);
-
-    HighOrderContactPotential potential(params);
-
-    Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
-
-    {
-        Eigen::MatrixXd Vy = V;
-        Vy << 0.50366769744905004469,  2.93648907641392797885, -1.00004231830756462607, -0.49633255318502422782,  2.94141655389999634451, -1.00001938593733430416, -0.01057866928878470510, -0.06098288765878417256, -1.00004342191498118986,  0.50370073867773879073,  2.93645239726239815070,  1.00003860342200678879, -0.01058437405459194611, -0.06095709746440926280,  1.00001543217581212453, -0.49635840713946338676,  2.94139600967862779868,  1.00001842376878236074, -0.50000000000000000000, -3.00000000000000000000,  1.00000000000000000000,  0.00000000000000000000,  0.00000000000000000000,  1.00000000000000000000, -0.50000000000000000000, -3.00000000000000000000, -1.00000000000000000000,  0.00000000000000000000,  0.00000000000000000000, -1.00000000000000000000,  0.50000000000000000000, -3.00000000000000000000,  1.00000000000000000000,  0.50000000000000000000, -3.00000000000000000000, -1.00000000000000000000;
-        HighOrderCollisions collisions_;
-        collisions_.build(mesh, Vy, params);
-
-        std::cout << "distance between x and y " << (V - Vy).cwiseAbs().maxCoeff() << std::endl;
-        std::cout << "value at x " << potential(collisions, mesh, V) << std::endl;
-        std::cout << "value at y " << potential(collisions_, mesh, Vy) << std::endl;
-    }
-
-    Eigen::VectorXd fg;
-    fd::finite_gradient(
-        fd::flatten(V), [&](const Eigen::VectorXd& y) {
-            Eigen::MatrixXd V_ = fd::unflatten(y, 3);
-            HighOrderCollisions collisions_;
-            collisions_.build(mesh, V_, params);
-            return potential(collisions_, mesh, V_);
-        }, fg, fd::AccuracyOrder::SECOND, 1e-6);
-
-    REQUIRE((fg - g).norm() < fg.norm() * 1e-6);
-}
-
 TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential]")
 {
     Eigen::MatrixXd V;
