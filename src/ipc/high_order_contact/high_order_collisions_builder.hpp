@@ -213,9 +213,9 @@ public:
         HighOrderCollisions& merged_collisions);
 
     // Local storage
-    unordered_map<index_t, HighOrderCollisionDict<PointType::VERTEX>> vertex_collisions;
-    unordered_map<std::pair<index_t, index_t>, HighOrderCollisionDict<PointType::EDGE>> edge_edge_collisions_advanced;
-    unordered_map<index_t, HighOrderCollisionDict<PointType::FACE>> face_collisions;
+    std::vector<std::pair<index_t, HighOrderCollisionDict<PointType::VERTEX>>> vertex_collisions;
+    std::vector<std::pair<std::pair<index_t, index_t>, HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions_advanced;
+    std::vector<std::pair<index_t, HighOrderCollisionDict<PointType::FACE>>> face_collisions;
 
     std::shared_ptr<PointPotential> point_potential;
 };
