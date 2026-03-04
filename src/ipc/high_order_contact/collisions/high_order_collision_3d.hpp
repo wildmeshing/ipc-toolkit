@@ -20,8 +20,6 @@ public:
         index_t primitive0,
         index_t primitive1,
         const CollisionMesh& mesh,
-        const HighOrderContactParameters& params,
-        const double dhat,
         const Eigen::MatrixXd& V);
 
     virtual ~HighOrderCollision3DTemplate() = default;

@@ -102,9 +102,9 @@ TEST_CASE("Smooth barrier potential codim", "[smooth_potential]")
 }
 
 #if defined(NDEBUG) && !defined(WIN32)
-std::string tagsopt = "[smooth_potential]";
+static std::string tagsopt = "[smooth_potential]";
 #else
-std::string tagsopt = "[.][smooth_potential]";
+static std::string tagsopt = "[.][smooth_potential]";
 #endif
 
 TEST_CASE("Smooth barrier potential full gradient and hessian 3D", tagsopt)

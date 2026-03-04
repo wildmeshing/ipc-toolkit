@@ -19,14 +19,22 @@ HighOrderCollision3DTemplate<PrimitiveA, PrimitiveB>::HighOrderCollision3DTempla
     index_t _primitive0,
     index_t _primitive1,
     const CollisionMesh& mesh,
-    const HighOrderContactParameters& params,
-    const double _dhat,
     const Eigen::MatrixXd& V)
     :   primitive_a(_primitive0, mesh, V),
         primitive_b(_primitive1, mesh, V)
 {
-    const double dist_sq = compute_distance(V);
-    m_is_active = dist_sq < _dhat * _dhat;
+    static_assert(!(std::is_same_v<PrimitiveA, Vertex3> && std::is_same_v<PrimitiveB, Vertex3>));
+}
+
+template <>
+HighOrderCollision3DTemplate<Vertex3, Vertex3>::HighOrderCollision3DTemplate(
+    index_t _primitive0,
+    index_t _primitive1,
+    const CollisionMesh& mesh,
+    const Eigen::MatrixXd& V)
+    :   primitive_a(std::min(_primitive0, _primitive1), mesh, V),
+        primitive_b(std::max(_primitive0, _primitive1), mesh, V)
+{
 }
 
 template <typename PrimitiveA, typename PrimitiveB>

@@ -43,8 +43,7 @@ namespace ipc
                 3>::reduce_point_triangle_collision(
                 FaceVertexCandidate(other_f, vid),
                 params, mesh, V)) {
-                if (pair->is_active())
-                    insert_pair(pairs, std::move(pair));
+                insert_pair(pairs, std::move(pair));
             }
         }
 
@@ -53,18 +52,17 @@ namespace ipc
                 EdgeVertexCandidate(other_e, vid),
                 params, mesh, V)) {
                 pair->weight = -1;
-                if (pair->is_active())
-                    insert_pair(pairs, std::move(pair));
+                insert_pair(pairs, std::move(pair));
             }
         }
 
         for (const auto& other_v : v_set) {
-            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                std::min(vid, other_v), std::max(vid, other_v),
-                mesh, params, params.dhat, V);
-            if (pair->is_active()) {
-                insert_pair(pairs, std::move(pair));
+            if ((V.row(vid) - V.row(other_v)).squaredNorm() >= params.dhat * params.dhat) {
+                continue;
             }
+            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+                vid, other_v, mesh, V);
+            insert_pair(pairs, std::move(pair));
         }
 
         HighOrderCollisionDict<PointType::VERTEX> collisions;
@@ -205,51 +203,53 @@ namespace ipc
             V_.row(vid) = closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
 
             for (const auto& other_v : v_set) {
-            // for (index_t other_v = 0; other_v < mesh.num_vertices(); ++other_v) {
-                std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                    vid, other_v, mesh, params, params.dhat, V_);
-
-                if (pair->is_active()) {
-                    insert_pair(pairs, std::move(pair));
+                if ((V_.row(vid) - V_.row(other_v)).squaredNorm() >= params.dhat * params.dhat) {
+                    continue;
                 }
+                std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+                    vid, other_v, mesh, V_);
+
+                insert_pair(pairs, std::move(pair));
             }
 
             for (const auto& other_e : e_set) {
-            // for (index_t other_e = 0; other_e < mesh.num_edges(); ++other_e) {
                 if (other_e == e0)
                     continue;
-
-                std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-                    other_e, vid, mesh, params, params.dhat, V_);
-
-                if (!pair->is_active()) {
-                    continue;
-                }
 
                 auto dtype2 = point_edge_distance_type(V_.row(vid), V_.row(mesh.edges()(other_e, 0)),
                                                        V_.row(mesh.edges()(other_e, 1)));
 
+                const double dist_sqr = point_edge_distance(V_.row(vid), V_.row(mesh.edges()(other_e, 0)),
+                                                       V_.row(mesh.edges()(other_e, 1)), dtype2);
+
+                if (dist_sqr >= params.dhat * params.dhat) {
+                    continue;
+                }
+
                 switch (dtype2) {
                 case PointEdgeDistanceType::P_E0:
                     {
-                        std::shared_ptr<HighOrderCollision> pair2 = std::make_shared<HighOrderCollision3DTemplate<
+                        std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<
                             Vertex3, Vertex3>>(
-                            vid, mesh.edges()(other_e, 0), mesh, params, params.dhat, V_);
-                        pair2->weight = -1;
-                        insert_pair(pairs, std::move(pair2));
+                            vid, mesh.edges()(other_e, 0), mesh, V_);
+                        pair->weight = -1;
+                        insert_pair(pairs, std::move(pair));
                         break;
                     }
                 case PointEdgeDistanceType::P_E1:
                     {
-                        std::shared_ptr<HighOrderCollision> pair2 = std::make_shared<HighOrderCollision3DTemplate<
+                        std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<
                             Vertex3, Vertex3>>(
-                            vid, mesh.edges()(other_e, 1), mesh, params, params.dhat, V_);
-                        pair2->weight = -1;
-                        insert_pair(pairs, std::move(pair2));
+                            vid, mesh.edges()(other_e, 1), mesh, V_);
+                        pair->weight = -1;
+                        insert_pair(pairs, std::move(pair));
                         break;
                     }
                 case PointEdgeDistanceType::P_E:
                     {
+                        std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<
+                            Edge3P1, Vertex3>>(
+                            other_e, vid, mesh, V_);
                         pair->weight = -1;
                         insert_pair(pairs, std::move(pair));
                         break;
@@ -261,41 +261,41 @@ namespace ipc
             }
 
             for (const auto& other_f : f_set) {
-            // for (index_t other_f = 0; other_f < mesh.num_faces(); ++other_f) {
                 if (mesh.edges_to_faces()(e0, 0) == other_f || mesh.edges_to_faces()(e0, 1) == other_f)
                     continue;
-
-                auto pair = std::make_shared<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(
-                    other_f, vid, mesh, params, params.dhat, V_);
-
-                if (!pair->is_active()) {
-                    continue;
-                }
 
                 auto dtype2 = point_triangle_distance_type(V_.row(vid), V_.row(mesh.faces()(other_f, 0)),
                                                            V_.row(mesh.faces()(other_f, 1)),
                                                            V_.row(mesh.faces()(other_f, 2)));
+
+                const double dist_sqr = point_triangle_distance(V_.row(vid), V_.row(mesh.faces()(other_f, 0)),
+                                                           V_.row(mesh.faces()(other_f, 1)),
+                                                           V_.row(mesh.faces()(other_f, 2)), dtype2);
+
+                if (dist_sqr >= params.dhat * params.dhat) {
+                    continue;
+                }
 
                 switch (dtype2) {
                 case PointTriangleDistanceType::P_T0:
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                                            vid, mesh.faces()(other_f, 0), mesh, params, params.dhat, V_)));
+                                            vid, mesh.faces()(other_f, 0), mesh, V_)));
                         break;
                     }
                 case PointTriangleDistanceType::P_T1:
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                                            vid, mesh.faces()(other_f, 1), mesh, params, params.dhat, V_)));
+                                            vid, mesh.faces()(other_f, 1), mesh, V_)));
                         break;
                     }
                 case PointTriangleDistanceType::P_T2:
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                                            vid, mesh.faces()(other_f, 2), mesh, params, params.dhat, V_)));
+                                            vid, mesh.faces()(other_f, 2), mesh, V_)));
                         break;
                     }
                 case PointTriangleDistanceType::P_E0:
@@ -303,7 +303,7 @@ namespace ipc
                         insert_pair(pairs,
                                     std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-                                            mesh.faces_to_edges()(other_f, 0), vid, mesh, params, params.dhat, V_)));
+                                            mesh.faces_to_edges()(other_f, 0), vid, mesh, V_)));
                         break;
                     }
                 case PointTriangleDistanceType::P_E1:
@@ -311,7 +311,7 @@ namespace ipc
                         insert_pair(pairs,
                                     std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-                                            mesh.faces_to_edges()(other_f, 1), vid, mesh, params, params.dhat, V_)));
+                                            mesh.faces_to_edges()(other_f, 1), vid, mesh, V_)));
                         break;
                     }
                 case PointTriangleDistanceType::P_E2:
@@ -319,12 +319,14 @@ namespace ipc
                         insert_pair(pairs,
                                     std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-                                            mesh.faces_to_edges()(other_f, 2), vid, mesh, params, params.dhat, V_)));
+                                            mesh.faces_to_edges()(other_f, 2), vid, mesh, V_)));
                         break;
                     }
                 case PointTriangleDistanceType::P_T:
                     {
-                        insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+                        insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+                                        std::make_shared<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(
+                                            other_f, vid, mesh, V_)));
                         break;
                     }
                 default:
@@ -494,7 +496,7 @@ namespace ipc
             assert(other_f != fid);
             if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
                 FaceVertexCandidate(other_f, vid),
-                params, mesh, V_); pair->is_active()) {
+                params, mesh, V_)) {
                 insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
             }
         }
@@ -502,19 +504,19 @@ namespace ipc
         for (const auto& other_e : e_set) {
             if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
                 EdgeVertexCandidate(other_e, vid),
-                params, mesh, V_); pair->is_active()) {
+                params, mesh, V_)) {
                 pair->weight = -1;
                 insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
             }
         }
 
         for (const auto& other_v : v_set) {
-            auto pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                std::min(vid, other_v), std::max(vid, other_v),
-                mesh, params, params.dhat, V_);
-            if (pair->is_active()) {
-                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+            if ((V_.row(vid) - V_.row(other_v)).squaredNorm() >= params.dhat * params.dhat) {
+                continue;
             }
+            auto pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+                vid, other_v, mesh, V_);
+            insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
         }
 
         HighOrderCollisionDict<PointType::FACE> collisions;

@@ -137,6 +137,43 @@ TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential], [high_order_
     REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
 }
 
+#if defined(NDEBUG) && !defined(WIN32)
+static std::string tagsopt = "[high_order_potential], [high_order_potential_3d]";
+#else
+static std::string tagsopt = "[.][high_order_potential], [.][high_order_potential_3d]";
+#endif
+
+TEST_CASE("Convergent Quadrature Hessian Expensive", tagsopt)
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
+
+    igl::edges(F, E);
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.1;
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    HighOrderContactPotential potential(params);
+
+    Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
+
+    Eigen::MatrixXd fh;
+    fd::finite_jacobian(
+        fd::flatten(V), [&](const Eigen::VectorXd& y) {
+            Eigen::MatrixXd V_ = fd::unflatten(y, 3);
+            HighOrderCollisions collisions_;
+            collisions_.build(mesh, V_, params);
+            return potential.gradient(collisions_, mesh, V_);
+        }, fh, fd::AccuracyOrder::SECOND, 1e-8);
+
+    REQUIRE((fh - h).norm() < fh.norm() * 1e-4);
+}
+
 TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential], [high_order_potential_3d]")
 {
     Eigen::MatrixXd V;

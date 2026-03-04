@@ -109,9 +109,6 @@ template <> std::string HighOrderCollisionTemplate<Edge2P1, Edge2P1>::name() con
         };
         m_is_obstacle_a = is_obstacle(primitive_a);
         m_is_obstacle_b = is_obstacle(primitive_b);
-
-        const double dist_sq = compute_distance(V);
-        m_is_active = dist_sq < _dhat * _dhat;
     }
 
     template <>

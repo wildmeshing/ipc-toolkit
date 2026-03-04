@@ -75,9 +75,6 @@ public:
 
     virtual ~HighOrderCollision() = default;
 
-    /// @brief Check if this contact pair is active (depending on both orientation and distance)
-    bool is_active() const { return m_is_active; }
-
     /// @brief Name of the contact pair type
     virtual std::string name() const = 0;
 
@@ -162,9 +159,6 @@ public:
     virtual std::pair<index_t, index_t> get_hash() const = 0;
 
     double weight = 1;
-
-protected:
-    bool m_is_active = true;
 };
 
 /// @brief Templated class for various types of contact pairs
