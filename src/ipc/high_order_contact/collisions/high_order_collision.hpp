@@ -71,24 +71,12 @@ public:
     static constexpr int MAX_VERT_3D = 20 * 2;
     static constexpr int ELEMENT_SIZE = 3 * MAX_VERT_3D;
 
-    HighOrderCollision(
-        const index_t _primitive0,
-        const index_t _primitive1,
-        const double _dhat,
-        const CollisionMesh& mesh)
-        : primitive0(_primitive0)
-        , primitive1(_primitive1)
-        , m_dhat(_dhat)
-    {
-    }
+    HighOrderCollision() = default;
 
     virtual ~HighOrderCollision() = default;
 
     /// @brief Check if this contact pair is active (depending on both orientation and distance)
     bool is_active() const { return m_is_active; }
-
-    /// @brief dhat value for this contact pair
-    double dhat() const { return m_dhat; }
 
     /// @brief Name of the contact pair type
     virtual std::string name() const = 0;
@@ -112,7 +100,8 @@ public:
 
     /// @brief Get the vertex IDs of the collision stencil.
     /// @return The vertex IDs of the collision stencil. Size is always 4, but elements i > num_vertices() are -1.
-    std::vector<index_t> vertex_ids() const { return m_vertex_ids; }
+    std::vector<index_t> vertex_ids() const;
+    virtual index_t vertex_id(index_t i) const = 0;
 
     /// @brief Get the vertex attributes of the collision stencil.
     /// @param vertices Vertex attributes
@@ -120,9 +109,9 @@ public:
     Eigen::MatrixXd vertices(Eigen::ConstRef<Eigen::MatrixXd> vertices) const
     {
         const int DIM = vertices.cols();
-        Eigen::MatrixXd stencil_vertices(vertex_ids().size(), DIM);
-        for (int i = 0; i < vertex_ids().size(); i++) {
-            stencil_vertices.row(i) = vertices.row(vertex_ids()[i]);
+        Eigen::MatrixXd stencil_vertices(num_vertices(), DIM);
+        for (int i = 0; i < num_vertices(); i++) {
+            stencil_vertices.row(i) = vertices.row(vertex_id(i));
         }
 
         return stencil_vertices;
@@ -160,7 +149,7 @@ public:
 
     bool operator==(const HighOrderCollision& other) const
     {
-        return (primitive0 == other.primitive0 && primitive1 == other.primitive1);
+        return ((*this)[0] == other[0] && (*this)[1] == other[1]);
     }
 
     bool operator!=(const HighOrderCollision& other) const
@@ -168,29 +157,14 @@ public:
         return !(*this == other);
     }
 
-    index_t operator[](int idx) const
-    {
-        if (idx == 0) {
-            return primitive0;
-        } else if (idx == 1) {
-            return primitive1;
-        } else {
-            throw std::runtime_error("Invalid index in high order collision!");
-        }
-    }
+    virtual index_t operator[](int idx) const = 0;
 
-    std::pair<index_t, index_t> get_hash() const
-    {
-        return std::make_pair(primitive0, primitive1);
-    }
+    virtual std::pair<index_t, index_t> get_hash() const = 0;
 
     double weight = 1;
 
 protected:
     bool m_is_active = true;
-    index_t primitive0, primitive1;
-    double m_dhat;
-    std::vector<index_t> m_vertex_ids;
 };
 
 /// @brief Templated class for various types of contact pairs
@@ -224,18 +198,33 @@ public:
     }
     HighOrderCollisionType type() const override;
 
-    std::array<index_t, 3> get_typed_hash() const override
+    std::pair<index_t, index_t> get_hash() const override
     {
-        return {{static_cast<index_t>(type()), primitive0, primitive1}};
+        return std::make_pair(primitive_a.id(), primitive_b.id());
     }
 
-    Eigen::Vector<int, N_CORE_DOFS> get_core_indices() const;
-    std::array<index_t, N_CORE_DOFS> core_vertex_ids() const;
+    std::array<index_t, 3> get_typed_hash() const override
+    {
+        return {{static_cast<index_t>(type()), primitive_a.id(), primitive_b.id()}};
+    }
+
+    index_t operator[](int idx) const override
+    {
+        if (idx == 0) {
+            return primitive_a.id();
+        } else if (idx == 1) {
+            return primitive_b.id();
+        } else {
+            throw std::runtime_error("Invalid index in high order collision!");
+        }
+    }
 
     int num_vertices() const override
     {
         return primitive_a.n_vertices() + primitive_b.n_vertices();
     }
+
+    index_t vertex_id(index_t i) const override;
 
     size_t n_vertices_a() const override { return primitive_a.n_vertices(); }
     size_t n_vertices_b() const override { return primitive_b.n_vertices(); }
@@ -245,12 +234,6 @@ public:
 
     double area_a() const { return m_area_a; }
     double area_b() const { return m_area_b; }
-
-    template <typename T>
-    Eigen::Vector<T, N_CORE_DOFS> core_dof(const Eigen::MatrixX<T>& X) const
-    {
-        return this->dof(X)(get_core_indices());
-    }
 
     // ---- non distance type potential ----
 

@@ -3,6 +3,7 @@
 #include "high_order_collisions_builder.hpp"
 #include "igl/write_triangle_mesh.h"
 
+#include <algorithm>
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/point_line.hpp>
@@ -787,10 +788,7 @@ double HighOrderCollisions::compute_active_minimum_distance(
 
                 for (size_t i = r.begin(); i < r.end(); i++) {
                     const double dist = collisions[i]->compute_distance(vertices);
-
-                    if (collisions[i]->is_active() && dist < local_min_dist) {
-                        local_min_dist = dist;
-                    }
+                    local_min_dist = std::min(dist, local_min_dist);
                 }
             });
     }

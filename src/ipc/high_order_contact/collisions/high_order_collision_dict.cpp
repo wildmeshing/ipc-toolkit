@@ -44,21 +44,21 @@ namespace ipc
             switch (val->type()) {
             case HighOrderCollisionType::VERTEX_VERTEX:
                 {
-                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Vertex3, Vertex3>>(val);
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(val);
                     assert(ptr);
                     vv_collisions.push_back(*ptr);
                     break;
                 }
             case HighOrderCollisionType::EDGE_VERTEX:
                 {
-                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(val);
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(val);
                     assert(ptr);
                     ev_collisions.push_back(*ptr);
                     break;
                 }
             case HighOrderCollisionType::FACE_VERTEX:
                 {
-                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Face3P1, Vertex3>>(val);
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(val);
                     assert(ptr);
                     fv_collisions.push_back(*ptr);
                     break;

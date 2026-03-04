@@ -59,7 +59,7 @@ namespace ipc
         }
 
         for (const auto& other_v : v_set) {
-            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
                 std::min(vid, other_v), std::max(vid, other_v),
                 mesh, params, params.dhat, V);
             if (pair->is_active()) {
@@ -95,9 +95,9 @@ namespace ipc
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
             Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V), params);
-            assert(g.size() == cc.vertex_ids().size() * 3);
-            for (index_t j = 0; j < cc.vertex_ids().size(); j++) {
-                grad.segment<3>(3 * collisions.vertex_ids_inverse(cc.vertex_ids()[j])) += g.segment<3>(3 * j);
+            assert(g.size() == cc.num_vertices() * 3);
+            for (index_t j = 0; j < cc.num_vertices(); j++) {
+                grad.segment<3>(3 * collisions.vertex_ids_inverse(cc.vertex_id(j))) += g.segment<3>(3 * j);
             }
         }
 
@@ -120,12 +120,12 @@ namespace ipc
             // }
             h *= cc.weight;
 
-            assert(h.rows() == cc.vertex_ids().size() * 3);
-            assert(h.cols() == cc.vertex_ids().size() * 3);
-            for (index_t i = 0; i < cc.vertex_ids().size(); i++) {
-                const index_t li = collisions.vertex_ids_inverse(cc.vertex_ids()[i]);
-                for (index_t j = 0; j < cc.vertex_ids().size(); j++) {
-                    const index_t lj = collisions.vertex_ids_inverse(cc.vertex_ids()[j]);
+            assert(h.rows() == cc.num_vertices() * 3);
+            assert(h.cols() == cc.num_vertices() * 3);
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t li = collisions.vertex_ids_inverse(cc.vertex_id(i));
+                for (index_t j = 0; j < cc.num_vertices(); j++) {
+                    const index_t lj = collisions.vertex_ids_inverse(cc.vertex_id(j));
                     H.block<3, 3>(3 * li, 3 * lj) += h.block<3, 3>(3 * i, 3 * j);
                 }
             }
@@ -206,7 +206,7 @@ namespace ipc
 
             for (const auto& other_v : v_set) {
             // for (index_t other_v = 0; other_v < mesh.num_vertices(); ++other_v) {
-                std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
                     vid, other_v, mesh, params, params.dhat, V_);
 
                 if (pair->is_active()) {
@@ -219,7 +219,7 @@ namespace ipc
                 if (other_e == e0)
                     continue;
 
-                std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
+                std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
                     other_e, vid, mesh, params, params.dhat, V_);
 
                 if (!pair->is_active()) {
@@ -232,7 +232,7 @@ namespace ipc
                 switch (dtype2) {
                 case PointEdgeDistanceType::P_E0:
                     {
-                        std::shared_ptr<HighOrderCollision> pair2 = std::make_shared<HighOrderCollisionTemplate<
+                        std::shared_ptr<HighOrderCollision> pair2 = std::make_shared<HighOrderCollision3DTemplate<
                             Vertex3, Vertex3>>(
                             vid, mesh.edges()(other_e, 0), mesh, params, params.dhat, V_);
                         pair2->weight = -1;
@@ -241,7 +241,7 @@ namespace ipc
                     }
                 case PointEdgeDistanceType::P_E1:
                     {
-                        std::shared_ptr<HighOrderCollision> pair2 = std::make_shared<HighOrderCollisionTemplate<
+                        std::shared_ptr<HighOrderCollision> pair2 = std::make_shared<HighOrderCollision3DTemplate<
                             Vertex3, Vertex3>>(
                             vid, mesh.edges()(other_e, 1), mesh, params, params.dhat, V_);
                         pair2->weight = -1;
@@ -265,7 +265,7 @@ namespace ipc
                 if (mesh.edges_to_faces()(e0, 0) == other_f || mesh.edges_to_faces()(e0, 1) == other_f)
                     continue;
 
-                auto pair = std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(
+                auto pair = std::make_shared<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(
                     other_f, vid, mesh, params, params.dhat, V_);
 
                 if (!pair->is_active()) {
@@ -280,21 +280,21 @@ namespace ipc
                 case PointTriangleDistanceType::P_T0:
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
-                                        std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                                        std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
                                             vid, mesh.faces()(other_f, 0), mesh, params, params.dhat, V_)));
                         break;
                     }
                 case PointTriangleDistanceType::P_T1:
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
-                                        std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                                        std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
                                             vid, mesh.faces()(other_f, 1), mesh, params, params.dhat, V_)));
                         break;
                     }
                 case PointTriangleDistanceType::P_T2:
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
-                                        std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+                                        std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
                                             vid, mesh.faces()(other_f, 2), mesh, params, params.dhat, V_)));
                         break;
                     }
@@ -302,7 +302,7 @@ namespace ipc
                     {
                         insert_pair(pairs,
                                     std::shared_ptr<HighOrderCollision>(
-                                        std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
+                                        std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
                                             mesh.faces_to_edges()(other_f, 0), vid, mesh, params, params.dhat, V_)));
                         break;
                     }
@@ -310,7 +310,7 @@ namespace ipc
                     {
                         insert_pair(pairs,
                                     std::shared_ptr<HighOrderCollision>(
-                                        std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
+                                        std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
                                             mesh.faces_to_edges()(other_f, 1), vid, mesh, params, params.dhat, V_)));
                         break;
                     }
@@ -318,7 +318,7 @@ namespace ipc
                     {
                         insert_pair(pairs,
                                     std::shared_ptr<HighOrderCollision>(
-                                        std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
+                                        std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
                                             mesh.faces_to_edges()(other_f, 2), vid, mesh, params, params.dhat, V_)));
                         break;
                     }
@@ -369,8 +369,8 @@ namespace ipc
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
             Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
-            for (index_t i = 0; i < cc.vertex_ids().size(); i++) {
-                const index_t global_id = cc.vertex_ids()[i];
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id = cc.vertex_id(i);
                 if (global_id == n_real_vertices) {
                     const Vector12d local_grad = (q(0) * g(3 * i + 0) + q(1) * g(3 * i + 1) + q(2) * g(3 * i + 2)).grad;
                     // distribute grad wrt virtual vertex to real edge vertices
@@ -418,10 +418,10 @@ namespace ipc
             Eigen::MatrixXd h = cc.weight * cc.hessian(cc.dof(V_extended), params);
             Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
 
-            for (index_t i = 0; i < cc.vertex_ids().size(); i++) {
-                const index_t gi = cc.vertex_ids()[i];
-                for (index_t j = 0; j < cc.vertex_ids().size(); j++) {
-                    const index_t gj = cc.vertex_ids()[j];
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t gi = cc.vertex_id(i);
+                for (index_t j = 0; j < cc.num_vertices(); j++) {
+                    const index_t gj = cc.vertex_id(j);
                     if (gi == n_real_vertices && gj == n_real_vertices) {
                         assert(i == j);
                         // distribute derivatives wrt virtual vertex to real edge vertices
@@ -509,7 +509,7 @@ namespace ipc
         }
 
         for (const auto& other_v : v_set) {
-            auto pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
+            auto pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
                 std::min(vid, other_v), std::max(vid, other_v),
                 mesh, params, params.dhat, V_);
             if (pair->is_active()) {
@@ -532,8 +532,8 @@ namespace ipc
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
             Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
-            for (index_t i = 0; i < cc.vertex_ids().size(); i++) {
-                const index_t global_id = cc.vertex_ids()[i];
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id = cc.vertex_id(i);
                 if (global_id == n_real_vertices) {
                     // distribute grad wrt virtual vertex to real face vertices
                     for (index_t lv = 0; lv < 3; lv++) {
@@ -566,10 +566,10 @@ namespace ipc
             // }
             h *= cc.weight;
 
-            for (index_t i = 0; i < cc.vertex_ids().size(); i++) {
-                const index_t gi = cc.vertex_ids()[i];
-                for (index_t j = 0; j < cc.vertex_ids().size(); j++) {
-                    const index_t gj = cc.vertex_ids()[j];
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t gi = cc.vertex_id(i);
+                for (index_t j = 0; j < cc.num_vertices(); j++) {
+                    const index_t gj = cc.vertex_id(j);
                     if (gi == n_real_vertices && gj == n_real_vertices) {
                         // distribute grad wrt virtual vertex to real face vertices
                         for (index_t li = 0; li < 3; li++) {

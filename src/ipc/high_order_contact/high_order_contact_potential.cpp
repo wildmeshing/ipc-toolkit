@@ -166,10 +166,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                 const Eigen::VectorXd local_grad =
                     this->gradient(collision, collision.dof(X));
 
-                const std::vector<index_t> vids = collision.vertex_ids();
-
                 local_gradient_to_global_gradient(
-                    local_grad, vids, dim, global_grad);
+                    local_grad, collision.vertex_ids(), dim, global_grad);
             }
         });
 

@@ -1,5 +1,5 @@
 #pragma once
-#include "high_order_collision.hpp"
+#include "high_order_collision_3d.hpp"
 #include <ipc/utils/unordered_map_and_set.hpp>
 
 namespace ipc {
@@ -48,9 +48,9 @@ public:
     index_t vertex_ids_inverse(index_t id) const;
 
 private:
-    std::vector<HighOrderCollisionTemplate<Vertex3, Vertex3>> vv_collisions;
-    std::vector<HighOrderCollisionTemplate<Edge3P1, Vertex3>> ev_collisions;
-    std::vector<HighOrderCollisionTemplate<Face3P1, Vertex3>> fv_collisions;
+    std::vector<HighOrderCollision3DTemplate<Vertex3, Vertex3>> vv_collisions;
+    std::vector<HighOrderCollision3DTemplate<Edge3P1, Vertex3>> ev_collisions;
+    std::vector<HighOrderCollision3DTemplate<Face3P1, Vertex3>> fv_collisions;
 
     /// @brief Primary vertices used to compute the virtual vertex
     /// When the quadrature point q is
