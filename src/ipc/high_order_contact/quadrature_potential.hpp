@@ -89,7 +89,7 @@ namespace ipc
             index_t vid) const;
 
         HighOrderCollisionDict<PointType::EDGE>
-        build_collisions_at_edge_edge_closest_point_advanced(
+        build_collisions_at_edge_edge_closest_point(
         const Eigen::MatrixXd& V,
             index_t e0,
             index_t e1) const;

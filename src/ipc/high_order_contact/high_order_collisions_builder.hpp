@@ -214,7 +214,7 @@ public:
 
     // Local storage
     std::vector<std::pair<index_t, HighOrderCollisionDict<PointType::VERTEX>>> vertex_collisions;
-    std::vector<std::pair<std::pair<index_t, index_t>, HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions_advanced;
+    std::vector<std::pair<std::pair<index_t, index_t>, HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
     std::vector<std::pair<index_t, HighOrderCollisionDict<PointType::FACE>>> face_collisions;
 
     std::shared_ptr<PointPotential> point_potential;

@@ -41,10 +41,7 @@ double HighOrderContactPotential::operator()(
         });
 
     if (mesh.dim() == 3) {
-        if (!collisions.use_quadrature) {
-            throw std::runtime_error("Not implemented!");
-        }
-        else {
+        {
             auto potential_storage = create_thread_storage(0.0);
 
             auto loop_body = [&](int start, int end, int thread_id) {
@@ -71,8 +68,8 @@ double HighOrderContactPotential::operator()(
                                 continue;
                             }
 
-                            if (auto iter = collisions.edge_edge_collisions_advanced.find(std::make_pair(edge_id, other_edge_id));
-                                iter != collisions.edge_edge_collisions_advanced.end()) {
+                            if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
+                                iter != collisions.edge_edge_collisions.end()) {
 
                                 auto dtype = edge_edge_distance_type(
                                     X.row(ea), X.row(eb),
@@ -172,10 +169,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
         });
 
     if (mesh.dim() == 3) {
-        if (!collisions.use_quadrature) {
-            throw std::runtime_error("Not implemented!");
-        }
-        else {
+        {
             using T = ADGrad<12>;
 
             auto loop_body = [&](int start, int end, int thread_id) {
@@ -201,10 +195,10 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 continue;
                             }
 
-                            if (auto iter = collisions.edge_edge_collisions_advanced.find(std::make_pair(edge_id, other_edge_id));
-                                iter != collisions.edge_edge_collisions_advanced.end()) {
+                            if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
+                                iter != collisions.edge_edge_collisions.end()) {
 
-                                // collisions.edge_edge_collisions_advanced only contain EA_EB* type collision
+                                // collisions.edge_edge_collisions only contain EA_EB* type collision
                                 // other types are ignored because the mollifier makes them vanish
 
                                 Eigen::Vector<double, 12> positions;
@@ -328,10 +322,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
         });
 
     if (mesh.dim() == 3) {
-        if (!collisions.use_quadrature) {
-            throw std::runtime_error("Not implemented!");
-        }
-        else {
+        {
             using T = ADHessian<12>;
 
             auto loop_body = [&](int start, int end, int thread_id) {
@@ -357,10 +348,10 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 continue;
                             }
 
-                            if (auto iter = collisions.edge_edge_collisions_advanced.find(std::make_pair(edge_id, other_edge_id));
-                                iter != collisions.edge_edge_collisions_advanced.end()) {
+                            if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
+                                iter != collisions.edge_edge_collisions.end()) {
 
-                                // collisions.edge_edge_collisions_advanced only contain EA_EB* type collision
+                                // collisions.edge_edge_collisions only contain EA_EB* type collision
                                 // other types are ignored because the mollifier makes them vanish
 
                                 Eigen::Vector<double, 12> positions;

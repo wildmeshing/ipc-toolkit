@@ -285,194 +285,7 @@ void HighOrderCollisions::build(
             log_and_throw_error("HighOrderCollisions 3D not implemented for non-watertight meshes!");
         }
 
-        if constexpr (!use_quadrature) {
-            if (use_adaptive_dhat) {
-                log_and_throw_error("Adaptive dhat with exact cancellation is not implemented!");
-            }
-
-            auto storage = create_thread_storage<HighOrderCollisionsBuilder<3>>(
-                HighOrderCollisionsBuilder<3>());
-
-            // Integral over vertices
-
-            std::vector<std::vector<index_t>> face_ids_close_to_v(mesh.num_vertices());
-            for (auto candidate : candidates.fv_candidates) {
-                face_ids_close_to_v[candidate.vertex_id].push_back(candidate.face_id);
-            }
-
-            std::vector<std::vector<index_t>> vertex_ids_close_to_f(mesh.num_faces());
-            for (auto candidate : candidates.fv_candidates) {
-                vertex_ids_close_to_f[candidate.face_id].push_back(candidate.vertex_id);
-            }
-
-            maybe_parallel_for(
-                candidates.fv_candidates.size(),
-                [&](int start, int end, int thread_id) {
-                    HighOrderCollisionsBuilder<3>& local_storage =
-                        get_local_thread_storage(storage, thread_id);
-                    local_storage.add_face_vertex_collisions(
-                        mesh, vertices, candidates.fv_candidates, params, start, end);
-                });
-
-            // This for loop is an inefficient hack that we should get rid of
-            for (index_t hack_id = 0; hack_id < mesh.num_vertices(); hack_id++) {
-                std::vector<FaceVertexCandidate> fv_candidates;
-                for (auto candidate : candidates.fv_candidates)
-                    if (candidate.vertex_id == hack_id)
-                        fv_candidates.push_back(candidate);
-
-                if (fv_candidates.empty())
-                    continue;
-
-                // Convert face-vertex to edge-vertex
-                const std::vector<EdgeVertexCandidate> ev_candidates =
-                    face_vertex_to_edge_vertex_candidates(
-                        mesh, vertices, fv_candidates, is_active);
-
-                maybe_parallel_for(
-                    ev_candidates.size(),
-                    [&](int start, int end, int thread_id) {
-                        HighOrderCollisionsBuilder<3>& local_storage =
-                            get_local_thread_storage(storage, thread_id);
-                        local_storage.add_face_vertex_negative_edge_vertex_collisions(
-                            mesh, vertices, ev_candidates, params, start, end);
-                    });
-
-                // Convert face-vertex to vertex-vertex
-                const std::vector<VertexVertexCandidate> vv_candidates =
-                    face_vertex_to_vertex_vertex_candidates(
-                        mesh, vertices, fv_candidates, is_active);
-
-                maybe_parallel_for(
-                    vv_candidates.size(),
-                    [&](int start, int end, int thread_id) {
-                        HighOrderCollisionsBuilder<3>& local_storage =
-                            get_local_thread_storage(storage, thread_id);
-                        local_storage.add_face_vertex_positive_vertex_vertex_collisions(
-                            mesh, vertices, vv_candidates, params, start, end);
-                    });
-            }
-
-            // Integral over edge-edge pairs
-
-            // This for loop is an inefficient hack that we should get rid of
-            for (index_t hack_id = 0; hack_id < mesh.num_edges(); hack_id++) {
-                std::vector<EdgeEdgeCandidate> ee_candidates;
-                for (auto candidate : candidates.ee_candidates) {
-                    if (candidate.edge0_id == hack_id || candidate.edge1_id == hack_id) {
-                        ee_candidates.push_back(candidate);
-                    }
-                }
-
-                if (ee_candidates.empty()) {
-                    continue;
-                }
-
-                // Find V, E, F that are close to hack_id
-                std::set<index_t> vids, eids, fids;
-                {
-                    for (auto candidate : candidates.ef_candidates) {
-                        if (candidate.edge_id == hack_id) {
-                            fids.insert(candidate.face_id);
-                        }
-                    }
-
-                    for (int i = 0; i < 2; i++) {
-                        for (int fid : mesh.vertices_to_faces()[mesh.edges()(hack_id, i)]) {
-                            if (mesh.faces_to_edges()(fid, 0) != hack_id &&
-                                mesh.faces_to_edges()(fid, 1) != hack_id &&
-                                mesh.faces_to_edges()(fid, 2) != hack_id) {
-                                fids.insert(fid);
-                                }
-                        }
-                    }
-
-                    for (int i = 0; i < 2; i++) {
-                        for (int ei : mesh.vertices_to_edges()[mesh.edges()(hack_id, i)]) {
-                            if (ei != hack_id) {
-                                eids.insert(ei);
-                            }
-                        }
-                    }
-
-                    for (auto candidate1 : ee_candidates) {
-                        const index_t ei = candidate1.edge0_id == hack_id ? candidate1.edge1_id : candidate1.edge0_id;
-                        eids.insert(ei);
-
-                        for (int i = 0; i < 2; i++) {
-                            const index_t vi = mesh.edges()(ei, i);
-                            vids.insert(vi);
-                        }
-                    }
-
-                    for (int i = 0; i < 2; i++) {
-                        if (int fi = mesh.edges_to_faces()(hack_id, i); fi >= 0) {
-                            for (int vi : vertex_ids_close_to_f[fi]) {
-                                vids.insert(vi);
-                            }
-                        }
-                    }
-
-                    for (int vi : mesh.edge_vertex_adjacencies()[hack_id]) {
-                        vids.insert(vi);
-                    }
-
-                    vids.insert(mesh.edges()(hack_id, 0));
-                    vids.insert(mesh.edges()(hack_id, 1));
-                }
-
-                // EE candidates become three types of terms: EEV, EEE, EEF
-                std::vector<std::array<index_t, 3>> triplets_eev, triplets_eee, triplets_eef;
-                for (auto candidate1 : ee_candidates) {
-                    const index_t other_e = candidate1.edge0_id == hack_id ? candidate1.edge1_id : candidate1.edge0_id;
-
-                    for (index_t vi : vids) {
-                        triplets_eev.push_back(std::array<index_t, 3>{{hack_id, other_e, vi}});
-                    }
-
-                    for (index_t ei : eids) {
-                        triplets_eee.push_back(std::array<index_t, 3>{{hack_id, other_e, ei}});
-                    }
-
-                    for (index_t fi : fids) {
-                        triplets_eef.push_back(std::array<index_t, 3>{{hack_id, other_e, fi}});
-                    }
-                }
-
-                maybe_parallel_for(
-                    triplets_eef.size(),
-                    [&](int start, int end, int thread_id)
-                    {
-                        HighOrderCollisionsBuilder<3>& local_storage =
-                            get_local_thread_storage(storage, thread_id);
-                        local_storage.add_edge_edge_face_collisions(
-                            mesh, vertices, triplets_eef, params, dhat, start, end);
-                    });
-
-                maybe_parallel_for(
-                    triplets_eee.size(),
-                    [&](int start, int end, int thread_id)
-                    {
-                        HighOrderCollisionsBuilder<3>& local_storage =
-                            get_local_thread_storage(storage, thread_id);
-                        local_storage.add_negative_edge_edge_edge_collisions(
-                            mesh, vertices, triplets_eee, params, dhat, start, end);
-                    });
-
-                maybe_parallel_for(
-                    triplets_eev.size(),
-                    [&](int start, int end, int thread_id)
-                    {
-                        HighOrderCollisionsBuilder<3>& local_storage =
-                            get_local_thread_storage(storage, thread_id);
-                        local_storage.add_edge_edge_vertex_collisions(
-                            mesh, vertices, triplets_eev, params, dhat, start, end);
-                    });
-            }
-
-            HighOrderCollisionsBuilder<3>::merge(storage, *this);
-        }
-        else {
+        {
             /* prepare collision sets to compute each P(q) */
             if constexpr (use_parallel_build) {
                 // compute masks
@@ -600,14 +413,14 @@ void HighOrderCollisions::build(
                     }
 
                     if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
-                        if (edge_edge_collisions_advanced.find(std::make_pair(ei, ej)) == edge_edge_collisions_advanced.end()) {
-                            edge_edge_collisions_advanced[std::make_pair(ei, ej)] = point_potential.build_collisions_at_edge_edge_closest_point_advanced(vertices, ei, ej);
+                        if (edge_edge_collisions.find(std::make_pair(ei, ej)) == edge_edge_collisions.end()) {
+                            edge_edge_collisions[std::make_pair(ei, ej)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ei, ej);
                         }
                     }
 
                     if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
-                        if (edge_edge_collisions_advanced.find(std::make_pair(ej, ei)) == edge_edge_collisions_advanced.end()) {
-                            edge_edge_collisions_advanced[std::make_pair(ej, ei)] = point_potential.build_collisions_at_edge_edge_closest_point_advanced(vertices, ej, ei);
+                        if (edge_edge_collisions.find(std::make_pair(ej, ei)) == edge_edge_collisions.end()) {
+                            edge_edge_collisions[std::make_pair(ej, ei)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ej, ei);
                         }
                     }
                 }
@@ -651,13 +464,13 @@ void HighOrderCollisions::build(
 
 // ============================================================================
 size_t HighOrderCollisions::size() const { return collisions.size(); }
-bool HighOrderCollisions::empty() const { return collisions.empty() && vertex_collisions.empty() && edge_edge_collisions_advanced.empty() && face_collisions.empty(); }
+bool HighOrderCollisions::empty() const { return collisions.empty() && vertex_collisions.empty() && edge_edge_collisions.empty() && face_collisions.empty(); }
 void HighOrderCollisions::clear()
 {
     collisions.clear();
 
     vertex_collisions.clear();
-    edge_edge_collisions_advanced.clear();
+    edge_edge_collisions.clear();
     face_collisions.clear();
 }
 
@@ -707,7 +520,7 @@ std::string HighOrderCollisions::to_string(
             }
         }
     }
-    for (const auto& ccs : edge_edge_collisions_advanced) {
+    for (const auto& ccs : edge_edge_collisions) {
         for (int i = 0; i < ccs.second.size(); i++) {
             const auto& cc = ccs.second[i];
             ss << "\n";
@@ -780,7 +593,7 @@ double HighOrderCollisions::compute_active_minimum_distance(
     tbb::enumerable_thread_specific<double> storage(
         std::numeric_limits<double>::infinity());
 
-    if (mesh.dim() == 2 || !use_quadrature) {
+    if (mesh.dim() == 2) {
         tbb::parallel_for(
             tbb::blocked_range<size_t>(0, collisions.size()),
             [&](tbb::blocked_range<size_t> r) {
@@ -809,7 +622,7 @@ double HighOrderCollisions::compute_active_minimum_distance(
         //     }
         // }
 
-        // for (const auto& map : edge_edge_collisions_advanced) {
+        // for (const auto& map : edge_edge_collisions) {
         //     for (const auto& cc : map.second) {
         //         min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
         //     }

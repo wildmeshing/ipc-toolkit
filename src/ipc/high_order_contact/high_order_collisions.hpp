@@ -12,7 +12,6 @@ public:
     /// @brief The type of the collisions.
     using value_type = HighOrderCollision;
 
-    constexpr static bool use_quadrature = true;
     constexpr static bool use_parallel_build = true;
 
 public:
@@ -151,7 +150,7 @@ public:
     // vertex_collisions[vi] provides the contact set for vertex vi
     unordered_map<index_t, HighOrderCollisionDict<PointType::VERTEX>> vertex_collisions;
     // edge_edge_collisions[(ei, ej)] provides the contact set for the closest point on ei, between edge ei and ej.
-    unordered_map<std::pair<index_t, index_t>, HighOrderCollisionDict<PointType::EDGE>> edge_edge_collisions_advanced;
+    unordered_map<std::pair<index_t, index_t>, HighOrderCollisionDict<PointType::EDGE>> edge_edge_collisions;
     // face_collisions[fi] provides the contact set for center of face fi
     unordered_map<index_t, HighOrderCollisionDict<PointType::FACE>> face_collisions;
 };

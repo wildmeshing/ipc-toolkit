@@ -372,11 +372,11 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
         }
 
         if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
-            edge_edge_collisions_advanced.emplace_back(std::make_pair(ei, ej), point_potential->build_collisions_at_edge_edge_closest_point_advanced(vertices, ei, ej));
+            edge_edge_collisions.emplace_back(std::make_pair(ei, ej), point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej));
         }
 
         if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
-            edge_edge_collisions_advanced.emplace_back(std::make_pair(ej, ei), point_potential->build_collisions_at_edge_edge_closest_point_advanced(vertices, ej, ei));
+            edge_edge_collisions.emplace_back(std::make_pair(ej, ei), point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei));
         }
     }
 }
@@ -389,16 +389,16 @@ void QuadratureCollisionsBuilder::merge(
     size_t total_v = 0, total_ee = 0, total_f = 0;
     for (const auto& storage : local_storage) {
         total_v += storage.vertex_collisions.size();
-        total_ee += storage.edge_edge_collisions_advanced.size();
+        total_ee += storage.edge_edge_collisions.size();
         total_f += storage.face_collisions.size();
     }
     merged_collisions.vertex_collisions.reserve(total_v);
-    merged_collisions.edge_edge_collisions_advanced.reserve(total_ee);
+    merged_collisions.edge_edge_collisions.reserve(total_ee);
     merged_collisions.face_collisions.reserve(total_f);
 
     for (const auto& storage : local_storage) {
         merged_collisions.vertex_collisions.insert(storage.vertex_collisions.begin(), storage.vertex_collisions.end());
-        merged_collisions.edge_edge_collisions_advanced.insert(storage.edge_edge_collisions_advanced.begin(), storage.edge_edge_collisions_advanced.end());
+        merged_collisions.edge_edge_collisions.insert(storage.edge_edge_collisions.begin(), storage.edge_edge_collisions.end());
         merged_collisions.face_collisions.insert(storage.face_collisions.begin(), storage.face_collisions.end());
     }
 }
