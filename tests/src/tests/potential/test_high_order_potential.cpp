@@ -587,3 +587,48 @@ TEST_CASE("Benchmark HighOrderCollisions build", "[!benchmark][high_order_potent
     HighOrderCollisions::use_parallel_build = true;
 }
 */
+/*
+TEST_CASE("Benchmark High-Order Potential Evaluation", "[!benchmark][high_order_potential]")
+{
+    const auto method = make_default_broad_phase();
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
+
+    igl::edges(F, E);
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.15;
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    HighOrderContactPotential potential(params);
+
+#ifdef IPC_TOOLKIT_WITH_TBB
+    BENCHMARK("Serial Evaluation")
+    {
+        // use_parallel_eval = false; // This is now a constexpr
+        potential(collisions, mesh, V);
+        potential.gradient(collisions, mesh, V);
+        potential.hessian(collisions, mesh, V);
+    };
+
+    BENCHMARK("Parallel Evaluation")
+    {
+        // use_parallel_eval = true; // This is now a constexpr
+        potential(collisions, mesh, V);
+        potential.gradient(collisions, mesh, V);
+        potential.hessian(collisions, mesh, V);
+    };
+#else
+    BENCHMARK("Serial Evaluation")
+    {
+        potential(collisions, mesh, V);
+        potential.gradient(collisions, mesh, V);
+        potential.hessian(collisions, mesh, V);
+    };
+#endif
+}
+*/

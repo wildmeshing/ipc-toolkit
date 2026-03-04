@@ -7,6 +7,13 @@
 
 namespace ipc {
 
+// Flag to control parallelism in potential evaluation
+#ifdef IPC_TOOLKIT_WITH_TBB
+constexpr bool use_parallel_eval = true;
+#else
+constexpr bool use_parallel_eval = false;
+#endif
+
 class HighOrderContactPotential {
 public:
     HighOrderContactPotential(const HighOrderContactParameters& _params)
