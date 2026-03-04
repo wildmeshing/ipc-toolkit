@@ -336,11 +336,8 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
         else {
             using T = ADHessian<12>;
 
-            auto triplets_storage = create_thread_storage<std::vector<Eigen::Triplet<double>>>(
-                std::vector<Eigen::Triplet<double>>());
-
             auto loop_body = [&](int start, int end, int thread_id) {
-                auto& triplets = get_local_thread_storage(triplets_storage, thread_id);
+                auto& hess_triplets = get_local_thread_storage(storage, thread_id);
                 for (index_t f = start; f < end; f++) {
                     const double area = mesh.face_areas()(f);
 
@@ -422,13 +419,9 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     local_hess = project_to_psd(local_hess, project_hessian_to_psd);
                                 }
 
-                                for (int i = 0; i < local_hess.rows(); i++) {
-                                    for (int j = 0; j < local_hess.cols(); j++) {
-                                        if (local_hess(i, j) != 0) {
-                                            triplets.emplace_back(dict.dofs()[i], dict.dofs()[j], local_hess(i, j) * area / 9.);
-                                        }
-                                    }
-                                }
+                                local_hessian_to_global_triplets(
+                                    local_hess * (area / 9.), dict.vertex_ids(), dim,
+                                    *(hess_triplets.cache));
                             }
                             else {
                                 /* P(q) = 0 */
@@ -439,39 +432,27 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                             const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
                                 ConcatMatrixView<3>(X, face_center), iter->second, params, project_hessian_to_psd);
-                            for (int i = 0; i < h.rows(); i++) {
-                                index_t row = iter->second.dofs()[i];
-                                for (int j = 0; j < h.cols(); j++) {
-                                    index_t col = iter->second.dofs()[j];
-                                    triplets.emplace_back(row, col, h(i, j) * (area / 9.));
-                                }
-                            }
+                            local_hessian_to_global_triplets(
+                                h * (area / 9.), iter->second.vertex_ids(), dim,
+                                *(hess_triplets.cache));
                         }
 
                         // vertex ea
                         if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
                             const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
                                 X, iter->second, params, project_hessian_to_psd);
-                            for (int i = 0; i < h.rows(); i++) {
-                                index_t row = iter->second.dofs()[i];
-                                for (int j = 0; j < h.cols(); j++) {
-                                    index_t col = iter->second.dofs()[j];
-                                    triplets.emplace_back(row, col, h(i, j) * (area / 9.));
-                                }
-                            }
+                            local_hessian_to_global_triplets(
+                                h * (area / 9.), iter->second.vertex_ids(), dim,
+                                *(hess_triplets.cache));
                         }
 
                         // vertex eb
                         if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
                             const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
                                 X, iter->second, params, project_hessian_to_psd);
-                            for (int i = 0; i < h.rows(); i++) {
-                                index_t row = iter->second.dofs()[i];
-                                for (int j = 0; j < h.cols(); j++) {
-                                    index_t col = iter->second.dofs()[j];
-                                    triplets.emplace_back(row, col, h(i, j) * (area / 9.));
-                                }
-                            }
+                            local_hessian_to_global_triplets(
+                                h * (area / 9.), iter->second.vertex_ids(), dim,
+                                *(hess_triplets.cache));
                         }
                     }
                 }
@@ -482,21 +463,6 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
             } else {
                 loop_body(0, mesh.num_faces(), 0);
             }
-
-            std::vector<Eigen::Triplet<double>> all_triplets;
-            size_t num_triplets = 0;
-            for (const auto& local_triplets : triplets_storage) {
-                num_triplets += local_triplets.size();
-            }
-            all_triplets.reserve(num_triplets);
-            for (const auto& local_triplets : triplets_storage) {
-                all_triplets.insert(all_triplets.end(), local_triplets.begin(), local_triplets.end());
-            }
-
-            Eigen::SparseMatrix<double> hess(ndof, ndof);
-            hess.setFromTriplets(all_triplets.begin(), all_triplets.end());
-
-            return hess;
         }
     }
 
