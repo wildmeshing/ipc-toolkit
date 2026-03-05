@@ -237,6 +237,42 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential], [high
     REQUIRE(H.norm() == 0);
 }
 
+TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]")
+{
+    double dhat = -1;
+    std::string mesh_name;
+    SECTION("mesh1")
+    {
+        dhat = 1e-2;
+        mesh_name = "bunny.ply";
+    }
+
+    Eigen::MatrixXd vertices;
+    Eigen::MatrixXi edges, faces;
+    bool success = tests::load_mesh(mesh_name, vertices, edges, faces);
+    REQUIRE(success);
+    CAPTURE(mesh_name);
+
+    CollisionMesh mesh;
+    mesh = CollisionMesh(
+        std::vector<bool>(vertices.rows(), true),
+        std::vector<bool>(vertices.rows(), false), vertices, edges, faces);
+
+    {
+        HighOrderCollisions collisions;
+        HighOrderContactParameters params(dhat, 0., 2, 0);
+        collisions.build(mesh, vertices, params);
+
+        std::cout << "high order collision size " << collisions.size() << std::endl;
+    }
+
+    {
+        NormalCollisions collisions;
+        collisions.build(mesh, vertices, dhat);
+
+        std::cout << "normal collision size " << collisions.size() << std::endl;
+    }
+}
 
 TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high_order_potential_3d]")
 {

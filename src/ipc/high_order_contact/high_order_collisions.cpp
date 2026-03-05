@@ -452,7 +452,25 @@ void HighOrderCollisions::build(
 }
 
 // ============================================================================
-size_t HighOrderCollisions::size() const { return collisions.size(); }
+size_t HighOrderCollisions::size() const
+{
+    if (collisions.size() > 0) {
+        return collisions.size();
+    }
+    else {
+        size_t size = 0;
+        for (const auto& cc : vertex_collisions) {
+            size += cc.second->size();
+        }
+        for (const auto& cc : edge_edge_collisions) {
+            size += cc.second->size();
+        }
+        for (const auto& cc : face_collisions) {
+            size += cc.second->size();
+        }
+        return size;
+    }
+}
 bool HighOrderCollisions::empty() const { return collisions.empty() && vertex_collisions.empty() && edge_edge_collisions.empty() && face_collisions.empty(); }
 void HighOrderCollisions::clear()
 {
