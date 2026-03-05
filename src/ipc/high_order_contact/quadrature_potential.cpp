@@ -57,7 +57,7 @@ PointPotential::build_collisions_at_vertex(
                 continue;
             }
             std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                vid, other_v, mesh, V);
+                vid, other_v, mesh);
             insert_pair(pairs, std::move(pair));
         }
 
@@ -135,7 +135,8 @@ PointPotential::build_collisions_at_vertex(
     PointPotential::build_collisions_at_edge_edge_closest_point(
         const Eigen::MatrixXd& V,
         const index_t e0,
-        const index_t e1) const
+        const index_t e1,
+        EdgeEdgeDistanceType dtype) const
     {
         const auto& v_set = candidates.ev_set(e0);
         const auto& e_set = candidates.ee_set(e0);
@@ -146,19 +147,13 @@ PointPotential::build_collisions_at_vertex(
         const index_t e01 = mesh.edges()(e0, 1);
         const index_t e10 = mesh.edges()(e1, 0);
         const index_t e11 = mesh.edges()(e1, 1);
-        const EdgeEdgeDistanceType dtype = edge_edge_distance_type(
-            V.row(e00), V.row(e01),
-            V.row(e10), V.row(e11)
-        );
+
+#ifndef NDEBUG
         if (dtype != EdgeEdgeDistanceType::EA_EB && dtype != EdgeEdgeDistanceType::EA_EB0 && dtype !=
             EdgeEdgeDistanceType::EA_EB1) {
             log_and_throw_error("Can only handle EA_EB* distance type!");
         }
-
-        if (is_parallel_edge_edge(V.row(e00), V.row(e01),
-                                  V.row(e10), V.row(e11))) {
-            log_and_throw_error("Cannot handle parallel edge!");
-        }
+#endif
 
         unordered_map<std::array<int, 3>, std::shared_ptr<HighOrderCollision>> pairs;
 
@@ -191,16 +186,18 @@ PointPotential::build_collisions_at_vertex(
 
             const index_t vid = V.rows();
 
-            Eigen::MatrixXd V_(V.rows() + 1, 3);
-            V_.topRows(V.rows()) = V;
-            V_.row(vid) = closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
+            // Eigen::MatrixXd V_(V.rows() + 1, 3);
+            // V_.topRows(V.rows()) = V;
+            // V_.row(vid) = closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
+            const Eigen::RowVector3d ee_closest_point = closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
+            ConcatMatrixView<3> V_(V, ee_closest_point);
 
             for (const auto& other_v : v_set) {
-                if ((V_.row(vid) - V_.row(other_v)).squaredNorm() >= params.dhat * params.dhat) {
+                if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dhat * params.dhat) {
                     continue;
                 }
                 std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                    vid, other_v, mesh, V_);
+                    vid, other_v, mesh);
 
                 insert_pair(pairs, std::move(pair));
             }
@@ -209,11 +206,11 @@ PointPotential::build_collisions_at_vertex(
                 if (other_e == e0)
                     continue;
 
-                auto dtype2 = point_edge_distance_type(V_.row(vid), V_.row(mesh.edges()(other_e, 0)),
-                                                       V_.row(mesh.edges()(other_e, 1)));
+                auto dtype2 = point_edge_distance_type(V_(vid), V_(mesh.edges()(other_e, 0)),
+                                                       V_(mesh.edges()(other_e, 1)));
 
-                const double dist_sqr = point_edge_distance(V_.row(vid), V_.row(mesh.edges()(other_e, 0)),
-                                                       V_.row(mesh.edges()(other_e, 1)), dtype2);
+                const double dist_sqr = point_edge_distance(V_(vid), V_(mesh.edges()(other_e, 0)),
+                                                       V_(mesh.edges()(other_e, 1)), dtype2);
 
                 if (dist_sqr >= params.dhat * params.dhat) {
                     continue;
@@ -224,7 +221,7 @@ PointPotential::build_collisions_at_vertex(
                     {
                         std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<
                             Vertex3, Vertex3>>(
-                            vid, mesh.edges()(other_e, 0), mesh, V_);
+                            vid, mesh.edges()(other_e, 0), mesh);
                         pair->weight = -1;
                         insert_pair(pairs, std::move(pair));
                         break;
@@ -233,7 +230,7 @@ PointPotential::build_collisions_at_vertex(
                     {
                         std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<
                             Vertex3, Vertex3>>(
-                            vid, mesh.edges()(other_e, 1), mesh, V_);
+                            vid, mesh.edges()(other_e, 1), mesh);
                         pair->weight = -1;
                         insert_pair(pairs, std::move(pair));
                         break;
@@ -242,7 +239,7 @@ PointPotential::build_collisions_at_vertex(
                     {
                         std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<
                             Edge3P1, Vertex3>>(
-                            other_e, vid, mesh, V_);
+                            other_e, vid, mesh);
                         pair->weight = -1;
                         insert_pair(pairs, std::move(pair));
                         break;
@@ -257,13 +254,13 @@ PointPotential::build_collisions_at_vertex(
                 if (mesh.edges_to_faces()(e0, 0) == other_f || mesh.edges_to_faces()(e0, 1) == other_f)
                     continue;
 
-                auto dtype2 = point_triangle_distance_type(V_.row(vid), V_.row(mesh.faces()(other_f, 0)),
-                                                           V_.row(mesh.faces()(other_f, 1)),
-                                                           V_.row(mesh.faces()(other_f, 2)));
+                auto dtype2 = point_triangle_distance_type(V_(vid), V_(mesh.faces()(other_f, 0)),
+                                                           V_(mesh.faces()(other_f, 1)),
+                                                           V_(mesh.faces()(other_f, 2)));
 
-                const double dist_sqr = point_triangle_distance(V_.row(vid), V_.row(mesh.faces()(other_f, 0)),
-                                                           V_.row(mesh.faces()(other_f, 1)),
-                                                           V_.row(mesh.faces()(other_f, 2)), dtype2);
+                const double dist_sqr = point_triangle_distance(V_(vid), V_(mesh.faces()(other_f, 0)),
+                                                           V_(mesh.faces()(other_f, 1)),
+                                                           V_(mesh.faces()(other_f, 2)), dtype2);
 
                 if (dist_sqr >= params.dhat * params.dhat) {
                     continue;
@@ -274,21 +271,21 @@ PointPotential::build_collisions_at_vertex(
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                                            vid, mesh.faces()(other_f, 0), mesh, V_)));
+                                            vid, mesh.faces()(other_f, 0), mesh)));
                         break;
                     }
                 case PointTriangleDistanceType::P_T1:
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                                            vid, mesh.faces()(other_f, 1), mesh, V_)));
+                                            vid, mesh.faces()(other_f, 1), mesh)));
                         break;
                     }
                 case PointTriangleDistanceType::P_T2:
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                                            vid, mesh.faces()(other_f, 2), mesh, V_)));
+                                            vid, mesh.faces()(other_f, 2), mesh)));
                         break;
                     }
                 case PointTriangleDistanceType::P_E0:
@@ -296,7 +293,7 @@ PointPotential::build_collisions_at_vertex(
                         insert_pair(pairs,
                                     std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-                                            mesh.faces_to_edges()(other_f, 0), vid, mesh, V_)));
+                                            mesh.faces_to_edges()(other_f, 0), vid, mesh)));
                         break;
                     }
                 case PointTriangleDistanceType::P_E1:
@@ -304,7 +301,7 @@ PointPotential::build_collisions_at_vertex(
                         insert_pair(pairs,
                                     std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-                                            mesh.faces_to_edges()(other_f, 1), vid, mesh, V_)));
+                                            mesh.faces_to_edges()(other_f, 1), vid, mesh)));
                         break;
                     }
                 case PointTriangleDistanceType::P_E2:
@@ -312,14 +309,14 @@ PointPotential::build_collisions_at_vertex(
                         insert_pair(pairs,
                                     std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-                                            mesh.faces_to_edges()(other_f, 2), vid, mesh, V_)));
+                                            mesh.faces_to_edges()(other_f, 2), vid, mesh)));
                         break;
                     }
                 case PointTriangleDistanceType::P_T:
                     {
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
                                         std::make_shared<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(
-                                            other_f, vid, mesh, V_)));
+                                            other_f, vid, mesh)));
                         break;
                     }
                 default:
@@ -508,7 +505,7 @@ PointPotential::build_collisions_at_vertex(
                 continue;
             }
             auto pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-                vid, other_v, mesh, V_);
+                vid, other_v, mesh);
             insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
         }
 

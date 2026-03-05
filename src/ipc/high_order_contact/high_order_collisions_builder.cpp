@@ -215,37 +215,37 @@ std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_
     switch (dtype) {
     case PointTriangleDistanceType::P_T0:
         return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-            t0, vi, mesh, vertices);
+            t0, vi, mesh);
 
     case PointTriangleDistanceType::P_T1:
         return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-            t1, vi, mesh, vertices);
+            t1, vi, mesh);
 
     case PointTriangleDistanceType::P_T2:
         return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-            t2, vi, mesh, vertices);
+            t2, vi, mesh);
 
     case PointTriangleDistanceType::P_E0:
         return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-            e0, vi, mesh, vertices);
+            e0, vi, mesh);
 
     case PointTriangleDistanceType::P_E1:
         return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-            e1, vi, mesh, vertices);
+            e1, vi, mesh);
 
     case PointTriangleDistanceType::P_E2:
         return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-            e2, vi, mesh, vertices);
+            e2, vi, mesh);
 
     case PointTriangleDistanceType::P_T:
         return std::make_shared<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(
-            fi, vi, mesh, vertices);
+            fi, vi, mesh);
 
     case PointTriangleDistanceType::AUTO:
     default:
         assert(false);
         return std::make_shared<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(
-            fi, vi, mesh, vertices);
+            fi, vi, mesh);
     }
 }
 
@@ -278,17 +278,17 @@ std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_
     switch (dtype) {
     case PointEdgeDistanceType::P_E0:
         return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-            t0, vi, mesh, vertices);
+            t0, vi, mesh);
     case PointEdgeDistanceType::P_E1:
         return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
-            t1, vi, mesh, vertices);
+            t1, vi, mesh);
     case PointEdgeDistanceType::P_E:
         return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-            ei, vi, mesh, vertices);
+            ei, vi, mesh);
     default:
         assert(false);
         return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
-            ei, vi, mesh, vertices);
+            ei, vi, mesh);
     }
 }
 
@@ -406,11 +406,11 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
         }
 
         if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
-            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej));
+            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej, dtype));
         }
 
         if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
-            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei));
+            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei, reflectEdgeEdgeDistanceType(dtype)));
         }
     }
 }

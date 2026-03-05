@@ -19,8 +19,7 @@ public:
     HighOrderCollision3DTemplate(
         index_t primitive0,
         index_t primitive1,
-        const CollisionMesh& mesh,
-        const Eigen::MatrixXd& V);
+        const CollisionMesh& mesh);
 
     virtual ~HighOrderCollision3DTemplate() = default;
 

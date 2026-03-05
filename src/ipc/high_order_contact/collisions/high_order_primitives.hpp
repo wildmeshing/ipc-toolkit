@@ -132,8 +132,7 @@ public:
 
     Vertex3(
         const index_t id,
-        const CollisionMesh& mesh,
-        const Eigen::MatrixXd& V)
+        const CollisionMesh& mesh)
         : HighOrderPrimitive(id)
     {
         m_vertex_ids[0] = id;
@@ -152,8 +151,7 @@ public:
 
     Edge3P1(
         const index_t id,
-        const CollisionMesh& mesh,
-        const Eigen::MatrixXd& V)
+        const CollisionMesh& mesh)
         : HighOrderPrimitive(id)
     {
         m_vertex_ids[0] = mesh.edges()(id, 0);
@@ -173,8 +171,7 @@ public:
 
     Face3P1(
         const index_t id,
-        const CollisionMesh& mesh,
-        const Eigen::MatrixXd& V)
+        const CollisionMesh& mesh)
         : HighOrderPrimitive(id)
     {
         m_vertex_ids[0] = mesh.faces()(id, 0);
