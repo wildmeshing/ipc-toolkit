@@ -356,17 +356,6 @@ void HighOrderCollisions::build(
 
                 QuadratureCollisionsBuilder::merge(storage, *this);
             } else {
-                {
-                    /* Bruteforce method for debugging */
-
-                    // for (int vi = 0; vi < mesh.num_vertices(); vi++) {
-                    //     vertex_collisions[vi] = point_potential.build_collisions_at_vertex(vertices, vi);
-                    // }
-                    //
-                    // for (int fi = 0; fi < mesh.num_faces(); fi++) {
-                    //     face_collisions[fi] = point_potential.build_collisions_at_face_center(vertices, fi);
-                    // }
-                }
                 PointPotential point_potential(mesh, candidates, params);
 
                 for (const auto& candidate : candidates.fv_candidates) {
@@ -508,8 +497,8 @@ std::string HighOrderCollisions::to_string(
     }
 
     for (const auto& ccs : vertex_collisions) {
-        for (int i = 0; i < ccs.second.size(); i++) {
-            const auto& cc = ccs.second[i];
+        for (int i = 0; i < (*ccs.second).size(); i++) {
+            const auto& cc = (*ccs.second)[i];
             ss << "\n";
             {
                 ss << fmt::format(
@@ -521,8 +510,8 @@ std::string HighOrderCollisions::to_string(
         }
     }
     for (const auto& ccs : edge_edge_collisions) {
-        for (int i = 0; i < ccs.second.size(); i++) {
-            const auto& cc = ccs.second[i];
+        for (int i = 0; i < (*ccs.second).size(); i++) {
+            const auto& cc = (*ccs.second)[i];
             ss << "\n";
             {
                 ss << fmt::format(
@@ -533,8 +522,8 @@ std::string HighOrderCollisions::to_string(
         }
     }
     for (const auto& ccs : face_collisions) {
-        for (int i = 0; i < ccs.second.size(); i++) {
-            const auto& cc = ccs.second[i];
+        for (int i = 0; i < (*ccs.second).size(); i++) {
+            const auto& cc = (*ccs.second)[i];
             ss << "\n";
             {
                 ss << fmt::format(
@@ -608,8 +597,8 @@ double HighOrderCollisions::compute_active_minimum_distance(
     else {
         double min_dist = std::numeric_limits<double>::max();
         for (const auto& map : vertex_collisions) {
-            for (int i = 0; i < map.second.size(); i++) {
-                const auto& cc = map.second[i];
+            for (int i = 0; i < (*map.second).size(); i++) {
+                const auto& cc = (*map.second)[i];
                 min_dist = std::min(min_dist, cc.compute_distance(vertices));
             }
         }
@@ -617,13 +606,13 @@ double HighOrderCollisions::compute_active_minimum_distance(
         // TODO
 
         // for (const auto& map : face_collisions) {
-        //     for (const auto& cc : map.second) {
+        //     for (const auto& cc : (*map.second)) {
         //         min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
         //     }
         // }
 
         // for (const auto& map : edge_edge_collisions) {
-        //     for (const auto& cc : map.second) {
+        //     for (const auto& cc : (*map.second)) {
         //         min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
         //     }
         // }

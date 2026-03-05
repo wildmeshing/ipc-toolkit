@@ -77,24 +77,22 @@ namespace ipc
             const CollisionMesh& mesh_,
             const Candidates& candidates_,
             const HighOrderContactParameters params_)
-                : mesh(mesh_),
-                  candidates(candidates_),
-                  params(params_)
+            : mesh(mesh_)
+            , candidates(candidates_)
+            , params(params_)
         {
         }
 
-        HighOrderCollisionDict<PointType::VERTEX>
-        build_collisions_at_vertex(
-            const Eigen::MatrixXd& V,
-            index_t vid) const;
+        std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>
+        build_collisions_at_vertex(const Eigen::MatrixXd& V, index_t vid) const;
 
-        HighOrderCollisionDict<PointType::EDGE>
+        std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>
         build_collisions_at_edge_edge_closest_point(
         const Eigen::MatrixXd& V,
             index_t e0,
             index_t e1) const;
 
-        HighOrderCollisionDict<PointType::FACE>
+        std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>
         build_collisions_at_face_center(
         const Eigen::MatrixXd& V,
             index_t fid) const;

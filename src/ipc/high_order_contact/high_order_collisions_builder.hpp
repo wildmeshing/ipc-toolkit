@@ -190,6 +190,10 @@ public:
         const CollisionMesh& mesh,
         const Candidates& candidates,
         const HighOrderContactParameters& params);
+    QuadratureCollisionsBuilder(QuadratureCollisionsBuilder&&) = default;
+    QuadratureCollisionsBuilder& operator=(QuadratureCollisionsBuilder&&) = default;
+    QuadratureCollisionsBuilder(const QuadratureCollisionsBuilder& other);
+    QuadratureCollisionsBuilder& operator=(const QuadratureCollisionsBuilder& other);
     ~QuadratureCollisionsBuilder();
 
     void build_vertex_collisions(
@@ -209,13 +213,13 @@ public:
         const size_t end_i);
 
     static void merge(
-        const ParallelCacheType<QuadratureCollisionsBuilder>& local_storage,
+        ParallelCacheType<QuadratureCollisionsBuilder>& local_storage,
         HighOrderCollisions& merged_collisions);
 
     // Local storage
-    std::vector<std::pair<index_t, HighOrderCollisionDict<PointType::VERTEX>>> vertex_collisions;
-    std::vector<std::pair<std::pair<index_t, index_t>, HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
-    std::vector<std::pair<index_t, HighOrderCollisionDict<PointType::FACE>>> face_collisions;
+    std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>> vertex_collisions;
+    std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
+    std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> face_collisions;
 
     std::shared_ptr<PointPotential> point_potential;
 };

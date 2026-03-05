@@ -259,7 +259,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
     for (int vid = 0; vid < V.rows(); ++vid) {
         const auto collisions = point_potential.build_collisions_at_vertex(V, vid);
 
-        if (collisions.size() == 0) {
+        if (collisions->size() == 0) {
             continue;
         }
 
@@ -267,8 +267,8 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
         {
             Eigen::VectorXd local_grad =
                 PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                    V, collisions, params);
-            indices = collisions.dofs();
+                    V, *collisions, params);
+            indices = collisions->dofs();
 
             if (local_grad.norm() < 1e-10) {
                 continue;
@@ -276,7 +276,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
         }
 
         Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-            V, collisions, params, PSDProjectionMethod::NONE);
+            V, *collisions, params, PSDProjectionMethod::NONE);
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
@@ -286,7 +286,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
                 Eigen::MatrixXd V_fd = fd::unflatten(y_, 3);
 
                 return PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                    V_fd, collisions, params);
+                    V_fd, *collisions, params);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
         REQUIRE((h - fh).norm() < 1e-6 * std::max({h.norm(), fh.norm(), 1e-8}));
@@ -315,7 +315,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
 
         const auto collisions = point_potential.build_collisions_at_face_center(V, fid);
 
-        if (collisions.size() == 0) {
+        if (collisions->size() == 0) {
             continue;
         }
 
@@ -330,15 +330,15 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
         {
             Eigen::VectorXd local_grad =
                 PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                    V_extended, collisions, params);
-            indices = collisions.dofs();
+                    V_extended, *collisions, params);
+            indices = collisions->dofs();
 
             if (local_grad.norm() < 1e-10) {
                 continue;
             }
         }
 
-        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, collisions, params, PSDProjectionMethod::NONE);
+        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, *collisions, params, PSDProjectionMethod::NONE);
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
@@ -349,7 +349,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
                 Eigen::RowVector3d face_center_fd = (V_fd.row(vids[0]) + V_fd.row(vids[1]) + V_fd.row(vids[2])) / 3.;
                 ConcatMatrixView<3> V_fd_extended(V_fd, face_center_fd);
 
-                return PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_fd_extended, collisions, params);
+                return PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_fd_extended, *collisions, params);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
         REQUIRE((h - fh).norm() < 1e-6 * std::max({h.norm(), fh.norm(), 1e-8}));

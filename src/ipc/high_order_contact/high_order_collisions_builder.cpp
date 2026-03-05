@@ -306,6 +306,40 @@ QuadratureCollisionsBuilder::QuadratureCollisionsBuilder(
 
 QuadratureCollisionsBuilder::~QuadratureCollisionsBuilder() = default;
 
+QuadratureCollisionsBuilder::QuadratureCollisionsBuilder(const QuadratureCollisionsBuilder& other)
+{
+    point_potential = other.point_potential;
+    vertex_collisions.clear();
+    for (const auto& cc : other.vertex_collisions) {
+        vertex_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::VERTEX>>(*cc));
+    }
+    edge_edge_collisions.clear();
+    for (const auto& cc : other.edge_edge_collisions) {
+        edge_edge_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::EDGE>>(*cc));
+    }
+    face_collisions.clear();
+    for (const auto& cc : other.face_collisions) {
+        face_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::FACE>>(*cc));
+    }
+}
+QuadratureCollisionsBuilder& QuadratureCollisionsBuilder::operator=(const QuadratureCollisionsBuilder& other)
+{
+    point_potential = other.point_potential;
+    vertex_collisions.clear();
+    for (const auto& cc : other.vertex_collisions) {
+        vertex_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::VERTEX>>(*cc));
+    }
+    edge_edge_collisions.clear();
+    for (const auto& cc : other.edge_edge_collisions) {
+        edge_edge_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::EDGE>>(*cc));
+    }
+    face_collisions.clear();
+    for (const auto& cc : other.face_collisions) {
+        face_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::FACE>>(*cc));
+    }
+    return *this;
+}
+
 void QuadratureCollisionsBuilder::build_vertex_collisions(
     const Eigen::MatrixXd& vertices,
     const std::vector<index_t>& vertex_indices,
@@ -314,7 +348,7 @@ void QuadratureCollisionsBuilder::build_vertex_collisions(
 {
     for (size_t i = start_i; i < end_i; i++) {
         const index_t vi = vertex_indices[i];
-        vertex_collisions.emplace_back(vi, point_potential->build_collisions_at_vertex(vertices, vi));
+        vertex_collisions.push_back(point_potential->build_collisions_at_vertex(vertices, vi));
     }
 }
 
@@ -326,7 +360,7 @@ void QuadratureCollisionsBuilder::build_face_collisions(
 {
     for (size_t i = start_i; i < end_i; i++) {
         const index_t fi = face_indices[i];
-        face_collisions.emplace_back(fi, point_potential->build_collisions_at_face_center(vertices, fi));
+        face_collisions.push_back(point_potential->build_collisions_at_face_center(vertices, fi));
     }
 }
 
@@ -372,17 +406,17 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
         }
 
         if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
-            edge_edge_collisions.emplace_back(std::make_pair(ei, ej), point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej));
+            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej));
         }
 
         if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
-            edge_edge_collisions.emplace_back(std::make_pair(ej, ei), point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei));
+            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei));
         }
     }
 }
 
 void QuadratureCollisionsBuilder::merge(
-    const ParallelCacheType<QuadratureCollisionsBuilder>& local_storage,
+    ParallelCacheType<QuadratureCollisionsBuilder>& local_storage,
     HighOrderCollisions& merged_collisions)
 {
     // Reserve space
@@ -396,10 +430,16 @@ void QuadratureCollisionsBuilder::merge(
     merged_collisions.edge_edge_collisions.reserve(total_ee);
     merged_collisions.face_collisions.reserve(total_f);
 
-    for (const auto& storage : local_storage) {
-        merged_collisions.vertex_collisions.insert(storage.vertex_collisions.begin(), storage.vertex_collisions.end());
-        merged_collisions.edge_edge_collisions.insert(storage.edge_edge_collisions.begin(), storage.edge_edge_collisions.end());
-        merged_collisions.face_collisions.insert(storage.face_collisions.begin(), storage.face_collisions.end());
+    for (auto& storage : local_storage) {
+        for (auto& cc : storage.vertex_collisions) {
+            merged_collisions.vertex_collisions.insert(std::make_pair<index_t, std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>>(cc->primitive_id(), std::move(cc)));
+        }
+        for (auto& cc : storage.edge_edge_collisions) {
+            merged_collisions.edge_edge_collisions.insert(std::make_pair(cc->primitive_ids(), std::move(cc)));
+        }
+        for (auto& cc : storage.face_collisions) {
+            merged_collisions.face_collisions.insert(std::make_pair(cc->primitive_id(), std::move(cc)));
+        }
     }
 }
 

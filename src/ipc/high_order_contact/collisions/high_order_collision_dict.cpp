@@ -4,6 +4,7 @@ namespace ipc
 {
     template <PointType pType>
     void HighOrderCollisionDict<pType>::initialize(
+        const std::vector<index_t>& primitive_ids,
         const std::vector<index_t>& primary_vertex_ids,
         const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& map
     )
@@ -11,6 +12,11 @@ namespace ipc
         assert(primary_vertex_ids.size() <= m_primary_vertex_ids.size());
         for (int i = 0; i < primary_vertex_ids.size(); i++) {
             m_primary_vertex_ids[i] = primary_vertex_ids[i];
+        }
+
+        assert(m_primitive_ids.size() <= m_primary_vertex_ids.size());
+        for (int i = 0; i < primitive_ids.size(); i++) {
+            m_primitive_ids[i] = primitive_ids[i];
         }
 
         std::set<index_t> vids;

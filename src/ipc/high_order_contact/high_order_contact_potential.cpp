@@ -92,7 +92,7 @@ double HighOrderContactPotential::operator()(
                                         dtype);
 
                                 local_potential += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                    ConcatMatrixView<3>(X, ee_closest_point), iter->second, params, dtype);
+                                    ConcatMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
                             }
                             else {
                                 /* P(q) = 0 */
@@ -102,19 +102,19 @@ double HighOrderContactPotential::operator()(
                         // face center
                         if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                             local_potential += PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                                ConcatMatrixView<3>(X, face_center), iter->second, params);
+                                ConcatMatrixView<3>(X, face_center), *(iter->second), params);
                         }
 
                         // vertex ea
                         if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
                             local_potential += PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                X, iter->second, params);
+                                X, *(iter->second), params);
                         }
 
                         // vertex eb
                         if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
                             local_potential += PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                X, iter->second, params);
+                                X, *(iter->second), params);
                         }
 
                         total += local_potential * area / 9.;
@@ -227,7 +227,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                     positionsT.row(2), positionsT.row(3),
                                         dtype);
 
-                                const HighOrderCollisionDict<PointType::EDGE>& dict = iter->second;
+                                const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
                                 ConcatMatrixView<3> X_extended(X, ee_closest_point);
                                 assert(X_extended.rows() == X.rows() + 1);
@@ -248,22 +248,22 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         // face center
                         if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                             Eigen::VectorXd tmp = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                                ConcatMatrixView<3>(X, face_center), iter->second, params);
-                            grad(iter->second.dofs()) += tmp * weight;
+                                ConcatMatrixView<3>(X, face_center), (*iter->second), params);
+                            grad((*iter->second).dofs()) += tmp * weight;
                         }
 
                         // vertex ea
                         if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
                             Eigen::VectorXd tmp = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                                X, iter->second, params);
-                            grad(iter->second.dofs()) += tmp * weight;
+                                X, (*iter->second), params);
+                            grad((*iter->second).dofs()) += tmp * weight;
                         }
 
                         // vertex eb
                         if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
                             Eigen::VectorXd tmp = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                                X, iter->second, params);
-                            grad(iter->second.dofs()) += tmp * weight;
+                                X, (*iter->second), params);
+                            grad((*iter->second).dofs()) += tmp * weight;
                         }
                     }
                 }
@@ -380,7 +380,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     positionsT.row(2), positionsT.row(3),
                                         dtype);
 
-                                const HighOrderCollisionDict<PointType::EDGE>& dict = iter->second;
+                                const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
                                 ConcatMatrixView<3> X_extended(X, ee_closest_point);
                                 assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
@@ -420,27 +420,27 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         // face center
                         if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                             const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
-                                ConcatMatrixView<3>(X, face_center), iter->second, params, project_hessian_to_psd);
+                                ConcatMatrixView<3>(X, face_center), (*iter->second), params, project_hessian_to_psd);
                             local_hessian_to_global_triplets(
-                                h * (area / 9.), iter->second.vertex_ids(), dim,
+                                h * (area / 9.), (*iter->second).vertex_ids(), dim,
                                 *(hess_triplets.cache));
                         }
 
                         // vertex ea
                         if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
                             const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                                X, iter->second, params, project_hessian_to_psd);
+                                X, (*iter->second), params, project_hessian_to_psd);
                             local_hessian_to_global_triplets(
-                                h * (area / 9.), iter->second.vertex_ids(), dim,
+                                h * (area / 9.), (*iter->second).vertex_ids(), dim,
                                 *(hess_triplets.cache));
                         }
 
                         // vertex eb
                         if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
                             const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                                X, iter->second, params, project_hessian_to_psd);
+                                X, (*iter->second), params, project_hessian_to_psd);
                             local_hessian_to_global_triplets(
-                                h * (area / 9.), iter->second.vertex_ids(), dim,
+                                h * (area / 9.), (*iter->second).vertex_ids(), dim,
                                 *(hess_triplets.cache));
                         }
                     }

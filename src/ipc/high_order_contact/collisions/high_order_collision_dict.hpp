@@ -27,6 +27,7 @@ public:
     ~HighOrderCollisionDict() = default;
 
     void initialize(
+        const std::vector<index_t>& primitive_ids,
         const std::vector<index_t>& primary_vertex_ids,
         const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& map
         );
@@ -36,6 +37,18 @@ public:
 
     HighOrderCollision& operator[](int i);
     const HighOrderCollision& operator[](int i) const;
+
+    template <PointType T = pType,
+          typename = std::enable_if_t<T != PointType::EDGE>>
+    int primitive_id() const {
+        return m_primitive_ids[0];
+    }
+
+    template <PointType T = pType,
+              typename = std::enable_if_t<T == PointType::EDGE>>
+    std::array<index_t, 2> primitive_ids() const {
+        return m_primitive_ids;
+    }
 
     /* These functions are only available after calling finish_insertion() */
 
@@ -51,6 +64,8 @@ private:
     std::vector<HighOrderCollision3DTemplate<Vertex3, Vertex3>> vv_collisions;
     std::vector<HighOrderCollision3DTemplate<Edge3P1, Vertex3>> ev_collisions;
     std::vector<HighOrderCollision3DTemplate<Face3P1, Vertex3>> fv_collisions;
+
+    std::array<index_t, 2> m_primitive_ids{{-1, -1}};
 
     /// @brief Primary vertices used to compute the virtual vertex
     /// When the quadrature point q is

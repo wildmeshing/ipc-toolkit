@@ -4,33 +4,29 @@
 #include "ipc/candidates/candidates.hpp"
 #include "ipc/distance/edge_edge.hpp"
 #include "ipc/high_order_contact/high_order_collisions_builder.hpp"
-#include "ipc/geometry/area.hpp"
-#include "ipc/smooth_contact/distance/point_face.hpp"
 #include "ipc/smooth_contact/distance/mollifier.hpp"
 
 namespace ipc
 {
-    namespace
+    namespace {
+    template <typename KeyType, typename ValueType>
+    void
+    insert_pair(unordered_map<KeyType, ValueType>& map, ValueType&& collision)
     {
-        template <typename KeyType, typename ValueType>
-        void insert_pair(
-            unordered_map<KeyType, ValueType>& map,
-            ValueType&& collision)
-        {
-            if (auto iter = map.find(collision->get_typed_hash()); iter != map.end()) {
-                iter->second->weight += collision->weight;
-                if (iter->second->weight == 0) {
-                    map.erase(iter);
-                }
-            } else {
-                map[collision->get_typed_hash()] = std::move(collision);
+        if (auto iter = map.find(collision->get_typed_hash());
+            iter != map.end()) {
+            iter->second->weight += collision->weight;
+            if (iter->second->weight == 0) {
+                map.erase(iter);
             }
+        } else {
+            map[collision->get_typed_hash()] = std::move(collision);
         }
     }
-    HighOrderCollisionDict<PointType::VERTEX>
-    PointPotential::build_collisions_at_vertex(
-        const Eigen::MatrixXd& V,
-        const index_t vid) const
+} // namespace
+std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>
+PointPotential::build_collisions_at_vertex(
+    const Eigen::MatrixXd& V, const index_t vid) const
     {
         unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>> pairs;
 
@@ -65,8 +61,8 @@ namespace ipc
             insert_pair(pairs, std::move(pair));
         }
 
-        HighOrderCollisionDict<PointType::VERTEX> collisions;
-        collisions.initialize(std::vector<index_t>{vid}, pairs);
+        std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>> collisions = std::make_unique<HighOrderCollisionDict<PointType::VERTEX>>();
+        collisions->initialize(std::vector<index_t>{vid}, std::vector<index_t>{vid}, pairs);
         return collisions;
     }
 
@@ -135,7 +131,7 @@ namespace ipc
         return H;
     }
 
-    HighOrderCollisionDict<PointType::EDGE>
+    std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>
     PointPotential::build_collisions_at_edge_edge_closest_point(
         const Eigen::MatrixXd& V,
         const index_t e0,
@@ -156,9 +152,6 @@ namespace ipc
         );
         if (dtype != EdgeEdgeDistanceType::EA_EB && dtype != EdgeEdgeDistanceType::EA_EB0 && dtype !=
             EdgeEdgeDistanceType::EA_EB1) {
-            std::cout << "positions at error\n";
-            std::cout << std::fixed << std::setprecision(15) << V({e00, e01, e10, e11}, Eigen::all) << '\n';
-            std::cout << "dtype " << static_cast<int>(dtype) << '\n';
             log_and_throw_error("Can only handle EA_EB* distance type!");
         }
 
@@ -336,8 +329,8 @@ namespace ipc
             }
         }
 
-        HighOrderCollisionDict<PointType::EDGE> collisions;
-        collisions.initialize(std::vector{e00, e01, e10, e11}, pairs);
+        std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>> collisions = std::make_unique<HighOrderCollisionDict<PointType::EDGE>>();
+        collisions->initialize(std::vector<index_t>{e0, e1}, std::vector{e00, e01, e10, e11}, pairs);
         return collisions;
     }
 
@@ -474,7 +467,7 @@ namespace ipc
         return H;
     }
 
-    HighOrderCollisionDict<PointType::FACE>
+    std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>
     PointPotential::build_collisions_at_face_center(
         const Eigen::MatrixXd& V,
         const index_t fid) const
@@ -519,8 +512,8 @@ namespace ipc
             insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
         }
 
-        HighOrderCollisionDict<PointType::FACE> collisions;
-        collisions.initialize(std::vector<index_t>{mesh.faces()(fid, 0), mesh.faces()(fid, 1), mesh.faces()(fid, 2)}, pairs);
+        std::unique_ptr<HighOrderCollisionDict<PointType::FACE>> collisions = std::make_unique<HighOrderCollisionDict<PointType::FACE>>();
+        collisions->initialize(std::vector<index_t>{fid}, std::vector<index_t>{mesh.faces()(fid, 0), mesh.faces()(fid, 1), mesh.faces()(fid, 2)}, pairs);
         return collisions;
     }
 
