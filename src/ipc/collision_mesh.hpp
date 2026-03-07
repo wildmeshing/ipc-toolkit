@@ -142,6 +142,36 @@ public:
         return m_is_obstacle_vertex[i];
     }
 
+    /// @brief Check if edge i is from an obstacle.
+    /// @note This checks if all vertices of the edge are obstacle vertices.
+    /// @throws std::runtime_error if some but not all vertices are obstacle vertices.
+    bool is_obstacle_edge(const index_t i) const
+    {
+        const auto& edge_v_indices = edges().row(i);
+        const bool v0_is_obstacle = is_obstacle_vertex(edge_v_indices(0));
+        const bool v1_is_obstacle = is_obstacle_vertex(edge_v_indices(1));
+
+        if (v0_is_obstacle != v1_is_obstacle) {
+            throw std::runtime_error("Edge has a mix of obstacle and non-obstacle vertices.");
+        }
+        return v0_is_obstacle;
+    }
+
+    /// @brief Check if face i is from an obstacle.
+    /// @note This checks if all vertices of the face are obstacle vertices.
+    /// @throws std::runtime_error if some but not all vertices are obstacle vertices.
+    bool is_obstacle_face(const index_t i) const
+    {
+        const auto& face_v_indices = faces().row(i);
+        const bool v0_is_obstacle = is_obstacle_vertex(face_v_indices(0));
+        const bool v1_is_obstacle = is_obstacle_vertex(face_v_indices(1));
+        const bool v2_is_obstacle = is_obstacle_vertex(face_v_indices(2));
+        if ((v0_is_obstacle != v1_is_obstacle) || (v1_is_obstacle != v2_is_obstacle)) {
+            throw std::runtime_error("Face has a mix of obstacle and non-obstacle vertices.");
+        }
+        return v0_is_obstacle;
+    }
+
     /// @brief Get the indices of codimensional edges of the collision mesh (|CE| × 1).
     const Eigen::VectorXi& codim_edges() const { return m_codim_edges; }
 
