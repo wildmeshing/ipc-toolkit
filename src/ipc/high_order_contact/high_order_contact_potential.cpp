@@ -30,17 +30,18 @@ double HighOrderContactPotential::operator()(
 
     tbb::enumerable_thread_specific<double> storage(0);
 
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(size_t(0), collisions.size()),
-        [&](const tbb::blocked_range<size_t>& r) {
-            auto& local_potential = storage.local();
-            for (size_t i = r.begin(); i < r.end(); i++) {
-                // Quadrature weight is premultiplied by local potential
-                local_potential += (*this)(collisions[i], collisions[i].dof(X));
-            }
-        });
-
-    if (mesh.dim() == 3) {
+    if (mesh.dim() == 2) {
+        tbb::parallel_for(
+            tbb::blocked_range<size_t>(size_t(0), collisions.size()),
+            [&](const tbb::blocked_range<size_t>& r) {
+                auto& local_potential = storage.local();
+                for (size_t i = r.begin(); i < r.end(); i++) {
+                    // Quadrature weight is premultiplied by local potential
+                    local_potential += (*this)(collisions[i], collisions[i].dof(X));
+                }
+            });
+    }
+    else if (mesh.dim() == 3) {
         {
             auto potential_storage = create_thread_storage(0.0);
 
@@ -153,22 +154,24 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
     auto storage =
         create_thread_storage<Eigen::VectorXd>(Eigen::VectorXd::Zero(X.size()));
-    maybe_parallel_for(
-        collisions.size(), [&](int start, int end, int thread_id) {
-            auto& global_grad = get_local_thread_storage(storage, thread_id);
 
-            for (size_t i = start; i < end; i++) {
-                const HighOrderCollision& collision = collisions[i];
+    if (mesh.dim() == 2) {
+        maybe_parallel_for(
+            collisions.size(), [&](int start, int end, int thread_id) {
+                auto& global_grad = get_local_thread_storage(storage, thread_id);
 
-                const Eigen::VectorXd local_grad =
-                    this->gradient(collision, collision.dof(X));
+                for (size_t i = start; i < end; i++) {
+                    const HighOrderCollision& collision = collisions[i];
 
-                local_gradient_to_global_gradient(
-                    local_grad, collision.vertex_ids(), dim, global_grad);
-            }
-        });
+                    const Eigen::VectorXd local_grad =
+                        this->gradient(collision, collision.dof(X));
 
-    if (mesh.dim() == 3) {
+                    local_gradient_to_global_gradient(
+                        local_grad, collision.vertex_ids(), dim, global_grad);
+                }
+            });
+    }
+    else if (mesh.dim() == 3) {
         {
             using T = ADGrad<12>;
 
@@ -304,24 +307,26 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
     const int buffer_size = std::min(max_triplets_size, ndof);
     auto storage =
         create_thread_storage(LocalThreadMatStorage(buffer_size, ndof, ndof));
-    maybe_parallel_for(
-        collisions.size(), [&](int start, int end, int thread_id) {
-            auto& hess_triplets = get_local_thread_storage(storage, thread_id);
 
-            for (size_t i = start; i < end; i++) {
-                const HighOrderCollision& collision = collisions[i];
+    if (mesh.dim() == 2) {
+        maybe_parallel_for(
+            collisions.size(), [&](int start, int end, int thread_id) {
+                auto& hess_triplets = get_local_thread_storage(storage, thread_id);
 
-                const Eigen::MatrixXd local_hess = this->hessian(
-                    collisions[i], collisions[i].dof(X),
-                    project_hessian_to_psd);
+                for (size_t i = start; i < end; i++) {
+                    const HighOrderCollision& collision = collisions[i];
 
-                local_hessian_to_global_triplets(
-                    local_hess, collision.vertex_ids(), dim,
-                    *(hess_triplets.cache));
-            }
-        });
+                    const Eigen::MatrixXd local_hess = this->hessian(
+                        collisions[i], collisions[i].dof(X),
+                        project_hessian_to_psd);
 
-    if (mesh.dim() == 3) {
+                    local_hessian_to_global_triplets(
+                        local_hess, collision.vertex_ids(), dim,
+                        *(hess_triplets.cache));
+                }
+            });
+    }
+    else if (mesh.dim() == 3) {
         {
             using T = ADHessian<12>;
 
