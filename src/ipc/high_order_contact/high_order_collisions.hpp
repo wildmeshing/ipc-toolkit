@@ -12,8 +12,6 @@ public:
     /// @brief The type of the collisions.
     using value_type = HighOrderCollision;
 
-    constexpr static bool use_parallel_build = true;
-
 public:
     HighOrderCollisions() = default;
     virtual ~HighOrderCollisions() = default;

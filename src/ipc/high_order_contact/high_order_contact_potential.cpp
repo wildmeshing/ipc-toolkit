@@ -123,11 +123,7 @@ double HighOrderContactPotential::operator()(
                 }
             };
 
-            if constexpr (use_parallel_eval) {
-                maybe_parallel_for(mesh.num_faces(), loop_body);
-            } else {
-                loop_body(0, mesh.num_faces(), 0);
-            }
+            maybe_parallel_for(mesh.num_faces(), loop_body);
 
             double total_potential = 0;
             for (const auto& local_potential : potential_storage) {
@@ -272,11 +268,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                 }
             };
 
-            if constexpr (use_parallel_eval) {
-                maybe_parallel_for(mesh.num_faces(), loop_body);
-            } else {
-                loop_body(0, mesh.num_faces(), 0);
-            }
+            maybe_parallel_for(mesh.num_faces(), loop_body);
         }
     }
 
@@ -452,11 +444,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                 }
             };
 
-            if constexpr (use_parallel_eval) {
-                maybe_parallel_for(mesh.num_faces(), loop_body);
-            } else {
-                loop_body(0, mesh.num_faces(), 0);
-            }
+            maybe_parallel_for(mesh.num_faces(), loop_body);
         }
     }
 

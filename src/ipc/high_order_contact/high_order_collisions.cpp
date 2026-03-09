@@ -285,151 +285,74 @@ void HighOrderCollisions::build(
             log_and_throw_error("HighOrderCollisions 3D not implemented for non-watertight meshes!");
         }
 
-        {
-            /* prepare collision sets to compute each P(q) */
-            if constexpr (use_parallel_build) {
-                // compute masks
-                std::vector<bool> vertex_mask(mesh.num_vertices(), false);
-                for (const auto& candidate : candidates.fv_candidates) {
-                    vertex_mask[candidate.vertex_id] = true;
-                }
-                std::vector<index_t> vertices_to_process;
-                vertices_to_process.reserve(mesh.num_vertices());
-                for (int i = 0; i < mesh.num_vertices(); ++i) {
-                    if (vertex_mask[i]) {
-                        vertices_to_process.push_back(i);
-                    }
-                }
+        /* prepare collision sets to compute each P(q) */
+        // compute masks
+        std::vector<bool> vertex_mask(mesh.num_vertices(), false);
+        for (const auto& candidate : candidates.fv_candidates) {
+            vertex_mask[candidate.vertex_id] = true;
+        }
+        std::vector<index_t> vertices_to_process;
+        vertices_to_process.reserve(mesh.num_vertices());
+        for (int i = 0; i < mesh.num_vertices(); ++i) {
+            if (vertex_mask[i]) {
+                vertices_to_process.push_back(i);
+            }
+        }
 
-                std::vector<bool> face_mask(mesh.num_faces(), false);
-                for (const auto& candidate : candidates.fv_candidates) {
-                    face_mask[candidate.face_id] = true;
-                }
-                for (const auto& candidate : candidates.ee_candidates) {
-                    for (index_t e : { candidate.edge0_id, candidate.edge1_id }) {
-                        for (int lf = 0; lf < 2; lf++) {
-                            const index_t fi = mesh.edges_to_faces()(e, lf);
-                            if (fi >= 0) {
-                                face_mask[fi] = true;
-                            }
-                        }
-                    }
-                }
-                std::vector<index_t> faces_to_process;
-                faces_to_process.reserve(mesh.num_faces());
-                for (int i = 0; i < mesh.num_faces(); ++i) {
-                    if (face_mask[i]) {
-                        faces_to_process.push_back(i);
-                    }
-                }
-
-                // create builder and parallel loops
-                auto storage = create_thread_storage<QuadratureCollisionsBuilder>(
-                    QuadratureCollisionsBuilder(mesh, candidates, params));
-
-                maybe_parallel_for(
-                    vertices_to_process.size(),
-                    [&](int start, int end, int thread_id) {
-                        QuadratureCollisionsBuilder& local_storage =
-                            get_local_thread_storage(storage, thread_id);
-                        local_storage.build_vertex_collisions(
-                            vertices, vertices_to_process, start, end);
-                    });
-
-                maybe_parallel_for(
-                    faces_to_process.size(),
-                    [&](int start, int end, int thread_id) {
-                        QuadratureCollisionsBuilder& local_storage =
-                            get_local_thread_storage(storage, thread_id);
-                        local_storage.build_face_collisions(
-                            vertices, faces_to_process, start, end);
-                    });
-
-                maybe_parallel_for(
-                    candidates.ee_candidates.size(),
-                    [&](int start, int end, int thread_id) {
-                        QuadratureCollisionsBuilder& local_storage =
-                            get_local_thread_storage(storage, thread_id);
-                        local_storage.build_edge_edge_collisions(
-                            vertices, candidates.ee_candidates, start, end);
-                    });
-
-                QuadratureCollisionsBuilder::merge(storage, *this);
-            } else {
-                PointPotential point_potential(mesh, candidates, params);
-
-                for (const auto& candidate : candidates.fv_candidates) {
-                    const index_t vi = candidate.vertex_id;
-                    if (vertex_collisions.find(vi) == vertex_collisions.end()) {
-                        vertex_collisions[vi] = point_potential.build_collisions_at_vertex(vertices, vi);
-                    }
-
-                    const index_t fi = candidate.face_id;
-                    if (face_collisions.find(fi) == face_collisions.end()) {
-                        face_collisions[fi] = point_potential.build_collisions_at_face_center(vertices, fi);
-                    }
-                }
-
-                for (const auto& candidate : candidates.ee_candidates) {
-                    const index_t ei = candidate.edge0_id;
-                    const index_t ej = candidate.edge1_id;
-
-                    const index_t ea = mesh.edges()(ei, 0);
-                    const index_t eb = mesh.edges()(ei, 1);
-                    const index_t ec = mesh.edges()(ej, 0);
-                    const index_t ed = mesh.edges()(ej, 1);
-
-                    if (ea == ec || ea == ed || eb == ec || eb == ed) {
-                        continue;
-                    }
-
-                    const auto dtype = edge_edge_distance_type(
-                        vertices.row(ea), vertices.row(eb),
-                        vertices.row(ec), vertices.row(ed));
-
-                    const double dist = sqrt(edge_edge_distance(
-                        vertices.row(ea), vertices.row(eb),
-                        vertices.row(ec), vertices.row(ed)));
-
-                    if (dist >= params.dhat) {
-                        continue;
-                    }
-
-                    if (is_parallel_edge_edge(
-                        vertices.row(ea), vertices.row(eb),
-                        vertices.row(ec), vertices.row(ed))) {
-                        continue;
-                    }
-
-                    if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
-                        if (edge_edge_collisions.find(std::make_pair(ei, ej)) == edge_edge_collisions.end()) {
-                            edge_edge_collisions[std::make_pair(ei, ej)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ei, ej, dtype);
-                        }
-                    }
-
-                    if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
-                        if (edge_edge_collisions.find(std::make_pair(ej, ei)) == edge_edge_collisions.end()) {
-                            edge_edge_collisions[std::make_pair(ej, ei)] = point_potential.build_collisions_at_edge_edge_closest_point(vertices, ej, ei, reflectEdgeEdgeDistanceType(dtype));
-                        }
-                    }
-                }
-
-                for (const auto& candidate : candidates.ee_candidates) {
-                    const index_t ei = candidate.edge0_id;
-                    const index_t ej = candidate.edge1_id;
-                    for (index_t e : {ei, ej}) {
-                        for (int lf = 0; lf < 2; lf++) {
-                            const index_t fi = mesh.edges_to_faces()(e, lf);
-                            if (fi >= 0) {
-                                if (face_collisions.find(fi) == face_collisions.end()) {
-                                    face_collisions[fi] = point_potential.build_collisions_at_face_center(vertices, fi);
-                                }
-                            }
-                        }
+        std::vector<bool> face_mask(mesh.num_faces(), false);
+        for (const auto& candidate : candidates.fv_candidates) {
+            face_mask[candidate.face_id] = true;
+        }
+        for (const auto& candidate : candidates.ee_candidates) {
+            for (index_t e : { candidate.edge0_id, candidate.edge1_id }) {
+                for (int lf = 0; lf < 2; lf++) {
+                    const index_t fi = mesh.edges_to_faces()(e, lf);
+                    if (fi >= 0) {
+                        face_mask[fi] = true;
                     }
                 }
             }
         }
+        std::vector<index_t> faces_to_process;
+        faces_to_process.reserve(mesh.num_faces());
+        for (int i = 0; i < mesh.num_faces(); ++i) {
+            if (face_mask[i]) {
+                faces_to_process.push_back(i);
+            }
+        }
+
+        // create builder and parallel loops
+        auto storage = create_thread_storage<QuadratureCollisionsBuilder>(
+            QuadratureCollisionsBuilder(mesh, candidates, params));
+
+        maybe_parallel_for(
+            vertices_to_process.size(),
+            [&](int start, int end, int thread_id) {
+                QuadratureCollisionsBuilder& local_storage =
+                    get_local_thread_storage(storage, thread_id);
+                local_storage.build_vertex_collisions(
+                    vertices, vertices_to_process, start, end);
+            });
+
+        maybe_parallel_for(
+            faces_to_process.size(),
+            [&](int start, int end, int thread_id) {
+                QuadratureCollisionsBuilder& local_storage =
+                    get_local_thread_storage(storage, thread_id);
+                local_storage.build_face_collisions(
+                    vertices, faces_to_process, start, end);
+            });
+
+        maybe_parallel_for(
+            candidates.ee_candidates.size(),
+            [&](int start, int end, int thread_id) {
+                QuadratureCollisionsBuilder& local_storage =
+                    get_local_thread_storage(storage, thread_id);
+                local_storage.build_edge_edge_collisions(
+                    vertices, candidates.ee_candidates, start, end);
+            });
+
+        QuadratureCollisionsBuilder::merge(storage, *this);
     }
     m_candidates = candidates;
 }

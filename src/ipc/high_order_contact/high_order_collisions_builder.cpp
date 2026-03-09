@@ -346,8 +346,10 @@ void QuadratureCollisionsBuilder::build_vertex_collisions(
     const size_t start_i,
     const size_t end_i)
 {
+    const CollisionMesh& mesh = point_potential->mesh;
     for (size_t i = start_i; i < end_i; i++) {
         const index_t vi = vertex_indices[i];
+        if (point_potential->params.skip_obstacle && mesh.is_obstacle_vertex(vi)) continue;
         vertex_collisions.push_back(point_potential->build_collisions_at_vertex(vertices, vi));
     }
 }
@@ -358,8 +360,10 @@ void QuadratureCollisionsBuilder::build_face_collisions(
     const size_t start_i,
     const size_t end_i)
 {
+    const CollisionMesh& mesh = point_potential->mesh;
     for (size_t i = start_i; i < end_i; i++) {
         const index_t fi = face_indices[i];
+        if (point_potential->params.skip_obstacle && mesh.is_obstacle_face(fi)) continue;
         face_collisions.push_back(point_potential->build_collisions_at_face_center(vertices, fi));
     }
 }
@@ -405,11 +409,17 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             continue;
         }
 
-        if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA_EB0 || dtype == EdgeEdgeDistanceType::EA_EB1) {
+        if (!(params.skip_obstacle && mesh.is_obstacle_edge(ei)) && (
+            dtype == EdgeEdgeDistanceType::EA_EB ||
+            dtype == EdgeEdgeDistanceType::EA_EB0 ||
+            dtype == EdgeEdgeDistanceType::EA_EB1)) {
             edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej, dtype));
         }
 
-        if (dtype == EdgeEdgeDistanceType::EA_EB || dtype == EdgeEdgeDistanceType::EA0_EB || dtype == EdgeEdgeDistanceType::EA1_EB) {
+        if (!(params.skip_obstacle && mesh.is_obstacle_edge(ei)) && (
+            dtype == EdgeEdgeDistanceType::EA_EB ||
+            dtype == EdgeEdgeDistanceType::EA0_EB ||
+            dtype == EdgeEdgeDistanceType::EA1_EB)) {
             edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei, reflectEdgeEdgeDistanceType(dtype)));
         }
     }
