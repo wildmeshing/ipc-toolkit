@@ -435,7 +435,8 @@ void QuadratureCollisionsBuilder::merge(
             merged_collisions.vertex_collisions.insert(std::make_pair<index_t, std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>>(cc->primitive_id(), std::move(cc)));
         }
         for (auto& cc : storage.edge_edge_collisions) {
-            merged_collisions.edge_edge_collisions.insert(std::make_pair(cc->primitive_ids(), std::move(cc)));
+            const auto id = cc->primitive_ids();
+            merged_collisions.edge_edge_collisions.insert(std::make_pair(std::make_pair(id[0], id[1]), std::move(cc)));
         }
         for (auto& cc : storage.face_collisions) {
             merged_collisions.face_collisions.insert(std::make_pair(cc->primitive_id(), std::move(cc)));
