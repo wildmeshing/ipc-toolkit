@@ -161,22 +161,40 @@ PointTriangleDistanceType point_triangle_distance_type(
 }
 
 
+bool is_almost_parallel_edge_edge(
+    Eigen::ConstRef<Eigen::Vector3d> ea0,
+    Eigen::ConstRef<Eigen::Vector3d> ea1,
+    Eigen::ConstRef<Eigen::Vector3d> eb0,
+    Eigen::ConstRef<Eigen::Vector3d> eb1)
+{
+    const Eigen::Vector3d u = ea1 - ea0;
+    const Eigen::Vector3d v = eb1 - eb0;
+    const double cross_norm_sqr = u.cross(v).squaredNorm();
+    const double a = u.squaredNorm();
+    const double c = v.squaredNorm();
+    const double z = (a*c > 1.0) ? a*c : 1.0;
+    return cross_norm_sqr < z * PARALLEL_THRESHOLD;
+}
+
 bool is_parallel_edge_edge(
     Eigen::ConstRef<Eigen::Vector3d> ea0_,
     Eigen::ConstRef<Eigen::Vector3d> ea1_,
     Eigen::ConstRef<Eigen::Vector3d> eb0_,
     Eigen::ConstRef<Eigen::Vector3d> eb1_)
 {
-    init_pck();
-    // TODO use a zero filter?
-    const int s = cross_null_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data());
-    if (s != FPG_UNCERTAIN_VALUE) return false;
-    const ExVec3 ea0 = make_exact(ea0_);
-    const ExVec3 ea1 = make_exact(ea1_);
-    const ExVec3 eb0 = make_exact(eb0_);
-    const ExVec3 eb1 = make_exact(eb1_);
-    const ExReal cross_norm_sqr = cross(ea1-ea0, eb1-eb0).length2();
-    return cross_norm_sqr == 0;
+    if constexpr (PARALLEL_THRESHOLD == 0.0) {
+        init_pck();
+        // TODO use a zero filter?
+        const int s = cross_null_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data());
+        if (s != FPG_UNCERTAIN_VALUE) return false;
+        const ExVec3 ea0 = make_exact(ea0_);
+        const ExVec3 ea1 = make_exact(ea1_);
+        const ExVec3 eb0 = make_exact(eb0_);
+        const ExVec3 eb1 = make_exact(eb1_);
+        const ExReal cross_norm_sqr = cross(ea1-ea0, eb1-eb0).length2();
+        return cross_norm_sqr == 0;
+    }
+    else return is_almost_parallel_edge_edge(ea0_, ea1_, eb0_, eb1_);
 }
 
 
@@ -223,171 +241,7 @@ EdgeEdgeDistanceType edge_edge_parallel_distance_type(
 
 #else
 
-PointEdgeDistanceType point_edge_distance_type(
-    Eigen::ConstRef<VectorMax3d> p,
-    Eigen::ConstRef<VectorMax3d> e0,
-    Eigen::ConstRef<VectorMax3d> e1)
-{
-    init_pck();
-    assert(p.size() == e0.size() && p.size() == e1.size());
-    if (p.size() == 2) {
-        if (dot3_2d(e0, p, e1) <= 0) return PointEdgeDistanceType::P_E0;
-        else if (dot3_2d(e1, p, e0) <= 0) return PointEdgeDistanceType::P_E1;
-        else return PointEdgeDistanceType::P_E;
-    }
-    else {
-        if (dot3_3d(e0, p, e1) <= 0) return PointEdgeDistanceType::P_E0;
-        else if (dot3_3d(e1, p, e0) <= 0) return PointEdgeDistanceType::P_E1;
-        else return PointEdgeDistanceType::P_E;
-    }
-}
-
-
-PointTriangleDistanceType point_triangle_distance_type(
-    Eigen::ConstRef<Eigen::Vector3d> p,
-    Eigen::ConstRef<Eigen::Vector3d> t0,
-    Eigen::ConstRef<Eigen::Vector3d> t1,
-    Eigen::ConstRef<Eigen::Vector3d> t2)
-{
-    init_pck();
-    const int dot01 = dot3_3d(t0, p, t1);
-    const int dot02 = dot3_3d(t0, p, t2);
-    if (dot01 <= 0 && dot02 <= 0) {
-        return PointTriangleDistanceType::P_T0;
-    }
-    const int dot12 = dot3_3d(t1, p, t2);
-    const int dot10 = dot3_3d(t1, p, t0);
-    if (dot12 <= 0 && dot10 <= 0) {
-        return PointTriangleDistanceType::P_T1;
-    }
-    const int dot20 = dot3_3d(t2, p, t0);
-    const int dot21 = dot3_3d(t2, p, t1);
-    if (dot20 <= 0 && dot21 <= 0) {
-        return PointTriangleDistanceType::P_T2;
-    }
-
-    if (cross_dot_cross_1(t0, t1, t2, p) >= 0 && dot01 > 0 && dot10 > 0)
-        return PointTriangleDistanceType::P_E0;
-    if (cross_dot_cross_1(t1, t2, t0, p) >= 0 && dot12 > 0 && dot21 > 0)
-        return PointTriangleDistanceType::P_E1;
-    if (cross_dot_cross_1(t2, t0, t1, p) >= 0 && dot20 > 0 && dot02 > 0)
-        return PointTriangleDistanceType::P_E2;
-
-    return PointTriangleDistanceType::P_T;
-}
-
-
-bool is_parallel_edge_edge(
-    Eigen::ConstRef<Eigen::Vector3d> ea0_,
-    Eigen::ConstRef<Eigen::Vector3d> ea1_,
-    Eigen::ConstRef<Eigen::Vector3d> eb0_,
-    Eigen::ConstRef<Eigen::Vector3d> eb1_)
-{
-    init_pck();
-    // TODO use a zero filter?
-    if constexpr (PARALLEL_THRESHOLD == 0.0) {
-        const int s = cross_null_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data());
-        if (s != FPG_UNCERTAIN_VALUE) return false;
-        const ExVec3 ea0 = make_exact(ea0_);
-        const ExVec3 ea1 = make_exact(ea1_);
-        const ExVec3 eb0 = make_exact(eb0_);
-        const ExVec3 eb1 = make_exact(eb1_);
-        const ExReal cross_norm_sqr = cross(ea1-ea0, eb1-eb0).length2();
-        return cross_norm_sqr == 0;
-    }
-    else {
-        // this computation can be approximate, as it is just an arbitrary threshold.
-        const Eigen::Vector3d ea = ea1_ - ea0_;
-        const Eigen::Vector3d eb = eb1_ - eb0_;
-        const double eal2 = ea.squaredNorm();
-        const double ebl2 = eb.squaredNorm();
-        const double z = std::max(1.0, eal2 * ebl2) * PARALLEL_THRESHOLD;
-        const int s = cross_almost_null_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data(), z);
-        if (s != FPG_UNCERTAIN_VALUE) return false;
-        const ExVec3 ea0 = make_exact(ea0_);
-        const ExVec3 ea1 = make_exact(ea1_);
-        const ExVec3 eb0 = make_exact(eb0_);
-        const ExVec3 eb1 = make_exact(eb1_);
-        const ExReal cross_norm_sqr = cross(ea1-ea0, eb1-eb0).length2();
-        return cross_norm_sqr < z;
-    }
-}
-
-
-EdgeEdgeDistanceType edge_edge_distance_type(
-    Eigen::ConstRef<Eigen::Vector3d> ea0,
-    Eigen::ConstRef<Eigen::Vector3d> ea1,
-    Eigen::ConstRef<Eigen::Vector3d> eb0,
-    Eigen::ConstRef<Eigen::Vector3d> eb1)
-{
-    init_pck();
-
-    const PointEdgeDistanceType dt_ea0 = point_edge_distance_type(ea0, eb0, eb1);
-    const PointEdgeDistanceType dt_ea1 = point_edge_distance_type(ea1, eb0, eb1);
-
-    if (dt_ea0 == PointEdgeDistanceType::P_E0 && dot3_3d(ea0, eb0, ea1) <= 0)
-        return EdgeEdgeDistanceType::EA0_EB0;
-    if (dt_ea0 == PointEdgeDistanceType::P_E1 && dot3_3d(ea0, eb1, ea1) <= 0)
-        return EdgeEdgeDistanceType::EA0_EB1;
-    if (dt_ea1 == PointEdgeDistanceType::P_E0 && dot3_3d(ea1, eb0, ea0) <= 0)
-        return EdgeEdgeDistanceType::EA1_EB0;
-    if (dt_ea1 == PointEdgeDistanceType::P_E1 && dot3_3d(ea1, eb1, ea0) <= 0)
-        return EdgeEdgeDistanceType::EA1_EB1;
-
-    const PointEdgeDistanceType dt_eb0 = point_edge_distance_type(eb0, ea0, ea1);
-    const PointEdgeDistanceType dt_eb1 = point_edge_distance_type(eb1, ea0, ea1);
-
-    if (dt_eb0 == PointEdgeDistanceType::P_E && cross_dot_cross_2(eb0, ea0, ea1, eb1) >= 0)
-        return EdgeEdgeDistanceType::EA_EB0;
-    if (dt_eb1 == PointEdgeDistanceType::P_E && cross_dot_cross_2(eb1, ea0, ea1, eb0) >= 0)
-        return EdgeEdgeDistanceType::EA_EB1;
-    if (dt_ea0 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea0, eb0, eb1, ea1) >= 0)
-        return EdgeEdgeDistanceType::EA0_EB;
-    if (dt_ea1 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea1, eb0, eb1, ea0) >= 0)
-        return EdgeEdgeDistanceType::EA1_EB;
-
-    return EdgeEdgeDistanceType::EA_EB;
-}
-
-
-EdgeEdgeDistanceType edge_edge_parallel_distance_type(
-    Eigen::ConstRef<Eigen::Vector3d> ea0,
-    Eigen::ConstRef<Eigen::Vector3d> ea1,
-    Eigen::ConstRef<Eigen::Vector3d> eb0,
-    Eigen::ConstRef<Eigen::Vector3d> eb1)
-{
-    init_pck();
-
-    const int sa0 = dot3_3d(ea0, eb0, ea1);
-    const int sa1 = dot3_3d(ea1, eb0, ea0);
-    const int sb0 = dot3_3d(ea0, eb1, ea1);
-    const int sb1 = dot3_3d(ea1, eb1, ea0);
-    const int sab = dot4_3d(ea0, ea1, eb0, eb1);
-
-    if (sa0 <= 0) {
-        if (sab <= 0) {
-            return EdgeEdgeDistanceType::EA0_EB0;
-        }
-        if (sb1 >= 0) {
-            if (sb0 > 0) return EdgeEdgeDistanceType::EA_EB1;
-            else return EdgeEdgeDistanceType::EA0_EB1;
-        }
-        return EdgeEdgeDistanceType::EA0_EB;
-    } 
-    
-    if (sa1 <= 0) {
-        if (sab >= 0) {
-            return EdgeEdgeDistanceType::EA1_EB0;
-        }
-        if (sb0 >= 0) {
-            if (sb1 > 0) return EdgeEdgeDistanceType::EA_EB1;
-            else return EdgeEdgeDistanceType::EA1_EB1;
-        }
-        return EdgeEdgeDistanceType::EA1_EB;
-    }
-
-    return EdgeEdgeDistanceType::EA_EB0;
-}
+#error "NOT IMPLEMENTED!"
 
 #endif
 

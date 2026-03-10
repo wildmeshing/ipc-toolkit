@@ -7,8 +7,6 @@
 using namespace ipc;
 using ExReal = GEO::expansion_nt; // exact scalar type
 using ExVec3 = GEO::vec3E; // exact vector
-//constexpr double PARALLEL_THRESHOLD {1e-20}; //TODO set to zero eventually
-constexpr double PARALLEL_THRESHOLD {0};
 
 inline void init_pck() { // TODO init once in main
     static bool initialized = false;

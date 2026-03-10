@@ -391,6 +391,17 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             continue;
         }
 
+        if (params.skip_obstacle && mesh.is_obstacle_edge(ei) && mesh.is_obstacle_edge(ej)) {
+            continue;
+        }
+
+
+        if (is_parallel_edge_edge(
+            vertices.row(ea), vertices.row(eb),
+            vertices.row(ec), vertices.row(ed))) {
+            continue;
+        }
+
         const auto dtype = edge_edge_distance_type(
             vertices.row(ea), vertices.row(eb),
             vertices.row(ec), vertices.row(ed));
@@ -403,12 +414,6 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             continue;
         }
 
-        if (is_parallel_edge_edge(
-            vertices.row(ea), vertices.row(eb),
-            vertices.row(ec), vertices.row(ed))) {
-            continue;
-        }
-
         if (!(params.skip_obstacle && mesh.is_obstacle_edge(ei)) && (
             dtype == EdgeEdgeDistanceType::EA_EB ||
             dtype == EdgeEdgeDistanceType::EA_EB0 ||
@@ -416,7 +421,7 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej, dtype));
         }
 
-        if (!(params.skip_obstacle && mesh.is_obstacle_edge(ei)) && (
+        if (!(params.skip_obstacle && mesh.is_obstacle_edge(ej)) && (
             dtype == EdgeEdgeDistanceType::EA_EB ||
             dtype == EdgeEdgeDistanceType::EA0_EB ||
             dtype == EdgeEdgeDistanceType::EA1_EB)) {

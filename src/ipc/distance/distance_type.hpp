@@ -3,6 +3,7 @@
 #include <ipc/utils/eigen_ext.hpp>
 
 namespace ipc {
+constexpr double PARALLEL_THRESHOLD {1e-16}; //TODO set to zero eventually
 
 /// @brief Closest pair between a point and point.
 enum class PointPointDistanceType : uint8_t {
