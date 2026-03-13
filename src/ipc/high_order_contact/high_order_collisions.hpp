@@ -151,5 +151,8 @@ public:
     unordered_map<std::pair<index_t, index_t>, std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
     // face_collisions[fi] provides the contact set for center of face fi
     unordered_map<index_t, std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> face_collisions;
+
+    /// @brief Total number of collision pairs counted across all quadrature build functions
+    size_t num_quadrature_collision_pairs = 0;
 };
 }

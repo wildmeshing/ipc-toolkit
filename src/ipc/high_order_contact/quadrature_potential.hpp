@@ -84,19 +84,21 @@ namespace ipc
         }
 
         std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>
-        build_collisions_at_vertex(const Eigen::MatrixXd& V, index_t vid) const;
+        build_collisions_at_vertex(const Eigen::MatrixXd& V, index_t vid, size_t& num_collision_pairs) const;
 
         std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>
         build_collisions_at_edge_edge_closest_point(
         const Eigen::MatrixXd& V,
             index_t e0,
             index_t e1,
-            EdgeEdgeDistanceType dtype) const;
+            EdgeEdgeDistanceType dtype,
+            size_t& num_collision_pairs) const;
 
         std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>
         build_collisions_at_face_center(
         const Eigen::MatrixXd& V,
-            index_t fid) const;
+            index_t fid,
+            size_t& num_collision_pairs) const;
 
         const CollisionMesh& mesh;
         const Candidates& candidates;

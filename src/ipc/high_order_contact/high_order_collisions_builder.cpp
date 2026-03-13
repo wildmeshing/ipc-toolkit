@@ -350,7 +350,9 @@ void QuadratureCollisionsBuilder::build_vertex_collisions(
     for (size_t i = start_i; i < end_i; i++) {
         const index_t vi = vertex_indices[i];
         if (point_potential->params.skip_obstacle && mesh.is_obstacle_vertex(vi)) continue;
-        vertex_collisions.push_back(point_potential->build_collisions_at_vertex(vertices, vi));
+        size_t n = 0;
+        vertex_collisions.push_back(point_potential->build_collisions_at_vertex(vertices, vi, n));
+        num_collision_pairs += n;
     }
 }
 
@@ -364,7 +366,9 @@ void QuadratureCollisionsBuilder::build_face_collisions(
     for (size_t i = start_i; i < end_i; i++) {
         const index_t fi = face_indices[i];
         if (point_potential->params.skip_obstacle && mesh.is_obstacle_face(fi)) continue;
-        face_collisions.push_back(point_potential->build_collisions_at_face_center(vertices, fi));
+        size_t n = 0;
+        face_collisions.push_back(point_potential->build_collisions_at_face_center(vertices, fi, n));
+        num_collision_pairs += n;
     }
 }
 
@@ -418,14 +422,18 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             dtype == EdgeEdgeDistanceType::EA_EB ||
             dtype == EdgeEdgeDistanceType::EA_EB0 ||
             dtype == EdgeEdgeDistanceType::EA_EB1)) {
-            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej, dtype));
+            size_t n = 0;
+            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej, dtype, n));
+            num_collision_pairs += n;
         }
 
         if (!(params.skip_obstacle && mesh.is_obstacle_edge(ej)) && (
             dtype == EdgeEdgeDistanceType::EA_EB ||
             dtype == EdgeEdgeDistanceType::EA0_EB ||
             dtype == EdgeEdgeDistanceType::EA1_EB)) {
-            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei, reflectEdgeEdgeDistanceType(dtype)));
+            size_t n = 0;
+            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei, reflectEdgeEdgeDistanceType(dtype), n));
+            num_collision_pairs += n;
         }
     }
 }
@@ -456,6 +464,7 @@ void QuadratureCollisionsBuilder::merge(
         for (auto& cc : storage.face_collisions) {
             merged_collisions.face_collisions.insert(std::make_pair(cc->primitive_id(), std::move(cc)));
         }
+        merged_collisions.num_quadrature_collision_pairs += storage.num_collision_pairs;
     }
 }
 

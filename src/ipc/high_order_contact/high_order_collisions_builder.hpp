@@ -221,6 +221,8 @@ public:
     std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
     std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> face_collisions;
 
+    size_t num_collision_pairs = 0;
+
     std::shared_ptr<PointPotential> point_potential;
 };
 } // namespace ipc

@@ -272,6 +272,14 @@ TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]"
 
         std::cout << "normal collision size " << collisions.size() << std::endl;
     }
+
+    {
+        HighOrderCollisions collisions;
+        HighOrderContactParameters params(dhat, 0., 2, 0);
+        collisions.build(mesh, vertices, params);
+
+        std::cout << "high order collision pairs (before cancellation) " << collisions.num_quadrature_collision_pairs << std::endl;
+    }
 }
 
 TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high_order_potential_3d]")
@@ -293,7 +301,8 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
     PointPotential point_potential(mesh, candidates, params);
 
     for (int vid = 0; vid < V.rows(); ++vid) {
-        const auto collisions = point_potential.build_collisions_at_vertex(V, vid);
+        size_t num_collision_pairs = 0;
+        const auto collisions = point_potential.build_collisions_at_vertex(V, vid, num_collision_pairs);
 
         if (collisions->size() == 0) {
             continue;
@@ -349,7 +358,8 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
 
     for (int fid = 0; fid < F.rows(); ++fid) {
 
-        const auto collisions = point_potential.build_collisions_at_face_center(V, fid);
+        size_t num_collision_pairs = 0;
+        const auto collisions = point_potential.build_collisions_at_face_center(V, fid, num_collision_pairs);
 
         if (collisions->size() == 0) {
             continue;
