@@ -4,6 +4,7 @@
 #include "igl/write_triangle_mesh.h"
 
 #include <algorithm>
+#include <numeric>
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/point_line.hpp>
@@ -299,26 +300,10 @@ void HighOrderCollisions::build(
             }
         }
 
-        std::vector<bool> face_mask(mesh.num_faces(), false);
-        for (const auto& candidate : candidates.fv_candidates) {
-            face_mask[candidate.face_id] = true;
-        }
-        for (const auto& candidate : candidates.ee_candidates) {
-            for (index_t e : { candidate.edge0_id, candidate.edge1_id }) {
-                for (int lf = 0; lf < 2; lf++) {
-                    const index_t fi = mesh.edges_to_faces()(e, lf);
-                    if (fi >= 0) {
-                        face_mask[fi] = true;
-                    }
-                }
-            }
-        }
         std::vector<index_t> faces_to_process;
-        faces_to_process.reserve(mesh.num_faces());
-        for (int i = 0; i < mesh.num_faces(); ++i) {
-            if (face_mask[i]) {
-                faces_to_process.push_back(i);
-            }
+        if constexpr (!HighOrderCollisions::skip_face_collisions) {
+            faces_to_process.resize(mesh.num_faces());
+            std::iota(faces_to_process.begin(), faces_to_process.end(), 0);
         }
 
         // create builder and parallel loops
@@ -334,14 +319,16 @@ void HighOrderCollisions::build(
                     vertices, vertices_to_process, start, end);
             });
 
-        maybe_parallel_for(
-            faces_to_process.size(),
-            [&](int start, int end, int thread_id) {
-                QuadratureCollisionsBuilder& local_storage =
-                    get_local_thread_storage(storage, thread_id);
-                local_storage.build_face_collisions(
-                    vertices, faces_to_process, start, end);
-            });
+        if constexpr (!HighOrderCollisions::skip_face_collisions) {
+            maybe_parallel_for(
+                faces_to_process.size(),
+                [&](int start, int end, int thread_id) {
+                    QuadratureCollisionsBuilder& local_storage =
+                        get_local_thread_storage(storage, thread_id);
+                    local_storage.build_face_collisions(
+                        vertices, faces_to_process, start, end);
+                });
+        }
 
         maybe_parallel_for(
             candidates.ee_candidates.size(),
