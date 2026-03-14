@@ -23,6 +23,8 @@ HighOrderCollision3DTemplate<PrimitiveA, PrimitiveB>::HighOrderCollision3DTempla
         primitive_b(_primitive1, mesh)
 {
     static_assert(!(std::is_same_v<PrimitiveA, Vertex3> && std::is_same_v<PrimitiveB, Vertex3>));
+    static_assert(Eigen::internal::packet_traits<double>::size == 1,
+                "Eigen vectorization is NOT disabled!");
 }
 
 template <>
