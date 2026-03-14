@@ -284,6 +284,12 @@ TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]"
         collisions.build(mesh, vertices, params);
 
         std::cout << "high order collision pairs (before cancellation) " << collisions.num_quadrature_collision_pairs << std::endl;
+
+        const auto dist = collisions.edge_id_count_distribution();
+        std::cout << "edge id count distribution (count: num_edges):" << std::endl;
+        for (const auto& [count, num_edges] : dist) {
+            std::cout << "  " << count << ": " << num_edges << std::endl;
+        }
     }
 }
 

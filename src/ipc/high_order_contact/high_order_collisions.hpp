@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+
 #include <ipc/collision_mesh.hpp>
 #include <ipc/candidates/candidates.hpp>
 #include <ipc/collisions/normal/edge_edge.hpp>
@@ -127,6 +129,10 @@ public:
 
     /// @brief Number of contact candidates
     int n_candidates() const { return m_candidates.size(); }
+
+    /// @brief Count occurrences of each edge id across all edge_edge_collisions keys.
+    /// @return A map from occurrence count to the number of edge ids with that count.
+    std::map<size_t, size_t> edge_id_count_distribution() const;
 
 public:
     /// @brief (active) collision pairs

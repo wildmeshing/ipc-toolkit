@@ -564,4 +564,18 @@ double HighOrderCollisions::compute_active_minimum_distance(
     return storage.combine([](double a, double b) { return std::min(a, b); });
 }
 
+std::map<size_t, size_t> HighOrderCollisions::edge_id_count_distribution() const
+{
+    unordered_map<index_t, size_t> counts;
+    for (const auto& [key, _] : edge_edge_collisions) {
+        counts[key.first]++;
+    }
+
+    std::map<size_t, size_t> distribution;
+    for (const auto& [_, count] : counts) {
+        distribution[count]++;
+    }
+    return distribution;
+}
+
 } // namespace ipc
