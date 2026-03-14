@@ -241,10 +241,15 @@ TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]"
 {
     double dhat = -1;
     std::string mesh_name;
-    SECTION("mesh1")
+    // SECTION("mesh1")
+    // {
+    //     dhat = 1e-2;
+    //     mesh_name = "bunny.ply";
+    // }
+    SECTION("mesh2")
     {
         dhat = 1e-2;
-        mesh_name = "bunny.ply";
+        mesh_name = "armadillo-rollers/327.ply";
     }
 
     Eigen::MatrixXd vertices;
