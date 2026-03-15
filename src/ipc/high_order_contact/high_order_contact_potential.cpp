@@ -28,9 +28,10 @@ double HighOrderContactPotential::operator()(
         return 0;
     }
 
-    tbb::enumerable_thread_specific<double> storage(0);
+    double result = 0;
 
     if (mesh.dim() == 2) {
+        tbb::enumerable_thread_specific<double> storage(0);
         tbb::parallel_for(
             tbb::blocked_range<size_t>(size_t(0), collisions.size()),
             [&](const tbb::blocked_range<size_t>& r) {
@@ -40,6 +41,7 @@ double HighOrderContactPotential::operator()(
                     local_potential += (*this)(collisions[i], collisions[i].dof(X));
                 }
             });
+        result = storage.combine([](double a, double b) { return a + b; });
     }
     else if (mesh.dim() == 3) {
         {
@@ -49,18 +51,19 @@ double HighOrderContactPotential::operator()(
                 double& total = get_local_thread_storage(potential_storage, thread_id);
                 for (index_t f = start; f < end; f++) {
                     const double area = mesh.face_areas()(f);
+                    const double w = area / 9.;
 
                     const Eigen::RowVector3d face_center = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
+
+                    double total_w = 0;
+                    double total_p = 0;
 
                     for (index_t le = 0; le < 3; le++) {
                         const index_t edge_id = mesh.faces_to_edges()(f, le);
                         const index_t ea = mesh.edges()(edge_id, 0);
                         const index_t eb = mesh.edges()(edge_id, 1);
 
-                        const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
-
-                        double local_potential = 0;
-                        for (index_t other_edge_id : close_edges) {
+                        for (index_t other_edge_id : collisions.m_candidates.ee_set(edge_id)) {
                             const index_t ec = mesh.edges()(other_edge_id, 0);
                             const index_t ed = mesh.edges()(other_edge_id, 1);
 
@@ -88,51 +91,46 @@ double HighOrderContactPotential::operator()(
 
                                 double mollifier = Math<double>::cubic_spline(dist / params.dhat) * 1.5;
                                 mollifier *= half_edge_edge_mollifier<double>(
-                                        X.row(ea), X.row(eb),
-                                        X.row(ec), X.row(ed),
-                                        dtype);
+                                    X.row(ea), X.row(eb),
+                                    X.row(ec), X.row(ed), dtype);
 
-                                local_potential += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                total_w += mollifier;
+                                total_p += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                     ConcatMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
                             }
-                            else {
-                                /* P(q) = 0 */
-                            }
                         }
+                    }
 
-                        // face center
-                        if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
-                            local_potential += PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                                ConcatMatrixView<3>(X, face_center), *(iter->second), params);
-                        }
+                    total_w += 1.;
+                    if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
+                        total_p += PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                            ConcatMatrixView<3>(X, face_center), *(iter->second), params);
+                    }
 
-                        // vertex ea
-                        if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
-                            local_potential += PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                    for (index_t lv = 0; lv < 3; lv++) {
+                        const index_t v = mesh.faces()(f, lv);
+                        total_w += 1.;
+                        if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
+                            total_p += PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
                                 X, *(iter->second), params);
                         }
+                    }
 
-                        // vertex eb
-                        if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
-                            local_potential += PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                X, *(iter->second), params);
-                        }
-
-                        total += local_potential * area / 9.;
+                    assert(total_w > 0);
+                    {
+                        total += w * (total_p / total_w);
                     }
                 }
             };
 
             maybe_parallel_for(mesh.num_faces(), loop_body);
 
-            double total_potential = 0;
             for (const auto& local_potential : potential_storage) {
-                total_potential += local_potential;
+                result += local_potential;
             }
-            return total_potential;
         }
     }
-    return storage.combine([](double a, double b) { return a + b; });
+    return result;
 }
 
 Eigen::VectorXd HighOrderContactPotential::gradient(
@@ -175,17 +173,32 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                 Eigen::VectorXd& grad = get_local_thread_storage(storage, thread_id);
                 for (index_t f = start; f < end; f++) {
                     const double area = mesh.face_areas()(f);
-                    const double weight = area / 9.;
+                    const double w = area / 9.;
                     const Eigen::RowVector3d face_center = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
+
+                    // Pass 1: collect all quadrature contributions for this face
+                    struct EEGradEntry {
+                        const HighOrderCollisionDict<PointType::EDGE>* dict;
+                        double mol_val;
+                        Eigen::Vector<double, 12> mol_grad;
+                        double P;
+                        Eigen::VectorXd grad_P;
+                    };
+                    struct ConstGradEntry {  // face center and vertex: constant weight, no mol correction
+                        std::vector<int> dofs;
+                        Eigen::VectorXd grad_P;
+                    };
+                    std::vector<EEGradEntry> ee_cache;
+                    std::vector<ConstGradEntry> const_cache;
+                    double total_w = 0;
+                    double total_p = 0;
 
                     for (index_t le = 0; le < 3; le++) {
                         const index_t edge_id = mesh.faces_to_edges()(f, le);
                         const index_t ea = mesh.edges()(edge_id, 0);
                         const index_t eb = mesh.edges()(edge_id, 1);
 
-                        const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
-
-                        for (index_t other_edge_id : close_edges) {
+                        for (index_t other_edge_id : collisions.m_candidates.ee_set(edge_id)) {
                             const index_t ec = mesh.edges()(other_edge_id, 0);
                             const index_t ed = mesh.edges()(other_edge_id, 1);
 
@@ -223,46 +236,58 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
                                 mollifier *= half_edge_edge_mollifier<T>(
                                     positionsT.row(0), positionsT.row(1),
-                                    positionsT.row(2), positionsT.row(3),
-                                        dtype);
+                                    positionsT.row(2), positionsT.row(3), dtype);
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
                                 ConcatMatrixView<3> X_extended(X, ee_closest_point);
                                 assert(X_extended.rows() == X.rows() + 1);
                                 assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
-                                const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                const double P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                     X_extended, dict, params, dtype);
-                                const Eigen::VectorXd local_grad = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
+                                const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
                                     X_extended, dict, params, ee_closest_point_T);
 
-                                grad(dict.dofs()) += (mollifier.val * weight) * local_grad;
-                                grad(dict.primary_dofs()) += (local_potential_1 * weight) * mollifier.grad;
-                            }
-                            else {
-                                /* P(q) = 0 */
+                                ee_cache.push_back({&dict, mollifier.val, mollifier.grad, P, grad_P});
+                                total_w += mollifier.val;
+                                total_p += mollifier.val * P;
                             }
                         }
+                    }
 
-                        // face center
-                        if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
-                            Eigen::VectorXd tmp = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                                ConcatMatrixView<3>(X, face_center), (*iter->second), params);
-                            grad((*iter->second).dofs()) += tmp * weight;
-                        }
+                    total_w += 1.;
+                    if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
+                        const double P = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                            ConcatMatrixView<3>(X, face_center), (*iter->second), params);
+                        const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
+                            ConcatMatrixView<3>(X, face_center), (*iter->second), params);
+                        const_cache.push_back(ConstGradEntry{(*iter->second).dofs(), grad_P});
+                        total_p += P;
+                    }
 
-                        // vertex ea
-                        if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
-                            Eigen::VectorXd tmp = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                    for (index_t lv = 0; lv < 3; lv++) {
+                        const index_t v = mesh.faces()(f, lv);
+                        total_w += 1.;
+                        if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
+                            const double P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
                                 X, (*iter->second), params);
-                            grad((*iter->second).dofs()) += tmp * weight;
-                        }
-
-                        // vertex eb
-                        if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
-                            Eigen::VectorXd tmp = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                            const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
                                 X, (*iter->second), params);
-                            grad((*iter->second).dofs()) += tmp * weight;
+                            const_cache.push_back(ConstGradEntry{(*iter->second).dofs(), grad_P});
+                            total_p += P;
+                        }
+                    }
+
+                    // Pass 2: apply unified normalized gradient
+                    assert(total_w > 0);
+                    {
+                        const double avg_P = total_p / total_w;
+                        for (const auto& e : ee_cache) {
+                            grad(e.dict->dofs()) += (w / total_w * e.mol_val) * e.grad_P;
+                            grad(e.dict->primary_dofs()) += (w / total_w * (e.P - avg_P)) * e.mol_grad;
+                        }
+                        for (const auto& e : const_cache) {
+                            grad(e.dofs) += (w / total_w) * e.grad_P;
                         }
                     }
                 }
@@ -326,17 +351,38 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                 auto& hess_triplets = get_local_thread_storage(storage, thread_id);
                 for (index_t f = start; f < end; f++) {
                     const double area = mesh.face_areas()(f);
+                    const double w = area / 9.;
 
                     const Eigen::RowVector3d face_center = (X.row(mesh.faces()(f, 0)) + X.row(mesh.faces()(f, 1)) + X.row(mesh.faces()(f, 2))) / 3.;
+
+                    // Pass 1: collect all quadrature contributions for this face
+                    struct EEHessEntry {
+                        const HighOrderCollisionDict<PointType::EDGE>* dict;
+                        double mol_val;
+                        Eigen::VectorXd mol_grad;                  // 12D on primary_dofs
+                        Eigen::Matrix<double, 12, 12> mol_hess;    // H(mol) on primary_dofs
+                        double P;
+                        Eigen::VectorXd grad_P;                    // indexed by dict->dofs()
+                        Eigen::MatrixXd local_hess;                // H(mol*P), PSD-projected
+                    };
+                    struct ConstHessEntry {
+                        std::vector<index_t> vertex_ids;
+                        std::vector<index_t> dofs;
+                        double P;
+                        Eigen::VectorXd grad_P;                    // indexed by dofs
+                        Eigen::MatrixXd local_hess;                // H(P)
+                    };
+                    std::vector<EEHessEntry> ee_cache;
+                    std::vector<ConstHessEntry> const_cache;
+                    double total_w = 0;
+                    double total_p = 0;
 
                     for (index_t le = 0; le < 3; le++) {
                         const index_t edge_id = mesh.faces_to_edges()(f, le);
                         const index_t ea = mesh.edges()(edge_id, 0);
                         const index_t eb = mesh.edges()(edge_id, 1);
 
-                        const std::set<index_t> close_edges = collisions.m_candidates.ee_set(edge_id);
-
-                        for (index_t other_edge_id : close_edges) {
+                        for (index_t other_edge_id : collisions.m_candidates.ee_set(edge_id)) {
                             const index_t ec = mesh.edges()(other_edge_id, 0);
                             const index_t ed = mesh.edges()(other_edge_id, 1);
 
@@ -374,29 +420,27 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
                                 mollifier *= half_edge_edge_mollifier<T>(
                                     positionsT.row(0), positionsT.row(1),
-                                    positionsT.row(2), positionsT.row(3),
-                                        dtype);
+                                    positionsT.row(2), positionsT.row(3), dtype);
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
                                 ConcatMatrixView<3> X_extended(X, ee_closest_point);
                                 assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
-                                const double local_potential_1 = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                const double P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                     X_extended, dict, params, dtype);
-                                const Eigen::VectorXd local_grad = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
+                                const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
                                     X_extended, dict, params, ee_closest_point_T);
                                 Eigen::MatrixXd local_hess = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
                                     X_extended, dict, params, ee_closest_point_T) * mollifier.val;
 
                                 for (index_t i = 0; i < 4; i++) {
                                     for (index_t j = 0; j < 4; j++) {
-                                        local_hess.block<3, 3>(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, dict.vertex_ids_inverse(dict.primary_vertex_ids()[j]) * 3) += local_potential_1 * mollifier.Hess.block<3, 3>(i * 3, j * 3);
+                                        local_hess.block<3, 3>(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, dict.vertex_ids_inverse(dict.primary_vertex_ids()[j]) * 3) += P * mollifier.Hess.block<3, 3>(i * 3, j * 3);
                                     }
                                 }
 
-                                Eigen::MatrixXd tmp;
                                 for (index_t i = 0; i < 4; i++) {
-                                    tmp = mollifier.grad.segment<3>(i * 3) * local_grad.transpose();
+                                    const Eigen::MatrixXd tmp = mollifier.grad.segment<3>(i * 3) * grad_P.transpose();
                                     local_hess.middleRows(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, 3) += tmp;
                                     local_hess.middleCols(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, 3) += tmp.transpose();
                                 }
@@ -405,40 +449,122 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     local_hess = project_to_psd(local_hess, project_hessian_to_psd);
                                 }
 
-                                local_hessian_to_global_triplets(
-                                    local_hess * (area / 9.), dict.vertex_ids(), dim,
-                                    *(hess_triplets.cache));
+                                ee_cache.push_back({
+                                    &dict,
+                                    mollifier.val,
+                                    mollifier.grad,
+                                    mollifier.Hess,
+                                    P,
+                                    grad_P,
+                                    std::move(local_hess)});
+                                total_w += mollifier.val;
+                                total_p += mollifier.val * P;
                             }
-                            else {
-                                /* P(q) = 0 */
+                        }
+                    }
+
+                    total_w += 1.;
+                    if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
+                        ConcatMatrixView<3> X_face(X, face_center);
+                        ConstHessEntry entry;
+                        entry.vertex_ids = (*iter->second).vertex_ids();
+                        entry.dofs = (*iter->second).dofs();
+                        entry.P = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                            X_face, (*iter->second), params);
+                        entry.grad_P = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
+                            X_face, (*iter->second), params);
+                        entry.local_hess = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
+                            X_face, (*iter->second), params, project_hessian_to_psd);
+                        total_p += entry.P;
+                        const_cache.push_back(std::move(entry));
+                    }
+
+                    for (index_t lv = 0; lv < 3; lv++) {
+                        const index_t v = mesh.faces()(f, lv);
+                        total_w += 1.;
+                        if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
+                            ConstHessEntry entry;
+                            entry.vertex_ids = (*iter->second).vertex_ids();
+                            entry.dofs = (*iter->second).dofs();
+                            entry.P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                                X, (*iter->second), params);
+                            entry.grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                                X, (*iter->second), params);
+                            entry.local_hess = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+                                X, (*iter->second), params, project_hessian_to_psd);
+                            total_p += entry.P;
+                            const_cache.push_back(std::move(entry));
+                        }
+                    }
+
+                    // Pass 2: exact normalized hessian via quotient rule
+                    // H(w*p/Z) = (w/Z)*H(p) - (w*avg_P/Z)*H(Z) - (w/Z²)*sym(G⊗∇Z)
+                    // where Z = total_w, avg_P = total_p/Z
+                    //       ∇Z = Σ_i mol_grad_i  (EE only)
+                    //       G  = ∇p - avg_P * ∇Z
+                    assert(total_w > 0);
+                    {
+                        const double avg_P = total_p / total_w;
+                        const double scale_C = -(w / (total_w * total_w));
+
+                        // Adds scale_C * (outer(g_vec, gradz_vec) + outer(gradz_vec, g_vec)) to triplets.
+                        // g_vec is on g_dofs (global DOF indices), gradz_vec is on gradz_dofs (primary_dofs of EE entry i).
+                        auto add_sym_correction = [&](
+                            const std::vector<index_t>& g_dofs,
+                            const Eigen::VectorXd& g_vec,
+                            const std::vector<index_t>& gradz_dofs,
+                            const Eigen::VectorXd& gradz_vec) {
+                            for (int a = 0; a < static_cast<int>(g_dofs.size()); a++) {
+                                for (int b = 0; b < static_cast<int>(gradz_dofs.size()); b++) {
+                                    const double v = scale_C * g_vec[a] * gradz_vec[b];
+                                    hess_triplets.cache->add_value(0, g_dofs[a], gradz_dofs[b], v);
+                                    hess_triplets.cache->add_value(0, gradz_dofs[b], g_dofs[a], v);
+                                }
                             }
-                        }
+                        };
 
-                        // face center
-                        if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
-                            const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
-                                ConcatMatrixView<3>(X, face_center), (*iter->second), params, project_hessian_to_psd);
+                        // Term A: (w/total_w) * H(p_sum)
+                        for (const auto& e : ee_cache) {
                             local_hessian_to_global_triplets(
-                                h * (area / 9.), (*iter->second).vertex_ids(), dim,
+                                (w / total_w) * e.local_hess, e.dict->vertex_ids(), dim,
+                                *(hess_triplets.cache));
+                        }
+                        for (const auto& e : const_cache) {
+                            local_hessian_to_global_triplets(
+                                (w / total_w) * e.local_hess, e.vertex_ids, dim,
                                 *(hess_triplets.cache));
                         }
 
-                        // vertex ea
-                        if (auto iter = collisions.vertex_collisions.find(ea); iter != collisions.vertex_collisions.end()) {
-                            const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                                X, (*iter->second), params, project_hessian_to_psd);
+                        // Term B: -(w * avg_P / total_w) * H(total_w) = -(w*avg_P/Z) * Σ_i H(mol_i)
+                        for (const auto& e : ee_cache) {
                             local_hessian_to_global_triplets(
-                                h * (area / 9.), (*iter->second).vertex_ids(), dim,
+                                -(w * avg_P / total_w) * e.mol_hess,
+                                e.dict->primary_vertex_ids(), dim,
                                 *(hess_triplets.cache));
                         }
 
-                        // vertex eb
-                        if (auto iter = collisions.vertex_collisions.find(eb); iter != collisions.vertex_collisions.end()) {
-                            const Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                                X, (*iter->second), params, project_hessian_to_psd);
-                            local_hessian_to_global_triplets(
-                                h * (area / 9.), (*iter->second).vertex_ids(), dim,
-                                *(hess_triplets.cache));
+                        // Term C: -(w/Z²) * sym(G⊗∇Z)
+                        // For each EE entry i contributing mol_grad_i to ∇Z:
+                        for (const auto& ei : ee_cache) {
+                            const std::vector<index_t> prim_dofs_i = ei.dict->primary_dofs();
+                            const Eigen::VectorXd mol_grad_i = ei.mol_grad;
+                            // G contributions from each EE entry k:
+                            for (const auto& ek : ee_cache) {
+                                // k's mol term: G += (P_k - avg_P) * mol_grad_k on primary_dofs_k
+                                add_sym_correction(
+                                    ek.dict->primary_dofs(),
+                                    (ek.P - avg_P) * ek.mol_grad,
+                                    prim_dofs_i, mol_grad_i);
+                                // k's potential term: G += mol_k * grad_P_k on dofs_k
+                                add_sym_correction(
+                                    ek.dict->dofs(),
+                                    ek.mol_val * ek.grad_P,
+                                    prim_dofs_i, mol_grad_i);
+                            }
+                            // G contributions from each const entry j:
+                            for (const auto& ej : const_cache) {
+                                add_sym_correction(ej.dofs, ej.grad_P, prim_dofs_i, mol_grad_i);
+                            }
                         }
                     }
                 }

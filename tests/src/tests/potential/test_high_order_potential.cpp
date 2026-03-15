@@ -124,6 +124,7 @@ TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential], [high_order_
     for (int i = 0; i < test_dir.size(); i++) {
         test_dir(i) = i;
     }
+    test_dir.normalize();
 
     Eigen::MatrixXd fh;
     fd::finite_jacobian(
@@ -171,7 +172,38 @@ TEST_CASE("Convergent Quadrature Hessian Expensive", tagsopt)
             return potential.gradient(collisions_, mesh, V_);
         }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
-    REQUIRE((fh - h).norm() < fh.norm() * 1e-4);
+    REQUIRE((fh - h).norm() < fh.norm() * 1e-6);
+}
+
+TEST_CASE("Convergent Quadrature Gradient Expensive", "[high_order_potential], [high_order_potential_3d]")
+{
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi F, E;
+    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
+
+    igl::edges(F, E);
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = 0.1;
+    HighOrderContactParameters params(dhat, 0., 2, 0);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    HighOrderContactPotential potential(params);
+
+    Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
+
+    Eigen::VectorXd fg;
+    fd::finite_gradient(
+        fd::flatten(V), [&](const Eigen::VectorXd& y) {
+            Eigen::MatrixXd V_ = fd::unflatten(y, 3);
+            HighOrderCollisions collisions_;
+            collisions_.build(mesh, V_, params);
+            return potential(collisions_, mesh, V_);
+        }, fg, fd::AccuracyOrder::SECOND, 1e-8);
+
+    REQUIRE((fg - g).norm() < fg.norm() * 1e-6);
 }
 
 TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential], [high_order_potential_3d]")
@@ -198,6 +230,7 @@ TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential], [high_order
     for (int i = 0; i < test_dir.size(); i++) {
         test_dir(i) = i;
     }
+    test_dir.normalize();
 
     Eigen::VectorXd fg;
     fd::finite_gradient(
@@ -288,7 +321,7 @@ TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]"
         const auto dist = collisions.edge_id_count_distribution();
         std::cout << "edge id count distribution (count: num_edges):" << std::endl;
         for (const auto& [count, num_edges] : dist) {
-            std::cout << "  " << count << ": " << num_edges << std::endl;
+            std::cout << "  " << count << ": " << num_edges << ", ";
         }
     }
 }

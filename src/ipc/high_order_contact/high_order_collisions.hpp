@@ -162,6 +162,6 @@ public:
     size_t num_quadrature_collision_pairs = 0;
 
     /// @brief If true, skip building face_collisions during build()
-    static constexpr bool skip_face_collisions = false;
+    static constexpr bool skip_face_collisions = true;
 };
 }
