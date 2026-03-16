@@ -88,14 +88,14 @@ public:
         const FaceVertexCandidate& candidate,
         const HighOrderContactParameters& params,
         const CollisionMesh& mesh,
-        const Eigen::MatrixXd& vertices,
+        const VertexMatrixView<3>& vertices,
         PointTriangleDistanceType dtype = PointTriangleDistanceType::AUTO);
 
     static std::shared_ptr<HighOrderCollision> reduce_point_edge_collision(
         const EdgeVertexCandidate& candidate,
         const HighOrderContactParameters& params,
         const CollisionMesh& mesh,
-        const Eigen::MatrixXd& vertices,
+        const VertexMatrixView<3>& vertices,
         PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
 
     void add_edge_edge_collisions(

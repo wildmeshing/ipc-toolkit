@@ -49,7 +49,7 @@ template <> std::string HighOrderCollisionTemplate<Edge2P1, Edge2P1>::name() con
         return x;
     }
 
-    Eigen::VectorXd HighOrderCollision::dof(ConcatMatrixView<3> X_extended) const
+    Eigen::VectorXd HighOrderCollision::dof(VertexMatrixView<3> X_extended) const
     {
         Eigen::VectorXd x(num_vertices() * 3);
         for (int i = 0; i < num_vertices(); i++) {

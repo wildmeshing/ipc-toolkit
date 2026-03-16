@@ -181,7 +181,7 @@ std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_
     const FaceVertexCandidate& candidate,
     const HighOrderContactParameters& params,
     const CollisionMesh& mesh,
-    const Eigen::MatrixXd& vertices,
+    const VertexMatrixView<3>& vertices,
     PointTriangleDistanceType dtype)
 {
     const index_t vi = candidate.vertex_id;
@@ -198,16 +198,16 @@ std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_
     assert(vi != t0 && vi != t1 && vi != t2);
 
     if (dtype == PointTriangleDistanceType::AUTO) {
-        dtype = point_triangle_distance_type(vertices.row(vi),
-            vertices.row(t0),
-            vertices.row(t1),
-            vertices.row(t2));
+        dtype = point_triangle_distance_type(vertices(vi),
+            vertices(t0),
+            vertices(t1),
+            vertices(t2));
     }
 
-    const double dist_sqr = point_triangle_distance(vertices.row(vi),
-            vertices.row(t0),
-            vertices.row(t1),
-            vertices.row(t2), dtype);
+    const double dist_sqr = point_triangle_distance(vertices(vi),
+            vertices(t0),
+            vertices(t1),
+            vertices(t2), dtype);
     if (dist_sqr >= params.dhat * params.dhat) {
         return nullptr;
     }
@@ -253,7 +253,7 @@ std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_
     const EdgeVertexCandidate& candidate,
     const HighOrderContactParameters& params,
     const CollisionMesh& mesh,
-    const Eigen::MatrixXd& vertices,
+    const VertexMatrixView<3>& vertices,
     PointEdgeDistanceType dtype)
 {
     const index_t vi = candidate.vertex_id;
@@ -263,14 +263,14 @@ std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_
     const index_t t1 = mesh.edges()(ei, 1);
 
     if (dtype == PointEdgeDistanceType::AUTO) {
-        dtype = point_edge_distance_type(vertices.row(vi),
-            vertices.row(t0),
-            vertices.row(t1));
+        dtype = point_edge_distance_type(vertices(vi),
+            vertices(t0),
+            vertices(t1));
     }
 
-    const double dist_sqr = point_edge_distance(vertices.row(vi),
-            vertices.row(t0),
-            vertices.row(t1), dtype);
+    const double dist_sqr = point_edge_distance(vertices(vi),
+            vertices(t0),
+            vertices(t1), dtype);
     if (dist_sqr >= params.dhat * params.dhat) {
         return nullptr;
     }

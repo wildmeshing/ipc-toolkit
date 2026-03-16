@@ -53,8 +53,8 @@ public:
     /* These functions are only available after calling finish_insertion() */
 
     // Global indices of DoFs
-    std::vector<index_t> dofs() const;
-    std::vector<index_t> primary_dofs() const;
+    const std::vector<index_t>& dofs() const;
+    const std::vector<index_t>& primary_dofs() const;
     // Global indices of vertices
     const std::vector<index_t>& vertex_ids() const;
     // Map from global vertex index to local vertex index
@@ -79,5 +79,10 @@ private:
     std::vector<index_t> m_vertex_ids;
     /// @brief Inverse of m_vertex_ids
     std::map<index_t, index_t> m_vertex_ids_inverse;
+
+    /// @brief Cached global DOF indices (computed once in initialize())
+    std::vector<index_t> m_dofs;
+    /// @brief Cached primary DOF indices (computed once in initialize())
+    std::vector<index_t> m_primary_dofs;
 };
 } // namespace ipc

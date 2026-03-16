@@ -45,6 +45,26 @@ namespace ipc
             m_vertex_ids_inverse[m_vertex_ids[i]] = i;
         }
 
+        // Cache dofs
+        m_dofs.resize(m_vertex_ids.size() * dim);
+        for (int i = 0; i < m_vertex_ids.size(); i++) {
+            for (int d = 0; d < dim; d++) {
+                m_dofs[i * dim + d] = m_vertex_ids[i] * dim + d;
+            }
+        }
+
+        // Cache primary dofs
+        m_primary_dofs.clear();
+        m_primary_dofs.reserve(m_primary_vertex_ids.size() * dim);
+        for (index_t i : m_primary_vertex_ids) {
+            if (i < 0) {
+                break;
+            }
+            for (index_t d = 0; d < dim; d++) {
+                m_primary_dofs.push_back(i * dim + d);
+            }
+        }
+
         // Convert unordered_map to vectors
         for (const auto& [key, val] : map) {
             switch (val->type()) {
@@ -113,31 +133,15 @@ namespace ipc
     }
 
     template <PointType pType>
-    std::vector<index_t> HighOrderCollisionDict<pType>::primary_dofs() const
+    const std::vector<index_t>& HighOrderCollisionDict<pType>::primary_dofs() const
     {
-        std::vector<index_t> dofs;
-        dofs.reserve(m_primary_vertex_ids.size() * 3);
-        for (index_t i : m_primary_vertex_ids) {
-            if (i < 0) {
-                break;
-            }
-            for (index_t d = 0; d < dim; d++) {
-                dofs.push_back(i * dim + d);
-            }
-        }
-        return dofs;
+        return m_primary_dofs;
     }
 
     template <PointType pType>
-    std::vector<index_t> HighOrderCollisionDict<pType>::dofs() const
+    const std::vector<index_t>& HighOrderCollisionDict<pType>::dofs() const
     {
-        std::vector<index_t> dofs(m_vertex_ids.size() * dim);
-        for (int i = 0; i < m_vertex_ids.size(); i++) {
-            for (int d = 0; d < dim; d++) {
-                dofs[i * dim + d] = m_vertex_ids[i] * dim + d;
-            }
-        }
-        return dofs;
+        return m_dofs;
     }
 
     template <PointType pType>

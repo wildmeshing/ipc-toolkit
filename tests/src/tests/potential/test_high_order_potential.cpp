@@ -426,7 +426,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
 
         Eigen::RowVector3d face_center = (V.row(vids[0]) + V.row(vids[1]) + V.row(vids[2])) / 3.;
 
-        ConcatMatrixView<3> V_extended(V, face_center);
+        VertexMatrixView<3> V_extended(V, face_center);
 
         std::vector<int> indices;
         {
@@ -449,7 +449,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
                 y_(indices) = y;
                 Eigen::MatrixXd V_fd = fd::unflatten(y_, 3);
                 Eigen::RowVector3d face_center_fd = (V_fd.row(vids[0]) + V_fd.row(vids[1]) + V_fd.row(vids[2])) / 3.;
-                ConcatMatrixView<3> V_fd_extended(V_fd, face_center_fd);
+                VertexMatrixView<3> V_fd_extended(V_fd, face_center_fd);
 
                 return PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_fd_extended, *collisions, params);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);

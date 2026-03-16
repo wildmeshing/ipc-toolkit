@@ -96,7 +96,7 @@ double HighOrderContactPotential::operator()(
 
                                 total_w += mollifier;
                                 total_p += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                    ConcatMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
+                                    VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
                             }
                         }
                     }
@@ -104,7 +104,7 @@ double HighOrderContactPotential::operator()(
                     total_w += 1.;
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                         total_p += PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                            ConcatMatrixView<3>(X, face_center), *(iter->second), params);
+                            VertexMatrixView<3>(X, face_center), *(iter->second), params);
                     }
 
                     for (index_t lv = 0; lv < 3; lv++) {
@@ -183,7 +183,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         Eigen::VectorXd grad_P;
                     };
                     struct ConstGradEntry {  // face center and vertex: constant weight, no mol correction
-                        std::vector<int> dofs;
+                        const std::vector<index_t>* dofs;
                         Eigen::VectorXd grad_P;
                     };
                     std::vector<EEGradEntry> ee_cache;
@@ -238,9 +238,9 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
-                                ConcatMatrixView<3> X_extended(X, ee_closest_point);
+                                VertexMatrixView<3> X_extended(X, ee_closest_point);
                                 assert(X_extended.rows() == X.rows() + 1);
-                                assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
+                                assert(X_extended.m_A == X.data() && "VertexMatrixView has made a deepcopy!");
                                 const double P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                     X_extended, dict, params, dtype);
                                 const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
@@ -256,10 +256,10 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                     total_w += 1.;
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
                         const double P = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                            ConcatMatrixView<3>(X, face_center), (*iter->second), params);
+                            VertexMatrixView<3>(X, face_center), (*iter->second), params);
                         const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                            ConcatMatrixView<3>(X, face_center), (*iter->second), params);
-                        const_cache.push_back(ConstGradEntry{(*iter->second).dofs(), grad_P});
+                            VertexMatrixView<3>(X, face_center), (*iter->second), params);
+                        const_cache.push_back(ConstGradEntry{&(*iter->second).dofs(), grad_P});
                         total_p += P;
                     }
 
@@ -271,7 +271,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 X, (*iter->second), params);
                             const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
                                 X, (*iter->second), params);
-                            const_cache.push_back(ConstGradEntry{(*iter->second).dofs(), grad_P});
+                            const_cache.push_back(ConstGradEntry{&(*iter->second).dofs(), grad_P});
                             total_p += P;
                         }
                     }
@@ -285,7 +285,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             grad(e.dict->primary_dofs()) += (w / total_w * (e.P - avg_P)) * e.mol_grad;
                         }
                         for (const auto& e : const_cache) {
-                            grad(e.dofs) += (w / total_w) * e.grad_P;
+                            grad(*e.dofs) += (w / total_w) * e.grad_P;
                         }
                     } else {
                         for (const auto& e : ee_cache) {
@@ -293,7 +293,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             grad(e.dict->primary_dofs()) += w * e.P * e.mol_grad;
                         }
                         for (const auto& e : const_cache) {
-                            grad(e.dofs) += w * e.grad_P;
+                            grad(*e.dofs) += w * e.grad_P;
                         }
                     }
                 }
@@ -372,8 +372,8 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         Eigen::MatrixXd local_hess;                // H(mol*P), PSD-projected
                     };
                     struct ConstHessEntry {
-                        std::vector<index_t> vertex_ids;
-                        std::vector<index_t> dofs;
+                        const std::vector<index_t>* vertex_ids;
+                        const std::vector<index_t>* dofs;
                         double P;
                         Eigen::VectorXd grad_P;                    // indexed by dofs
                         Eigen::MatrixXd local_hess;                // H(P)
@@ -430,8 +430,8 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
-                                ConcatMatrixView<3> X_extended(X, ee_closest_point);
-                                assert(X_extended.m_A == X.data() && "ConcatMatrixView has made a deepcopy!");
+                                VertexMatrixView<3> X_extended(X, ee_closest_point);
+                                assert(X_extended.m_A == X.data() && "VertexMatrixView has made a deepcopy!");
                                 const double P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                     X_extended, dict, params, dtype);
                                 const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
@@ -471,16 +471,17 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                     total_w += 1.;
                     if (auto iter = collisions.face_collisions.find(f); iter != collisions.face_collisions.end()) {
-                        ConcatMatrixView<3> X_face(X, face_center);
+                        VertexMatrixView<3> X_face(X, face_center);
+                        const auto& dict = *iter->second;
                         ConstHessEntry entry;
-                        entry.vertex_ids = (*iter->second).vertex_ids();
-                        entry.dofs = (*iter->second).dofs();
+                        entry.vertex_ids = &dict.vertex_ids();
+                        entry.dofs = &dict.dofs();
                         entry.P = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                            X_face, (*iter->second), params);
+                            X_face, dict, params);
                         entry.grad_P = PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                            X_face, (*iter->second), params);
+                            X_face, dict, params);
                         entry.local_hess = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
-                            X_face, (*iter->second), params, project_hessian_to_psd);
+                            X_face, dict, params, project_hessian_to_psd);
                         total_p += entry.P;
                         const_cache.push_back(std::move(entry));
                     }
@@ -489,15 +490,16 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         const index_t v = mesh.faces()(f, lv);
                         total_w += 1.;
                         if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
+                            const auto& dict = *iter->second;
                             ConstHessEntry entry;
-                            entry.vertex_ids = (*iter->second).vertex_ids();
-                            entry.dofs = (*iter->second).dofs();
+                            entry.vertex_ids = &dict.vertex_ids();
+                            entry.dofs = &dict.dofs();
                             entry.P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                X, (*iter->second), params);
+                                X, dict, params);
                             entry.grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                                X, (*iter->second), params);
+                                X, dict, params);
                             entry.local_hess = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                                X, (*iter->second), params, project_hessian_to_psd);
+                                X, dict, params, project_hessian_to_psd);
                             total_p += entry.P;
                             const_cache.push_back(std::move(entry));
                         }
@@ -534,7 +536,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         }
                         for (const auto& e : const_cache) {
                             local_hessian_to_global_triplets(
-                                (w / total_w) * e.local_hess, e.vertex_ids, dim,
+                                (w / total_w) * e.local_hess, *e.vertex_ids, dim,
                                 *(hess_triplets.cache));
                         }
 
@@ -548,8 +550,8 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                         // Term C: -(w/Z²) * sym(G⊗∇Z)
                         for (const auto& ei : ee_cache) {
-                            const std::vector<index_t> prim_dofs_i = ei.dict->primary_dofs();
-                            const Eigen::Vector<double, 12> mol_grad_i = ei.mol_grad;
+                            const auto& prim_dofs_i = ei.dict->primary_dofs();
+                            const Eigen::Vector<double, 12>& mol_grad_i = ei.mol_grad;
                             for (const auto& ek : ee_cache) {
                                 add_sym_correction(
                                     ek.dict->primary_dofs(),
@@ -561,7 +563,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     prim_dofs_i, mol_grad_i);
                             }
                             for (const auto& ej : const_cache) {
-                                add_sym_correction(ej.dofs, ej.grad_P, prim_dofs_i, mol_grad_i);
+                                add_sym_correction(*ej.dofs, ej.grad_P, prim_dofs_i, mol_grad_i);
                             }
                         }
                     } else {
@@ -573,7 +575,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         }
                         for (const auto& e : const_cache) {
                             local_hessian_to_global_triplets(
-                                w * e.local_hess, e.vertex_ids, dim,
+                                w * e.local_hess, *e.vertex_ids, dim,
                                 *(hess_triplets.cache));
                         }
                     }

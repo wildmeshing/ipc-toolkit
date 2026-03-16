@@ -3,6 +3,9 @@
 #include "absl/strings/internal/str_format/extension.h"
 #include "ipc/candidates/candidates.hpp"
 #include "ipc/distance/edge_edge.hpp"
+#include "ipc/distance/point_edge.hpp"
+#include "ipc/distance/point_triangle.hpp"
+#include "ipc/distance/distance_type.hpp"
 #include "ipc/high_order_contact/high_order_collisions_builder.hpp"
 #include "ipc/smooth_contact/distance/mollifier.hpp"
 
@@ -35,12 +38,14 @@ PointPotential::build_collisions_at_vertex(
         const auto& e_set = candidates.ve_set(vid);
         const auto& f_set = candidates.vf_set(vid);
 
+        const VertexMatrixView<3> V_view(V);
+
         for (const auto& other_f : f_set) {
             ++num_collision_pairs;
             if (std::shared_ptr<HighOrderCollision> pair = HighOrderCollisionsBuilder<
                 3>::reduce_point_triangle_collision(
                 FaceVertexCandidate(other_f, vid),
-                params, mesh, V)) {
+                params, mesh, V_view)) {
                 insert_pair(pairs, std::move(pair));
             }
         }
@@ -49,7 +54,7 @@ PointPotential::build_collisions_at_vertex(
             ++num_collision_pairs;
             if (std::shared_ptr<HighOrderCollision> pair = HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
                 EdgeVertexCandidate(other_e, vid),
-                params, mesh, V)) {
+                params, mesh, V_view)) {
                 pair->weight = -1;
                 insert_pair(pairs, std::move(pair));
             }
@@ -195,7 +200,7 @@ PointPotential::build_collisions_at_vertex(
             // V_.topRows(V.rows()) = V;
             // V_.row(vid) = closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
             const Eigen::RowVector3d ee_closest_point = closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
-            ConcatMatrixView<3> V_(V, ee_closest_point);
+            VertexMatrixView<3> V_(V, ee_closest_point);
 
             for (const auto& other_v : v_set) {
                 if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dhat * params.dhat) {
@@ -347,7 +352,7 @@ PointPotential::build_collisions_at_vertex(
     }
 
     double PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-        ConcatMatrixView<3> V_extended,
+        VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
         EdgeEdgeDistanceType dtype)
@@ -366,7 +371,7 @@ PointPotential::build_collisions_at_vertex(
     template <typename ADType>
     std::enable_if_t<IsADGrad<ADType>::value || IsADHessian<ADType>::value, Eigen::VectorXd>
     PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
-        ConcatMatrixView<3> V_extended,
+        VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
         Eigen::ConstRef<Eigen::Vector3<ADType>> q)
@@ -398,7 +403,7 @@ PointPotential::build_collisions_at_vertex(
     template
     Eigen::VectorXd
     PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<ADGrad<12>>(
-        ConcatMatrixView<3> V_extended,
+        VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
         Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> q);
@@ -406,14 +411,14 @@ PointPotential::build_collisions_at_vertex(
     template
     Eigen::VectorXd
     PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<ADHessian<12>>(
-        ConcatMatrixView<3> V_extended,
+        VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q);
 
     Eigen::MatrixXd
     PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
-        ConcatMatrixView<3> V_extended,
+        VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q)
@@ -422,8 +427,9 @@ PointPotential::build_collisions_at_vertex(
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(collisions.vertex_ids().size() * 3, collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::MatrixXd h = cc.weight * cc.hessian(cc.dof(V_extended), params);
-            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
+            const Eigen::VectorXd cc_dof = cc.dof(V_extended);
+            Eigen::MatrixXd h = cc.weight * cc.hessian(cc_dof, params);
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc_dof, params);
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t gi = cc.vertex_id(i);
@@ -488,9 +494,10 @@ PointPotential::build_collisions_at_vertex(
         // the fake vertex id
         const index_t vid = V.rows();
 
-        Eigen::MatrixXd V_(V.rows() + 1, 3);
-        V_.topRows(V.rows()) = V;
-        V_.row(vid) = (V.row(mesh.faces()(fid, 0)) + V.row(mesh.faces()(fid, 1)) + V.row(mesh.faces()(fid, 2))) / 3.;
+        // Use VertexMatrixView to avoid deep-copying the entire vertex matrix
+        const Eigen::RowVector3d face_center =
+            (V.row(mesh.faces()(fid, 0)) + V.row(mesh.faces()(fid, 1)) + V.row(mesh.faces()(fid, 2))) / 3.;
+        VertexMatrixView<3> V_(V, face_center);
 
         unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>> pairs;
         num_collision_pairs = 0;
@@ -520,13 +527,13 @@ PointPotential::build_collisions_at_vertex(
         }
 
         for (const auto& other_v : v_set) {
-            if ((V_.row(vid) - V_.row(other_v)).squaredNorm() >= params.dhat * params.dhat) {
+            if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dhat * params.dhat) {
                 continue;
             }
-            auto pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
                 vid, other_v, mesh);
             ++num_collision_pairs;
-            insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+            insert_pair(pairs, std::move(pair));
         }
         std::unique_ptr<HighOrderCollisionDict<PointType::FACE>> collisions = std::make_unique<HighOrderCollisionDict<PointType::FACE>>();
         collisions->initialize(std::vector<index_t>{fid}, std::vector<index_t>{mesh.faces()(fid, 0), mesh.faces()(fid, 1), mesh.faces()(fid, 2)}, pairs);
@@ -534,7 +541,7 @@ PointPotential::build_collisions_at_vertex(
     }
 
     Eigen::VectorXd PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
-        ConcatMatrixView<3> V_extended,
+        VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params)
     {
@@ -562,7 +569,7 @@ PointPotential::build_collisions_at_vertex(
     }
 
     Eigen::MatrixXd PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(
-        ConcatMatrixView<3> V_extended,
+        VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
         PSDProjectionMethod project_to_psd)
@@ -621,7 +628,7 @@ PointPotential::build_collisions_at_vertex(
     }
 
     double PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-        ConcatMatrixView<3> V_extended,
+        VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params)
     {

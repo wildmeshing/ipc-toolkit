@@ -26,7 +26,7 @@ namespace ipc
             PSDProjectionMethod project_to_psd);
 
         double evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-            ConcatMatrixView<3> V_extended,
+            VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
             EdgeEdgeDistanceType dtype);
@@ -39,29 +39,29 @@ namespace ipc
         template <typename ADType>
         std::enable_if_t<IsADGrad<ADType>::value || IsADHessian<ADType>::value, Eigen::VectorXd>
         evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions(
-            ConcatMatrixView<3> V_extended,
+            VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
             Eigen::ConstRef<Eigen::Vector3<ADType>> q);
 
         Eigen::MatrixXd evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
-            ConcatMatrixView<3> V_extended,
+            VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
             Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q);
 
         double evaluate_potential_at_face_center_with_cached_collisions(
-            ConcatMatrixView<3> V_extended,
+            VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params);
 
         Eigen::VectorXd evaluate_potential_gradient_at_face_center_with_cached_collisions(
-            ConcatMatrixView<3> V_extended,
+            VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params);
 
         Eigen::MatrixXd evaluate_potential_hessian_at_face_center_with_cached_collisions(
-            ConcatMatrixView<3> V_extended,
+            VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
             PSDProjectionMethod project_to_psd);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "high_order_primitives.hpp"
+#include "vertex_matrix_view.hpp"
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 #include <ipc/math/math.hpp>
 #include <ipc/utils/autodiff_types.hpp>
@@ -14,54 +15,6 @@ enum class HighOrderCollisionType : uint8_t {
     EDGE_EDGE = 3,
     EDGE_FACE = 4,
     FACE_FACE = 5
-};
-
-// A concatenation view of two matrices with same number of columns
-template <int ncols = 3>
-class ConcatMatrixView
-{
-public:
-    ConcatMatrixView(
-        Eigen::ConstRef<Eigen::MatrixXd> A,
-        Eigen::ConstRef<Eigen::MatrixXd> B)
-        : n_A_rows(A.rows()),
-          n_B_rows(B.rows()),
-          m_A(A.data()),
-          m_B(B.data())
-    {
-        if (A.cols() != ncols || B.cols() != ncols) {
-            log_and_throw_error("Incompatible matrix columns!");
-        }
-    }
-
-    Eigen::RowVector<double, ncols> operator()(index_t i)
-    {
-        assert(i < rows());
-        if (i < n_A_rows) {
-            return Eigen::RowVector<double, ncols>(
-                m_A[i + 0 * n_A_rows],
-                m_A[i + 1 * n_A_rows],
-                m_A[i + 2 * n_A_rows]);
-        }
-        else {
-            i -= n_A_rows;
-            return Eigen::RowVector<double, ncols>(
-                m_B[i + 0 * n_B_rows],
-                m_B[i + 1 * n_B_rows],
-                m_B[i + 2 * n_B_rows]);
-        }
-    }
-
-    index_t rows() const
-    {
-        return n_A_rows + n_B_rows;
-    }
-    index_t cols() const { return ncols; }
-
-    const index_t n_A_rows;
-    const index_t n_B_rows;
-    const double* const m_A;
-    const double* const m_B;
 };
 
 /// @brief Contact pair class for Geometric Contact Potential.
@@ -121,7 +74,7 @@ public:
 
     /// @brief Select this stencil's DOF from the full matrix of DOF.
     /// In 3D, some vertices may not be directly stored in the full matrix, e.g. face centers and edge-edge closest points.
-    Eigen::VectorXd dof(ConcatMatrixView<3> X_extended) const;
+    Eigen::VectorXd dof(VertexMatrixView<3> X_extended) const;
 
     /// @brief Compute the distance of the stencil.
     /// @param vertices Collision mesh vertices
