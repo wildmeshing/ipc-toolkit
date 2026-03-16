@@ -115,7 +115,8 @@ TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential], [high_order_
     HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
 
-    HighOrderContactPotential potential(params);
+    const bool normalize_weights = GENERATE(true, false);
+    HighOrderContactPotential potential(params, normalize_weights);
 
     Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
 
@@ -159,7 +160,8 @@ TEST_CASE("Convergent Quadrature Hessian Expensive", tagsopt)
     HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
 
-    HighOrderContactPotential potential(params);
+    const bool normalize_weights = GENERATE(true, false);
+    HighOrderContactPotential potential(params, normalize_weights);
 
     Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
 
@@ -190,7 +192,8 @@ TEST_CASE("Convergent Quadrature Gradient Expensive", "[high_order_potential], [
     HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
 
-    HighOrderContactPotential potential(params);
+    const bool normalize_weights = GENERATE(true, false);
+    HighOrderContactPotential potential(params, normalize_weights);
 
     Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
 
@@ -221,7 +224,8 @@ TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential], [high_order
     HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
 
-    HighOrderContactPotential potential(params);
+    const bool normalize_weights = GENERATE(true, false);
+    HighOrderContactPotential potential(params, normalize_weights);
 
     Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
 

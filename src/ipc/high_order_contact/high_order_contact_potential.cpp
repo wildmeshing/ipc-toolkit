@@ -117,9 +117,7 @@ double HighOrderContactPotential::operator()(
                     }
 
                     assert(total_w > 0);
-                    {
-                        total += w * (total_p / total_w);
-                    }
+                    total += normalize_weights ? w * (total_p / total_w) : w * total_p;
                 }
             };
 
@@ -278,9 +276,9 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         }
                     }
 
-                    // Pass 2: apply unified normalized gradient
+                    // Pass 2: apply gradient
                     assert(total_w > 0);
-                    {
+                    if (normalize_weights) {
                         const double avg_P = total_p / total_w;
                         for (const auto& e : ee_cache) {
                             grad(e.dict->dofs()) += (w / total_w * e.mol_val) * e.grad_P;
@@ -288,6 +286,14 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         }
                         for (const auto& e : const_cache) {
                             grad(e.dofs) += (w / total_w) * e.grad_P;
+                        }
+                    } else {
+                        for (const auto& e : ee_cache) {
+                            grad(e.dict->dofs()) += w * e.mol_val * e.grad_P;
+                            grad(e.dict->primary_dofs()) += w * e.P * e.mol_grad;
+                        }
+                        for (const auto& e : const_cache) {
+                            grad(e.dofs) += w * e.grad_P;
                         }
                     }
                 }
@@ -497,18 +503,15 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         }
                     }
 
-                    // Pass 2: exact normalized hessian via quotient rule
-                    // H(w*p/Z) = (w/Z)*H(p) - (w*avg_P/Z)*H(Z) - (w/Z²)*sym(G⊗∇Z)
-                    // where Z = total_w, avg_P = total_p/Z
-                    //       ∇Z = Σ_i mol_grad_i  (EE only)
-                    //       G  = ∇p - avg_P * ∇Z
+                    // Pass 2: apply hessian
                     assert(total_w > 0);
-                    {
+                    if (normalize_weights) {
+                        // Exact quotient rule: H(w*p/Z) = (w/Z)*H(p) - (w*avg_P/Z)*H(Z) - (w/Z²)*sym(G⊗∇Z)
+                        // where Z = total_w, ∇Z = Σ_i mol_grad_i, G = ∇p - avg_P*∇Z
                         const double avg_P = total_p / total_w;
                         const double scale_C = -(w / (total_w * total_w));
 
-                        // Adds scale_C * (outer(g_vec, gradz_vec) + outer(gradz_vec, g_vec)) to triplets.
-                        // g_vec is on g_dofs (global DOF indices), gradz_vec is on gradz_dofs (primary_dofs of EE entry i).
+                        // Adds scale_C * sym(outer(g_vec, gradz_vec)) to triplets.
                         auto add_sym_correction = [&](
                             const std::vector<index_t>& g_dofs,
                             const Eigen::Ref<const Eigen::VectorXd>& g_vec,
@@ -535,7 +538,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 *(hess_triplets.cache));
                         }
 
-                        // Term B: -(w * avg_P / total_w) * H(total_w) = -(w*avg_P/Z) * Σ_i H(mol_i)
+                        // Term B: -(w*avg_P/Z) * Σ_i H(mol_i)
                         for (const auto& e : ee_cache) {
                             local_hessian_to_global_triplets(
                                 -(w * avg_P / total_w) * e.mol_hess,
@@ -544,27 +547,34 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         }
 
                         // Term C: -(w/Z²) * sym(G⊗∇Z)
-                        // For each EE entry i contributing mol_grad_i to ∇Z:
                         for (const auto& ei : ee_cache) {
                             const std::vector<index_t> prim_dofs_i = ei.dict->primary_dofs();
                             const Eigen::Vector<double, 12> mol_grad_i = ei.mol_grad;
-                            // G contributions from each EE entry k:
                             for (const auto& ek : ee_cache) {
-                                // k's mol term: G += (P_k - avg_P) * mol_grad_k on primary_dofs_k
                                 add_sym_correction(
                                     ek.dict->primary_dofs(),
                                     (ek.P - avg_P) * ek.mol_grad,
                                     prim_dofs_i, mol_grad_i);
-                                // k's potential term: G += mol_k * grad_P_k on dofs_k
                                 add_sym_correction(
                                     ek.dict->dofs(),
                                     ek.mol_val * ek.grad_P,
                                     prim_dofs_i, mol_grad_i);
                             }
-                            // G contributions from each const entry j:
                             for (const auto& ej : const_cache) {
                                 add_sym_correction(ej.dofs, ej.grad_P, prim_dofs_i, mol_grad_i);
                             }
+                        }
+                    } else {
+                        // Unnormalized: H(w*p_sum) = w * H(p_sum)
+                        for (const auto& e : ee_cache) {
+                            local_hessian_to_global_triplets(
+                                w * e.local_hess, e.dict->vertex_ids(), dim,
+                                *(hess_triplets.cache));
+                        }
+                        for (const auto& e : const_cache) {
+                            local_hessian_to_global_triplets(
+                                w * e.local_hess, e.vertex_ids, dim,
+                                *(hess_triplets.cache));
                         }
                     }
                 }

@@ -11,8 +11,10 @@ namespace ipc {
 
 class HighOrderContactPotential {
 public:
-    HighOrderContactPotential(const HighOrderContactParameters& _params)
-        : params(_params)
+    HighOrderContactPotential(
+        const HighOrderContactParameters& _params,
+        const bool _normalize_weights = true)
+        : params(_params), normalize_weights(_normalize_weights)
     {
     }
 
@@ -111,6 +113,8 @@ public:
 protected:
     /// @brief GCP parameters for collision potential
     HighOrderContactParameters params;
+    /// @brief Whether to normalize quadrature weights so they sum to 1
+    const bool normalize_weights;
 };
 
 } // namespace ipc
