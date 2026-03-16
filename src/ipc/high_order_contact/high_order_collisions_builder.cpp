@@ -447,13 +447,13 @@ void QuadratureCollisionsBuilder::merge(
     for (const auto& storage : local_storage) {
         total_v += storage.vertex_collisions.size();
         total_ee += storage.edge_edge_collisions.size();
-        if constexpr (!HighOrderCollisions::skip_face_collisions) {
+        if (!merged_collisions.skip_face_collisions) {
             total_f += storage.face_collisions.size();
         }
     }
     merged_collisions.vertex_collisions.reserve(total_v);
     merged_collisions.edge_edge_collisions.reserve(total_ee);
-    if constexpr (!HighOrderCollisions::skip_face_collisions) {
+    if (!merged_collisions.skip_face_collisions) {
         merged_collisions.face_collisions.reserve(total_f);
     }
 
@@ -465,7 +465,7 @@ void QuadratureCollisionsBuilder::merge(
             const auto id = cc->primitive_ids();
             merged_collisions.edge_edge_collisions.insert(std::make_pair(std::make_pair(id[0], id[1]), std::move(cc)));
         }
-        if constexpr (!HighOrderCollisions::skip_face_collisions) {
+        if (!merged_collisions.skip_face_collisions) {
             for (auto& cc : storage.face_collisions) {
                 merged_collisions.face_collisions.insert(std::make_pair(cc->primitive_id(), std::move(cc)));
             }

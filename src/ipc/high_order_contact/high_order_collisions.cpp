@@ -301,7 +301,7 @@ void HighOrderCollisions::build(
         }
 
         std::vector<index_t> faces_to_process;
-        if constexpr (!HighOrderCollisions::skip_face_collisions) {
+        if (!skip_face_collisions) {
             faces_to_process.resize(mesh.num_faces());
             std::iota(faces_to_process.begin(), faces_to_process.end(), 0);
         }
@@ -319,7 +319,7 @@ void HighOrderCollisions::build(
                     vertices, vertices_to_process, start, end);
             });
 
-        if constexpr (!HighOrderCollisions::skip_face_collisions) {
+        if (!skip_face_collisions) {
             maybe_parallel_for(
                 faces_to_process.size(),
                 [&](int start, int end, int thread_id) {
