@@ -359,7 +359,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                     struct EEHessEntry {
                         const HighOrderCollisionDict<PointType::EDGE>* dict;
                         double mol_val;
-                        Eigen::VectorXd mol_grad;                  // 12D on primary_dofs
+                        Eigen::Vector<double, 12> mol_grad;        // on primary_dofs
                         Eigen::Matrix<double, 12, 12> mol_hess;    // H(mol) on primary_dofs
                         double P;
                         Eigen::VectorXd grad_P;                    // indexed by dict->dofs()
@@ -511,9 +511,9 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         // g_vec is on g_dofs (global DOF indices), gradz_vec is on gradz_dofs (primary_dofs of EE entry i).
                         auto add_sym_correction = [&](
                             const std::vector<index_t>& g_dofs,
-                            const Eigen::VectorXd& g_vec,
+                            const Eigen::Ref<const Eigen::VectorXd>& g_vec,
                             const std::vector<index_t>& gradz_dofs,
-                            const Eigen::VectorXd& gradz_vec) {
+                            const Eigen::Ref<const Eigen::VectorXd>& gradz_vec) {
                             for (int a = 0; a < static_cast<int>(g_dofs.size()); a++) {
                                 for (int b = 0; b < static_cast<int>(gradz_dofs.size()); b++) {
                                     const double v = scale_C * g_vec[a] * gradz_vec[b];
@@ -547,7 +547,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         // For each EE entry i contributing mol_grad_i to ∇Z:
                         for (const auto& ei : ee_cache) {
                             const std::vector<index_t> prim_dofs_i = ei.dict->primary_dofs();
-                            const Eigen::VectorXd mol_grad_i = ei.mol_grad;
+                            const Eigen::Vector<double, 12> mol_grad_i = ei.mol_grad;
                             // G contributions from each EE entry k:
                             for (const auto& ek : ee_cache) {
                                 // k's mol term: G += (P_k - avg_P) * mol_grad_k on primary_dofs_k
