@@ -414,7 +414,7 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             vertices.row(ea), vertices.row(eb),
             vertices.row(ec), vertices.row(ed), dtype);
 
-        if (dist_sq >= params.dhat * params.dhat) {
+        if (dist_sq >= params.dbar * params.dbar) {
             continue;
         }
 

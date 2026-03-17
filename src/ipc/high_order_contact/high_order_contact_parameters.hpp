@@ -24,11 +24,13 @@ struct HighOrderContactParameters {
     }
 
     double dhat;
+    double dbar = dhat/4;
     double alpha;
     int r;
     int quad_points;
     bool skip_obstacle;
 
+    double get_dhat(bool safety_mode=false) const { return safety_mode ? dbar : dhat; }
 
     double adaptive_dhat_ratio() const { return m_adaptive_dhat_ratio; }
 

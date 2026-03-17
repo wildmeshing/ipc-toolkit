@@ -87,7 +87,7 @@ double HighOrderContactPotential::operator()(
 
                                 const Eigen::RowVector3d ee_closest_point = uv * (X.row(eb) - X.row(ea)) + X.row(ea);
 
-                                double mollifier = Math<double>::cubic_spline(dist / params.dhat) * 1.5;
+                                double mollifier = Math<double>::cubic_spline(dist / params.dbar) * 1.5;
                                 mollifier *= half_edge_edge_mollifier<double>(
                                     X.row(ea), X.row(eb),
                                     X.row(ec), X.row(ed), dtype);
@@ -227,7 +227,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 const Eigen::RowVector3<T> ee_closest_point_T = uv * (positionsT.row(1) - positionsT.row(0)) + positionsT.row(0);
                                 const Eigen::RowVector3<double> ee_closest_point(ee_closest_point_T(0).val, ee_closest_point_T(1).val, ee_closest_point_T(2).val);
 
-                                T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
+                                T mollifier = Math<T>::cubic_spline(dist / params.dbar) * 1.5;
                                 mollifier *= half_edge_edge_mollifier<T>(
                                     positionsT.row(0), positionsT.row(1),
                                     positionsT.row(2), positionsT.row(3), dtype);
@@ -417,7 +417,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 const Eigen::RowVector3<T> ee_closest_point_T = uv * (positionsT.row(1) - positionsT.row(0)) + positionsT.row(0);
                                 const Eigen::RowVector3<double> ee_closest_point(ee_closest_point_T(0).val, ee_closest_point_T(1).val, ee_closest_point_T(2).val);
 
-                                T mollifier = Math<T>::cubic_spline(dist / params.dhat) * 1.5;
+                                T mollifier = Math<T>::cubic_spline(dist / params.dbar) * 1.5;
                                 mollifier *= half_edge_edge_mollifier<T>(
                                     positionsT.row(0), positionsT.row(1),
                                     positionsT.row(2), positionsT.row(3), dtype);

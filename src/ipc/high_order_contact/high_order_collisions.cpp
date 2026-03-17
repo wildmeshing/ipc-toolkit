@@ -97,6 +97,7 @@ void HighOrderCollisions::compute_adaptive_dhat(
     const HighOrderContactParameters params,
     BroadPhase* broad_phase)
 {
+    throw std::logic_error("Please don't use adaptive dhat right now"); //TODO enable
     assert(vertices.rows() == mesh.num_vertices());
 
     const double dhat = params.dhat;
@@ -277,9 +278,9 @@ void HighOrderCollisions::build(
         HighOrderCollisionsBuilder<2>::merge(storage, *this);
     }
     else {
-        auto is_active = [offset_sqr = dhat * dhat](double distance_sqr) {
+        /*auto is_active = [offset_sqr = dhat * dhat](double distance_sqr) {
             return distance_sqr < offset_sqr;
-        };
+        };*/
 
         if (!mesh.is_watertight()) {
             igl::write_triangle_mesh("non-watertight-mesh.obj", mesh.rest_positions(), mesh.faces());
@@ -353,7 +354,7 @@ void HighOrderCollisions::build(
 {
     assert(vertices.rows() == mesh.num_vertices());
 
-    double inflation_radius = params.dhat / 2;
+    double inflation_radius = params.dhat / 2;  //TODO use dbar for EE collisions broad phase
 
     // Candidates m_candidates;
     m_candidates.build(mesh, vertices, inflation_radius, broad_phase, true);

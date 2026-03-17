@@ -133,7 +133,7 @@ public:
         const size_t start_i,
         const size_t end_i);
 
-    // -------------------------------------------------------------------------
+    /*/ -------------------------------------------------------------------------
 
     void add_negative_edge_edge_edge_collisions(
         const CollisionMesh& mesh,
@@ -162,7 +162,7 @@ public:
         const size_t start_i,
         const size_t end_i);
 
-    // -------------------------------------------------------------------------
+    /*/// -------------------------------------------------------------------------
 
     static void merge(
         const ParallelCacheType<HighOrderCollisionsBuilder<3>>& local_storage,

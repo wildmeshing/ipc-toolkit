@@ -94,10 +94,13 @@ public:
     double
     compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
 
+    void flag_as_safety() { safety_mode = true; }
 private:
     /// @brief The first primitive in the contact pair
     PrimitiveA primitive_a;
     /// @brief The second primitive in the contact pair
     PrimitiveB primitive_b;
+    /// @brief Whether this contact pair uses the smaller distance
+    bool safety_mode = false;
 };
 }
