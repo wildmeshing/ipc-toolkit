@@ -45,6 +45,12 @@ namespace ipc
             m_vertex_ids_inverse[m_vertex_ids[i]] = i;
         }
 
+        // Cache primary local ids
+        for (int i = 0; i < m_primary_vertex_ids.size(); i++) {
+            if (m_primary_vertex_ids[i] < 0) break;
+            m_primary_local_ids[i] = vertex_ids_inverse(m_primary_vertex_ids[i]);
+        }
+
         // Cache dofs
         m_dofs.resize(m_vertex_ids.size() * dim);
         for (int i = 0; i < m_vertex_ids.size(); i++) {

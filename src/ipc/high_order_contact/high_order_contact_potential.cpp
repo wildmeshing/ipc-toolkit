@@ -75,9 +75,7 @@ double HighOrderContactPotential::operator()(
                             if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
                                 iter != collisions.edge_edge_collisions.end()) {
 
-                                auto dtype = edge_edge_distance_type(
-                                    X.row(ea), X.row(eb),
-                                    X.row(ec), X.row(ed));
+                                const auto dtype = iter->second->ee_dtype();
 
                                 const double dist = sqrt(edge_edge_distance(
                                     X.row(ea), X.row(eb),
@@ -214,9 +212,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 Eigen::Vector<double, 12> positions;
                                 positions << X.row(ea).transpose(), X.row(eb).transpose(), X.row(ec).transpose(), X.row(ed).transpose();
 
-                                const auto dtype = edge_edge_distance_type(
-                                    X.row(ea), X.row(eb),
-                                    X.row(ec), X.row(ed));
+                                const auto dtype = iter->second->ee_dtype();
 
                                 Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(positions);
 
@@ -406,9 +402,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 Eigen::Vector<double, 12> positions;
                                 positions << X.row(ea).transpose(), X.row(eb).transpose(), X.row(ec).transpose(), X.row(ed).transpose();
 
-                                const auto dtype = edge_edge_distance_type(
-                                    X.row(ea), X.row(eb),
-                                    X.row(ec), X.row(ed));
+                                const auto dtype = iter->second->ee_dtype();
 
                                 Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(positions);
 
@@ -441,14 +435,14 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                                 for (index_t i = 0; i < 4; i++) {
                                     for (index_t j = 0; j < 4; j++) {
-                                        local_hess.block<3, 3>(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, dict.vertex_ids_inverse(dict.primary_vertex_ids()[j]) * 3) += P * mollifier.Hess.block<3, 3>(i * 3, j * 3);
+                                        local_hess.block<3, 3>(dict.primary_local_ids()[i] * 3, dict.primary_local_ids()[j] * 3) += P * mollifier.Hess.block<3, 3>(i * 3, j * 3);
                                     }
                                 }
 
                                 for (index_t i = 0; i < 4; i++) {
                                     const Eigen::MatrixXd tmp = mollifier.grad.segment<3>(i * 3) * grad_P.transpose();
-                                    local_hess.middleRows(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, 3) += tmp;
-                                    local_hess.middleCols(dict.vertex_ids_inverse(dict.primary_vertex_ids()[i]) * 3, 3) += tmp.transpose();
+                                    local_hess.middleRows(dict.primary_local_ids()[i] * 3, 3) += tmp;
+                                    local_hess.middleCols(dict.primary_local_ids()[i] * 3, 3) += tmp.transpose();
                                 }
 
                                 if (project_hessian_to_psd != PSDProjectionMethod::NONE) {

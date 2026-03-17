@@ -1,5 +1,6 @@
 #pragma once
 #include "high_order_collision_3d.hpp"
+#include <ipc/distance/distance_type.hpp>
 #include <ipc/utils/unordered_map_and_set.hpp>
 
 namespace ipc {
@@ -33,6 +34,8 @@ public:
         );
 
     const std::array<index_t, 4>& primary_vertex_ids() const { return m_primary_vertex_ids; }
+    /// @brief Local indices of primary vertices (i.e. vertex_ids_inverse(primary_vertex_ids()[i]))
+    const std::array<index_t, 4>& primary_local_ids() const { return m_primary_local_ids; }
     int size() const { return vv_collisions.size() + ev_collisions.size() + fv_collisions.size(); }
 
     HighOrderCollision& operator[](int i);
@@ -49,6 +52,14 @@ public:
     std::array<index_t, 2> primitive_ids() const {
         return m_primitive_ids;
     }
+
+    template <PointType T = pType,
+              typename = std::enable_if_t<T == PointType::EDGE>>
+    EdgeEdgeDistanceType ee_dtype() const { return m_ee_dtype; }
+
+    template <PointType T = pType,
+              typename = std::enable_if_t<T == PointType::EDGE>>
+    void set_ee_dtype(EdgeEdgeDistanceType dtype) { m_ee_dtype = dtype; }
 
     /* These functions are only available after calling finish_insertion() */
 
@@ -67,6 +78,9 @@ private:
 
     std::array<index_t, 2> m_primitive_ids{{-1, -1}};
 
+    /// @brief Cached edge-edge distance type (only meaningful for PointType::EDGE)
+    EdgeEdgeDistanceType m_ee_dtype = EdgeEdgeDistanceType::AUTO;
+
     /// @brief Primary vertices used to compute the virtual vertex
     /// When the quadrature point q is
     ///     - a vertex, this is that vertex id
@@ -74,6 +88,8 @@ private:
     ///     - a face point, this is the three vertices of the face
     /// When the size is smaller than 4, append -1 to entries not used.
     std::array<index_t, 4> m_primary_vertex_ids{{-1,-1,-1,-1}};
+    /// @brief Cached local indices: m_primary_local_ids[i] = vertex_ids_inverse(m_primary_vertex_ids[i])
+    std::array<index_t, 4> m_primary_local_ids{{-1,-1,-1,-1}};
 
     /// @brief Collection of all vertices in collision pairs, including the primary vertices, but not the virtual vertex
     std::vector<index_t> m_vertex_ids;

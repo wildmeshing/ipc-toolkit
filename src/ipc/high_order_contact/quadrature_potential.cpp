@@ -348,6 +348,7 @@ PointPotential::build_collisions_at_vertex(
 
         std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>> collisions = std::make_unique<HighOrderCollisionDict<PointType::EDGE>>();
         collisions->initialize(std::vector<index_t>{e0, e1}, std::vector{e00, e01, e10, e11}, pairs);
+        collisions->set_ee_dtype(dtype);
         return collisions;
     }
 
@@ -387,7 +388,7 @@ PointPotential::build_collisions_at_vertex(
                     const Vector12d local_grad = (q(0) * g(3 * i + 0) + q(1) * g(3 * i + 1) + q(2) * g(3 * i + 2)).grad;
                     // distribute grad wrt virtual vertex to real edge vertices
                     for (index_t lv = 0; lv < 4; lv++) {
-                        grad.segment<3>(3 * collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[lv])) += local_grad.segment<3>(lv * 3);
+                        grad.segment<3>(3 * collisions.primary_local_ids()[lv]) += local_grad.segment<3>(lv * 3);
                     }
                 }
                 else {
@@ -451,8 +452,8 @@ PointPotential::build_collisions_at_vertex(
 
                         for (index_t li = 0; li < 4; li++) {
                             for (index_t lj = 0; lj < 4; lj++) {
-                                H.block<3, 3>(collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[li]) * 3,
-                                    collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[lj]) * 3) +=
+                                H.block<3, 3>(collisions.primary_local_ids()[li] * 3,
+                                    collisions.primary_local_ids()[lj] * 3) +=
                                         local_hess.block<3, 3>(3 * li, 3 * lj);
                             }
                         }
@@ -465,7 +466,7 @@ PointPotential::build_collisions_at_vertex(
                             local_hess = tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j);
                         }
                         for (index_t li = 0; li < 4; li++) {
-                            const index_t lli = collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[li]);
+                            const index_t lli = collisions.primary_local_ids()[li];
                             H.block<3, 3>(lli * 3, collisions.vertex_ids_inverse(gj) * 3) += local_hess.block<3, 3>(3 * li, 0);
                             H.block<3, 3>(collisions.vertex_ids_inverse(gj) * 3, lli * 3) += local_hess.block<3, 3>(3 * li, 0).transpose();
                         }
@@ -555,7 +556,7 @@ PointPotential::build_collisions_at_vertex(
                 if (global_id == n_real_vertices) {
                     // distribute grad wrt virtual vertex to real face vertices
                     for (index_t lv = 0; lv < 3; lv++) {
-                        grad.segment<3>(collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[lv]) * 3) += g.segment<3>(3 * i) / 3.;
+                        grad.segment<3>(collisions.primary_local_ids()[lv] * 3) += g.segment<3>(3 * i) / 3.;
                     }
                 }
                 else {
@@ -592,15 +593,15 @@ PointPotential::build_collisions_at_vertex(
                         // distribute grad wrt virtual vertex to real face vertices
                         for (index_t li = 0; li < 3; li++) {
                             for (index_t lj = 0; lj < 3; lj++) {
-                                H.block<3, 3>(collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[li]) * 3,
-                                              collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[lj]) * 3) +=
+                                H.block<3, 3>(collisions.primary_local_ids()[li] * 3,
+                                              collisions.primary_local_ids()[lj] * 3) +=
                                     h.block<3, 3>(3 * i, 3 * j) / 9.;
                             }
                         }
                     }
                     else if (gi == n_real_vertices) {
                         for (index_t li = 0; li < 3; li++) {
-                            H.block<3, 3>(collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[li]) * 3,
+                            H.block<3, 3>(collisions.primary_local_ids()[li] * 3,
                                 collisions.vertex_ids_inverse(gj) * 3) +=
                                 h.block<3, 3>(3 * i, 3 * j) / 3.;
                         }
@@ -608,7 +609,7 @@ PointPotential::build_collisions_at_vertex(
                     else if (gj == n_real_vertices) {
                         for (index_t lj = 0; lj < 3; lj++) {
                             H.block<3, 3>(collisions.vertex_ids_inverse(gi) * 3,
-                                collisions.vertex_ids_inverse(collisions.primary_vertex_ids()[lj]) * 3) +=
+                                collisions.primary_local_ids()[lj] * 3) +=
                                 h.block<3, 3>(3 * i, 3 * j) / 3.;
                         }
                     }
