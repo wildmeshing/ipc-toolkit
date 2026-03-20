@@ -10,6 +10,7 @@
 #include <ipc/distance/point_line.hpp>
 #include <ipc/distance/point_point.hpp>
 #include <ipc/utils/local_to_global.hpp>
+#include <ipc/utils/world_bbox_diagonal_length.hpp>
 #include <ipc/utils/maybe_parallel_for.hpp>
 #include <ipc/high_order_contact/quadrature_potential.hpp>
 
@@ -524,7 +525,8 @@ double HighOrderCollisions::compute_active_minimum_distance(
             });
     }
     else {
-        double min_dist = std::numeric_limits<double>::max();
+        const double bbox_diag = world_bbox_diagonal_length(vertices);
+        double min_dist = bbox_diag * bbox_diag;
         for (const auto& map : vertex_collisions) {
             for (int i = 0; i < (*map.second).size(); i++) {
                 const auto& cc = (*map.second)[i];
