@@ -73,7 +73,7 @@ TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential], [hig
 
     const double dhat = 0.1;
 
-    HighOrderContactParameters params(dhat, 0., 2, 0);
+    HighOrderContactParameters params(dhat, 1., 0, 2);
 
     const bool skip_face_collisions = GENERATE(true, false);
     HighOrderCollisions collisions(skip_face_collisions);
@@ -111,7 +111,7 @@ TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential], [high_order_
     CollisionMesh mesh(V, E, F);
 
     const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
+    HighOrderContactParameters params(dhat, 1., 0, 2);
 
     const bool skip_face_collisions = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
@@ -157,7 +157,7 @@ TEST_CASE("Convergent Quadrature Hessian Expensive", tagsopt)
     CollisionMesh mesh(V, E, F);
 
     const double dhat = 0.1;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
+    HighOrderContactParameters params(dhat, 1., 0, 2);
 
     const bool skip_face_collisions = GENERATE(true, false);
     HighOrderCollisions collisions(skip_face_collisions);
@@ -190,7 +190,7 @@ TEST_CASE("Convergent Quadrature Gradient Expensive", "[high_order_potential], [
     CollisionMesh mesh(V, E, F);
 
     const double dhat = 0.1;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
+    HighOrderContactParameters params(dhat, 1., 0, 2);
 
     const bool skip_face_collisions = GENERATE(true, false);
     HighOrderCollisions collisions(skip_face_collisions);
@@ -223,7 +223,7 @@ TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential], [high_order
     CollisionMesh mesh(V, E, F);
 
     const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
+    HighOrderContactParameters params(dhat, 1., 0, 2);
 
     const bool skip_face_collisions = GENERATE(true, false);
     HighOrderCollisions collisions(skip_face_collisions);
@@ -263,7 +263,7 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential], [high
     CollisionMesh mesh(V, E, F);
 
     const double dhat = 0.2;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
+    HighOrderContactParameters params(dhat, 1., 0, 2);
 
     const bool skip_face_collisions = GENERATE(true, false);
     HighOrderCollisions collisions(skip_face_collisions);
@@ -310,7 +310,7 @@ TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]"
 
     {
         HighOrderCollisions collisions(skip_face_collisions);
-        HighOrderContactParameters params(dhat, 0., 2, 0);
+        HighOrderContactParameters params(dhat, 1., 0, 2);
         collisions.build(mesh, vertices, params);
 
         std::cout << "high order collision size " << collisions.size() << std::endl;
@@ -325,7 +325,7 @@ TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]"
 
     {
         HighOrderCollisions collisions(skip_face_collisions);
-        HighOrderContactParameters params(dhat, 0., 2, 0);
+        HighOrderContactParameters params(dhat, 1., 0, 2);
         collisions.build(mesh, vertices, params);
 
         std::cout << "high order collision pairs (before cancellation) " << collisions.num_quadrature_collision_pairs << std::endl;
@@ -349,7 +349,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
     CollisionMesh mesh(V, E, F);
 
     const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
+    HighOrderContactParameters params(dhat, 1., 0, 2);
 
     Candidates candidates;
     candidates.build(mesh, V, dhat / 2, method.get(), true);
@@ -405,7 +405,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
     CollisionMesh mesh(V, E, F);
 
     const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
+    HighOrderContactParameters params(dhat, 1., 0, 2);
 
     Candidates candidates;
     candidates.build(mesh, V, dhat / 2, method.get(), true);
@@ -468,7 +468,7 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
     Eigen::MatrixXi E;
     double dhat = 1.;
     const int quadrature_order = GENERATE(2, 4, 10, 20);
-    HighOrderContactParameters params(dhat, 0., 1, quadrature_order);
+    HighOrderContactParameters params(dhat, 1., quadrature_order, 1);
 
     SECTION("single_square")
     {
@@ -555,7 +555,7 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
     double dhat = 0.6;
     constexpr double BA = 1e-7; // a small constant to break perfect alignments
     const int quadrature_order = GENERATE(2, 4, 10, 20);
-    HighOrderContactParameters params(dhat, 0., 1, quadrature_order);
+    HighOrderContactParameters params(dhat, 1., quadrature_order, 1);
     CAPTURE(quadrature_order);
 
     auto run_checks = [&]() {
