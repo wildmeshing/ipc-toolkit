@@ -137,6 +137,12 @@ public:
     /// @return A map from occurrence count to the number of edge ids with that count.
     std::map<size_t, size_t> edge_id_count_distribution() const;
 
+    /// @brief Get per-edge collision counts as a vector.
+    /// @param num_edges Total number of edges in the collision mesh.
+    /// @return A vector of size num_edges where entry i counts how many
+    ///         edge-edge collision pairs involve edge i (as first element).
+    Eigen::VectorXd edge_collision_counts(size_t num_edges) const;
+
 public:
     /// @brief (active) collision pairs
     std::vector<std::shared_ptr<HighOrderCollision>> collisions;
