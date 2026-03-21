@@ -6,29 +6,25 @@ namespace ipc {
 struct HighOrderContactParameters {
     HighOrderContactParameters(
         const double _dhat,
-        const double _alpha,
-        const int _r,
-        const int _quad_points,
+        const double _dbar_factor = 1.0,
+        const int _quad_order = 1,
+        const int _exponent = 2,
         const bool _skip_obstacle = true
     ) :
         dhat(_dhat),
-        alpha(_alpha),
-        r(_r),
-        quad_points(_quad_points),
+        dbar(dhat * _dbar_factor),
+        quad_order(_quad_order),
+        r(_exponent),
         skip_obstacle(_skip_obstacle)
     {
-        if (abs(alpha) > 1) {
-            logger().error(
-                "Parameter 'alpha' must be in [-1, 1]! alpha: {}", alpha);
-        }
     }
 
-    double dhat;
-    double dbar = dhat/4;
-    double alpha;
-    int r;
-    int quad_points;
-    bool skip_obstacle;
+    constexpr static double alpha = 0.; // For compatibility
+    const double dhat;
+    const double dbar;
+    const int quad_order;
+    const int r = 2;
+    const bool skip_obstacle;
 
     double get_dhat(bool safety_mode=false) const { return safety_mode ? dbar : dhat; }
 

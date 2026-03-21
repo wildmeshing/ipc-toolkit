@@ -24,6 +24,8 @@ double HighOrderContactPotential::operator()(
 {
     assert(X.rows() == mesh.num_vertices());
 
+    m_edge_evaluation_count.clear();
+
     if (collisions.empty()) {
         return 0;
     }
@@ -46,9 +48,11 @@ double HighOrderContactPotential::operator()(
     else if (mesh.dim() == 3) {
         {
             auto potential_storage = create_thread_storage(0.0);
+            auto count_storage = create_thread_storage<CountMap>(CountMap());
 
             auto loop_body = [&](int start, int end, int thread_id) {
                 double& total = get_local_thread_storage(potential_storage, thread_id);
+                CountMap& local_counts = get_local_thread_storage(count_storage, thread_id);
                 for (index_t f = start; f < end; f++) {
                     const double area = mesh.face_areas()(f);
                     const double w = area / 9.;
@@ -95,6 +99,7 @@ double HighOrderContactPotential::operator()(
                                 total_w += mollifier;
                                 total_p += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                     VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
+                                local_counts[edge_id]++;
                             }
                         }
                     }
@@ -123,6 +128,12 @@ double HighOrderContactPotential::operator()(
 
             for (const auto& local_potential : potential_storage) {
                 result += local_potential;
+            }
+
+            for (const auto& local_counts : count_storage) {
+                for (const auto& [id, count] : local_counts) {
+                    m_edge_evaluation_count[id] += count;
+                }
             }
         }
     }

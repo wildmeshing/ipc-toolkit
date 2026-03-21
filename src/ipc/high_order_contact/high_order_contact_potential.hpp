@@ -5,6 +5,8 @@
 #include <ipc/high_order_contact/collisions/triple_pair_collision.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
+#include <map>
+
 namespace ipc {
 
 // Flag to control parallelism in potential evaluation
@@ -110,11 +112,19 @@ public:
         const PSDProjectionMethod project_hessian_to_psd =
             PSDProjectionMethod::NONE) const;
 
+    using CountMap = std::map<index_t, unsigned>;
+    const CountMap& get_edge_evaluation_count() const
+    {
+        return m_edge_evaluation_count;
+    }
+
 protected:
     /// @brief GCP parameters for collision potential
     HighOrderContactParameters params;
     /// @brief Whether to normalize quadrature weights so they sum to 1
     const bool normalize_weights;
+
+    mutable CountMap m_edge_evaluation_count;
 };
 
 } // namespace ipc

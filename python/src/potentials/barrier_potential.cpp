@@ -194,19 +194,22 @@ void define_high_order_potential(py::module &m)
     py::class_<HighOrderContactParameters>(m, "HighOrderContactParameters")
         .def(
             py::init<
-                const double, const double,
-                const int, const int>(),
+                const double, const double, const int, const int, const bool>(),
             R"ipc_Qu8mg5v7(
             Construct parameter set for high-order contact.
 
             Parameters:
-                dhat, alpha, r, quadrature points
+                dhat, dbar_factor, quad_order, exponent, skip_obstacle
             )ipc_Qu8mg5v7",
-            py::arg("dhat"), py::arg("alpha"), py::arg("r"), py::arg("quad_points"))
+            py::arg("dhat"), py::arg("dbar_factor") = 1.0,
+            py::arg("quad_order") = 1, py::arg("exponent") = 2,
+            py::arg("skip_obstacle") = true)
         .def_readonly("dhat", &HighOrderContactParameters::dhat)
-        .def_readonly("alpha", &HighOrderContactParameters::alpha)
-        .def_readonly("r", &HighOrderContactParameters::r)
-        .def_readonly("quad_points", &HighOrderContactParameters::quad_points);
+        .def_readonly("dbar", &HighOrderContactParameters::dbar)
+        .def_readonly("quad_order", &HighOrderContactParameters::quad_order)
+        .def_readonly("skip_obstacle", &HighOrderContactParameters::skip_obstacle)
+        .def_readonly_static("alpha", &HighOrderContactParameters::alpha)
+        .def_readonly_static("r", &HighOrderContactParameters::r);
 
 
     py::class_<HighOrderContactPotential>(m, "HighOrderContactPotential")

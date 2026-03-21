@@ -115,7 +115,7 @@ namespace alternating_contact_potential {
         F &&dist_sq_function,
         const double integration_area = -1.0
     ) {
-        GaussLobatto::Rule rule = GaussLobatto::get_rule(params.quad_points);
+        GaussLobatto::Rule rule = GaussLobatto::get_rule(params.quad_order);
         double integral = 0.0;
         const Eigen::Vector2d e1pe0 = (e1 + e0) * 0.5;
         const Eigen::Vector2d e1me0 = (e1 - e0) * 0.5;
@@ -144,7 +144,7 @@ namespace alternating_contact_potential {
         Fd &&dist_sq_gradient,
         const double integration_area = -1.0
     ) {
-        GaussLobatto::Rule rule = GaussLobatto::get_rule(params.quad_points);
+        GaussLobatto::Rule rule = GaussLobatto::get_rule(params.quad_order);
         R global = R::Zero();
         const Eigen::Vector2d e1pe0 = (e1 + e0) * 0.5;
         const Eigen::Vector2d e1me0 = (e1 - e0) * 0.5;
@@ -190,7 +190,7 @@ namespace alternating_contact_potential {
         Fdd &&dist_sq_hessian,
         const double integration_area = -1.0
     ) {
-        GaussLobatto::Rule rule = GaussLobatto::get_rule(params.quad_points);
+        GaussLobatto::Rule rule = GaussLobatto::get_rule(params.quad_order);
         R global = R::Zero();
         const Eigen::Vector2d e1pe0 = (e1 + e0) * 0.5;
         const Eigen::Vector2d e1me0 = (e1 - e0) * 0.5;

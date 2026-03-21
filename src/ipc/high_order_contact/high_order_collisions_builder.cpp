@@ -41,7 +41,7 @@ void HighOrderCollisionsBuilder<2>::add_edge_vertex_collisions(
     const size_t start_i,
     const size_t end_i)
 {
-    if (params.quad_points == 0) throw std::logic_error("Vertex integration temporarily removed");
+    if (params.quad_order == 0) throw std::logic_error("Vertex integration temporarily removed");
     const double dhat = params.dhat;
     const double dhat2 = dhat * dhat;
 
@@ -71,7 +71,7 @@ void HighOrderCollisionsBuilder<2>::add_edge_edge_collisions(
     const size_t start_i,
     const size_t end_i)
 {
-    if (params.quad_points == 0) throw std::logic_error("Vertex integration temporarily removed");
+    if (params.quad_order == 0) throw std::logic_error("Vertex integration temporarily removed");
     const double dhat = params.dhat;
     //const double dhat2 = dhat * dhat;
 
