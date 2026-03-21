@@ -23,6 +23,41 @@
 
 using namespace ipc;
 
+namespace {
+
+struct TriMeshData {
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi E, F;
+    CollisionMesh mesh;
+};
+
+TriMeshData load_triangle_mesh(const std::string& path)
+{
+    TriMeshData data;
+    igl::read_triangle_mesh(path, data.V, data.F);
+    igl::edges(data.F, data.E);
+    data.mesh = CollisionMesh(data.V, data.E, data.F);
+    return data;
+}
+
+TriMeshData load_wrapped_sphere()
+{
+    return load_triangle_mesh(
+        (tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string());
+}
+
+CollisionMesh make_2d_collision_mesh(
+    const Eigen::MatrixXd& V,
+    const Eigen::MatrixXi& E)
+{
+    Eigen::MatrixXi F;
+    return CollisionMesh(
+        std::vector<bool>(V.rows(), true),
+        std::vector<bool>(V.rows(), false), V, E, F);
+}
+
+} // anonymous namespace
+
 // When the edge-edge closest point approaches the end points of the edge, the potential should converge to a finite number
 TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential], [high_order_potential_3d]")
 {
@@ -101,14 +136,9 @@ TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential], [hig
     REQUIRE(g.norm() < 200);
 }
 
-TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential], [high_order_potential_3d]")
+TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential], [high_order_potential_3d]")
 {
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
+    auto [V, E, F, mesh] = load_wrapped_sphere();
 
     const double dhat = 0.15;
     HighOrderContactParameters params(dhat, 0., 2, 0);
@@ -120,8 +150,6 @@ TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential], [high_order_
     HighOrderCollisions collisions(skip_face_collisions);
     collisions.build(mesh, V, params);
 
-    Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
-
     // full finite difference is too expensive, verify directional derivative only
     Eigen::VectorXd test_dir(V.size(), 1);
     for (int i = 0; i < test_dir.size(); i++) {
@@ -129,16 +157,35 @@ TEST_CASE("Convergent Quadrature Hessian", "[high_order_potential], [high_order_
     }
     test_dir.normalize();
 
-    Eigen::MatrixXd fh;
-    fd::finite_jacobian(
-        Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
-            Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-            HighOrderCollisions collisions_(skip_face_collisions);
-            collisions_.build(mesh, V_, params);
-            return potential.gradient(collisions_, mesh, V_);
-        }, fh, fd::AccuracyOrder::SECOND, 1e-8);
+    SECTION("gradient") {
+        Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
 
-    REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
+        Eigen::VectorXd fg;
+        fd::finite_gradient(
+            Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
+                Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
+                HighOrderCollisions collisions_(skip_face_collisions);
+                collisions_.build(mesh, V_, params);
+                return potential(collisions_, mesh, V_);
+            }, fg, fd::AccuracyOrder::SECOND, 1e-7);
+
+        REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-6);
+    }
+
+    SECTION("hessian") {
+        Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
+
+        Eigen::MatrixXd fh;
+        fd::finite_jacobian(
+            Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
+                Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
+                HighOrderCollisions collisions_(skip_face_collisions);
+                collisions_.build(mesh, V_, params);
+                return potential.gradient(collisions_, mesh, V_);
+            }, fh, fd::AccuracyOrder::SECOND, 1e-8);
+
+        REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
+    }
 }
 
 #if defined(NDEBUG) && !defined(WIN32)
@@ -147,14 +194,9 @@ static std::string tagsopt = "[high_order_potential], [high_order_potential_3d]"
 static std::string tagsopt = "[.][high_order_potential], [.][high_order_potential_3d]";
 #endif
 
-TEST_CASE("Convergent Quadrature Hessian Expensive", tagsopt)
+TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
 {
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
+    auto [V, E, F, mesh] = load_wrapped_sphere();
 
     const double dhat = 0.1;
     HighOrderContactParameters params(dhat, 0., 2, 0);
@@ -166,101 +208,41 @@ TEST_CASE("Convergent Quadrature Hessian Expensive", tagsopt)
     const bool normalize_weights = GENERATE(true, false);
     HighOrderContactPotential potential(params, normalize_weights);
 
-    Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
+    SECTION("gradient") {
+        Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
 
-    Eigen::MatrixXd fh;
-    fd::finite_jacobian(
-        fd::flatten(V), [&](const Eigen::VectorXd& y) {
-            Eigen::MatrixXd V_ = fd::unflatten(y, 3);
-            HighOrderCollisions collisions_(skip_face_collisions);
-            collisions_.build(mesh, V_, params);
-            return potential.gradient(collisions_, mesh, V_);
-        }, fh, fd::AccuracyOrder::SECOND, 1e-8);
+        Eigen::VectorXd fg;
+        fd::finite_gradient(
+            fd::flatten(V), [&](const Eigen::VectorXd& y) {
+                Eigen::MatrixXd V_ = fd::unflatten(y, 3);
+                HighOrderCollisions collisions_(skip_face_collisions);
+                collisions_.build(mesh, V_, params);
+                return potential(collisions_, mesh, V_);
+            }, fg, fd::AccuracyOrder::SECOND, 1e-8);
 
-    REQUIRE((fh - h).norm() < fh.norm() * 1e-6);
-}
-
-TEST_CASE("Convergent Quadrature Gradient Expensive", "[high_order_potential], [high_order_potential_3d]")
-{
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 0.1;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
-
-    const bool skip_face_collisions = GENERATE(true, false);
-    HighOrderCollisions collisions(skip_face_collisions);
-    collisions.build(mesh, V, params);
-
-    const bool normalize_weights = GENERATE(true, false);
-    HighOrderContactPotential potential(params, normalize_weights);
-
-    Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
-
-    Eigen::VectorXd fg;
-    fd::finite_gradient(
-        fd::flatten(V), [&](const Eigen::VectorXd& y) {
-            Eigen::MatrixXd V_ = fd::unflatten(y, 3);
-            HighOrderCollisions collisions_(skip_face_collisions);
-            collisions_.build(mesh, V_, params);
-            return potential(collisions_, mesh, V_);
-        }, fg, fd::AccuracyOrder::SECOND, 1e-8);
-
-    REQUIRE((fg - g).norm() < fg.norm() * 1e-6);
-}
-
-TEST_CASE("Convergent Quadrature Gradient", "[high_order_potential], [high_order_potential_3d]")
-{
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 0., 2, 0);
-
-    const bool skip_face_collisions = GENERATE(true, false);
-    HighOrderCollisions collisions(skip_face_collisions);
-    collisions.build(mesh, V, params);
-
-    const bool normalize_weights = GENERATE(true, false);
-    HighOrderContactPotential potential(params, normalize_weights);
-
-    Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
-
-    // full finite difference is too expensive, verify directional derivative only
-    Eigen::VectorXd test_dir(V.size(), 1);
-    for (int i = 0; i < test_dir.size(); i++) {
-        test_dir(i) = i;
+        REQUIRE((fg - g).norm() < std::max(1e-8, fg.norm()) * 1e-6);
     }
-    test_dir.normalize();
 
-    Eigen::VectorXd fg;
-    fd::finite_gradient(
-        Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
-            Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-            HighOrderCollisions collisions_(skip_face_collisions);
-            collisions_.build(mesh, V_, params);
-            return potential(collisions_, mesh, V_);
-        }, fg, fd::AccuracyOrder::SECOND, 1e-7);
+    SECTION("hessian") {
+        Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
 
-    REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-6);
+        Eigen::MatrixXd fh;
+        fd::finite_jacobian(
+            fd::flatten(V), [&](const Eigen::VectorXd& y) {
+                Eigen::MatrixXd V_ = fd::unflatten(y, 3);
+                HighOrderCollisions collisions_(skip_face_collisions);
+                collisions_.build(mesh, V_, params);
+                return potential.gradient(collisions_, mesh, V_);
+            }, fh, fd::AccuracyOrder::SECOND, 1e-8);
+
+        REQUIRE((fh - h).norm() < std::max(1e-8, fh.norm()) * 1e-6);
+    }
 }
 
 TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential], [high_order_potential_3d]")
 {
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
+    auto [V, E, F, mesh] = load_triangle_mesh(
+        (tests::DATA_DIR / "../src/tests/potential/sphere.obj").string());
 
     const double dhat = 0.2;
     HighOrderContactParameters params(dhat, 0., 2, 0);
@@ -341,12 +323,7 @@ TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]"
 TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high_order_potential_3d]")
 {
     const auto method = make_default_broad_phase();
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
+    auto [V, E, F, mesh] = load_wrapped_sphere();
 
     const double dhat = 0.15;
     HighOrderContactParameters params(dhat, 0., 2, 0);
@@ -397,12 +374,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
 TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_order_potential_3d]")
 {
     const auto method = make_default_broad_phase();
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
-    igl::read_triangle_mesh((tests::DATA_DIR / "../src/tests/potential/wrapped_sphere.obj").string(), V, F);
-
-    igl::edges(F, E);
-    CollisionMesh mesh(V, E, F);
+    auto [V, E, F, mesh] = load_wrapped_sphere();
 
     const double dhat = 0.15;
     HighOrderContactParameters params(dhat, 0., 2, 0);
@@ -460,6 +432,63 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
 
 
 // 2D TESTS //
+
+TEST_CASE("High order potential codim", "[high_order_potential], [high_order_potential_2d]")
+{
+    const auto method = make_default_broad_phase();
+    double dhat = 2;
+    const int quadrature_order = 2;
+    HighOrderContactParameters params(dhat, 0., 1, quadrature_order);
+
+    Eigen::MatrixXd vertices(4, 2);
+    Eigen::MatrixXi edges(2, 2);
+
+    vertices << -1, 0, 0, 0, 1, 0, 1.5, 0.2;
+    edges << 0, 1, 1, 2;
+
+    CollisionMesh mesh = make_2d_collision_mesh(vertices, edges);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, vertices, params, false, method.get());
+    CAPTURE(dhat, method);
+    CHECK(!collisions.empty());
+    CHECK(!has_intersections(mesh, vertices));
+
+    HighOrderContactPotential potential(params);
+    double energy = potential(collisions, mesh, vertices);
+    CHECK(energy != 0);
+
+    // Gradient
+    const Eigen::VectorXd grad =
+        potential.gradient(collisions, mesh, vertices);
+
+    Eigen::VectorXd fgrad;
+    fd::finite_gradient(
+        fd::flatten(vertices),
+        [&](const Eigen::VectorXd& x) {
+            return potential(
+                collisions, mesh, fd::unflatten(x, vertices.cols()));
+        },
+        fgrad, fd::AccuracyOrder::SECOND, 1e-8);
+
+    REQUIRE(grad.squaredNorm() > 1e-8);
+    CHECK((grad - fgrad).norm() / grad.norm() < 1e-4);
+
+    // Hessian
+    Eigen::MatrixXd hess = potential.hessian(collisions, mesh, vertices);
+
+    Eigen::MatrixXd fhess;
+    fd::finite_jacobian(
+        fd::flatten(vertices),
+        [&](const Eigen::VectorXd& x) {
+            return potential.gradient(
+                collisions, mesh, fd::unflatten(x, vertices.cols()));
+        },
+        fhess, fd::AccuracyOrder::SECOND, 1e-8);
+
+    REQUIRE(hess.squaredNorm() > 1e-8);
+    CHECK((hess - fhess).norm() / hess.norm() < 1e-3);
+}
 
 TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_order_potential_2d]")
 {
@@ -525,10 +554,7 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
         }
     }
 
-    Eigen::MatrixXi F;
-    CollisionMesh mesh(
-        std::vector<bool>(V.rows(), true),
-        std::vector<bool>(V.rows(), false), V, E, F);
+    CollisionMesh mesh = make_2d_collision_mesh(V, E);
 
     HighOrderCollisions collisions;
     collisions.build(mesh, V, params, false, method.get());
@@ -559,10 +585,7 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
     CAPTURE(quadrature_order);
 
     auto run_checks = [&]() {
-        Eigen::MatrixXi F;
-        CollisionMesh mesh(
-            std::vector<bool>(V.rows(), true),
-            std::vector<bool>(V.rows(), false), V, E, F);
+        CollisionMesh mesh = make_2d_collision_mesh(V, E);
 
         HighOrderCollisions collisions;
         collisions.build(mesh, V, params, false, method.get());

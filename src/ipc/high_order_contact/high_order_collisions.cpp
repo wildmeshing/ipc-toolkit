@@ -1,7 +1,6 @@
 #include "high_order_collisions.hpp"
 
 #include "high_order_collisions_builder.hpp"
-#include "igl/write_triangle_mesh.h"
 
 #include <algorithm>
 #include <numeric>
@@ -283,12 +282,7 @@ void HighOrderCollisions::build(
             return distance_sqr < offset_sqr;
         };*/
 
-        if (!mesh.is_watertight()) {
-            igl::write_triangle_mesh("non-watertight-mesh.obj", mesh.rest_positions(), mesh.faces());
-            log_and_throw_error("HighOrderCollisions 3D not implemented for non-watertight meshes!");
-        }
-
-        /* prepare collision sets to compute each P(q) */
+/* prepare collision sets to compute each P(q) */
         // compute masks
         std::vector<bool> vertex_mask(mesh.num_vertices(), false);
         for (const auto& candidate : candidates.fv_candidates) {
