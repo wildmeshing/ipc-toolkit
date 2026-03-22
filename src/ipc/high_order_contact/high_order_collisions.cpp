@@ -372,7 +372,9 @@ size_t HighOrderCollisions::size() const
             size += cc.second->size();
         }
         for (const auto& cc : face_collisions) {
-            size += cc.second->size();
+            for (const auto& dict_ptr : cc.second) {
+                size += dict_ptr->size();
+            }
         }
         return size;
     }
@@ -446,15 +448,17 @@ std::string HighOrderCollisions::to_string(
         }
     }
     for (const auto& ccs : face_collisions) {
-        for (int i = 0; i < (*ccs.second).size(); i++) {
-            const auto& cc = (*ccs.second)[i];
-            ss << "\n";
-            {
-                ss << fmt::format(
-                    "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
-                    cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
-                    cc(cc.dof(vertices), params),
-                    cc.gradient(cc.dof(vertices), params).norm());
+        for (const auto& dict_ptr : ccs.second) {
+            for (int i = 0; i < dict_ptr->size(); i++) {
+                const auto& cc = (*dict_ptr)[i];
+                ss << "\n";
+                {
+                    ss << fmt::format(
+                        "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
+                        cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
+                        cc(cc.dof(vertices), params),
+                        cc.gradient(cc.dof(vertices), params).norm());
+                }
             }
         }
     }

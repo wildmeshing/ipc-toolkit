@@ -1,5 +1,6 @@
 #include "high_order_collisions_builder.hpp"
 #include <ipc/high_order_contact/quadrature_potential.hpp>
+#include <ipc/high_order_contact/collisions/triangular_quadrature.hpp>
 
 #include <ipc/distance/distance_type.hpp>
 #include <ipc/distance/point_edge.hpp>
@@ -318,8 +319,12 @@ QuadratureCollisionsBuilder::QuadratureCollisionsBuilder(const QuadratureCollisi
         edge_edge_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::EDGE>>(*cc));
     }
     face_collisions.clear();
-    for (const auto& cc : other.face_collisions) {
-        face_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::FACE>>(*cc));
+    for (const auto& [fi, dicts] : other.face_collisions) {
+        std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> copied;
+        for (const auto& d : dicts) {
+            copied.push_back(std::make_unique<HighOrderCollisionDict<PointType::FACE>>(*d));
+        }
+        face_collisions.push_back({fi, std::move(copied)});
     }
 }
 QuadratureCollisionsBuilder& QuadratureCollisionsBuilder::operator=(const QuadratureCollisionsBuilder& other)
@@ -334,8 +339,12 @@ QuadratureCollisionsBuilder& QuadratureCollisionsBuilder::operator=(const Quadra
         edge_edge_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::EDGE>>(*cc));
     }
     face_collisions.clear();
-    for (const auto& cc : other.face_collisions) {
-        face_collisions.push_back(std::make_unique<HighOrderCollisionDict<PointType::FACE>>(*cc));
+    for (const auto& [fi, dicts] : other.face_collisions) {
+        std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> copied;
+        for (const auto& d : dicts) {
+            copied.push_back(std::make_unique<HighOrderCollisionDict<PointType::FACE>>(*d));
+        }
+        face_collisions.push_back({fi, std::move(copied)});
     }
     return *this;
 }
@@ -363,12 +372,22 @@ void QuadratureCollisionsBuilder::build_face_collisions(
     const size_t end_i)
 {
     const CollisionMesh& mesh = point_potential->mesh;
+    const auto& face_quad_rule = TriangularQuadrature::get_rule(point_potential->params.quad_order);
+    if (face_quad_rule.empty()) return;
+
     for (size_t i = start_i; i < end_i; i++) {
         const index_t fi = face_indices[i];
         if (point_potential->params.skip_obstacle && mesh.is_obstacle_face(fi)) continue;
-        size_t n = 0;
-        face_collisions.push_back(point_potential->build_collisions_at_face_center(vertices, fi, n));
-        num_collision_pairs += n;
+
+        std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> per_qp_dicts;
+        per_qp_dicts.reserve(face_quad_rule.size());
+        for (const auto& qp : face_quad_rule) {
+            size_t n = 0;
+            per_qp_dicts.push_back(
+                point_potential->build_collisions_at_face_interior_point(vertices, fi, qp.lambda, n));
+            num_collision_pairs += n;
+        }
+        face_collisions.push_back({fi, std::move(per_qp_dicts)});
     }
 }
 
@@ -466,8 +485,8 @@ void QuadratureCollisionsBuilder::merge(
             merged_collisions.edge_edge_collisions.insert(std::make_pair(std::make_pair(id[0], id[1]), std::move(cc)));
         }
         if (!merged_collisions.skip_face_collisions) {
-            for (auto& cc : storage.face_collisions) {
-                merged_collisions.face_collisions.insert(std::make_pair(cc->primitive_id(), std::move(cc)));
+            for (auto& [fi, dicts] : storage.face_collisions) {
+                merged_collisions.face_collisions.emplace(fi, std::move(dicts));
             }
         }
         merged_collisions.num_quadrature_collision_pairs += storage.num_collision_pairs;

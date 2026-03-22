@@ -219,7 +219,8 @@ public:
     // Local storage
     std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>> vertex_collisions;
     std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
-    std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> face_collisions;
+    // face_collisions[i] = {fid, [dict_for_qp0, dict_for_qp1, ...]}
+    std::vector<std::pair<index_t, std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>>>> face_collisions;
 
     size_t num_collision_pairs = 0;
 
