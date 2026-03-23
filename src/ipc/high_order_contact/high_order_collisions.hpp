@@ -15,10 +15,7 @@ public:
     using value_type = HighOrderCollision;
 
 public:
-    HighOrderCollisions(const bool skip_face_collisions = true)
-        : skip_face_collisions(skip_face_collisions)
-    {
-    }
+    HighOrderCollisions() = default;
     virtual ~HighOrderCollisions() = default;
 
     void compute_adaptive_dhat(
@@ -169,8 +166,5 @@ public:
 
     /// @brief Total number of collision pairs counted across all quadrature build functions
     size_t num_quadrature_collision_pairs = 0;
-
-    /// @brief If true, skip building face_collisions during build()
-    const bool skip_face_collisions = true;
 };
 }

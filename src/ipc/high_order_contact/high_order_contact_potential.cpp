@@ -18,6 +18,11 @@
 
 namespace ipc {
 
+/// Scale applied to face interior quadrature point weights relative to
+/// vertex and edge-edge closest-point weights (which use weight 1.0).
+/// Increase above 1.0 to emphasise face quadrature points more strongly.
+constexpr double face_quadrature_weight_scale = 3.0;
+
 double HighOrderContactPotential::operator()(
     const HighOrderCollisions& collisions,
     const CollisionMesh& mesh,
@@ -50,10 +55,12 @@ double HighOrderContactPotential::operator()(
         {
             auto potential_storage = create_thread_storage(0.0);
             auto count_storage = create_thread_storage<CountMap>(CountMap());
+            auto fq_point_storage = create_thread_storage<size_t>(size_t(0));
 
             auto loop_body = [&](int start, int end, int thread_id) {
                 double& total = get_local_thread_storage(potential_storage, thread_id);
                 CountMap& local_counts = get_local_thread_storage(count_storage, thread_id);
+                size_t& local_fq_points = get_local_thread_storage(fq_point_storage, thread_id);
                 for (index_t f = start; f < end; f++) {
                     const double area = mesh.face_areas()(f);
                     const double w = area / 9.;
@@ -109,13 +116,14 @@ double HighOrderContactPotential::operator()(
                         auto iter = collisions.face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
-                            total_w += qp.weight;
+                            total_w += face_quadrature_weight_scale * qp.weight;
                             if (iter != collisions.face_collisions.end() && qi < iter->second.size()) {
+                                local_fq_points++;
                                 const Eigen::RowVector3d q_pos =
                                     qp.lambda[0] * X.row(mesh.faces()(f, 0))
                                     + qp.lambda[1] * X.row(mesh.faces()(f, 1))
                                     + qp.lambda[2] * X.row(mesh.faces()(f, 2));
-                                total_p += qp.weight * PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                                total_p += face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
                                     VertexMatrixView<3>(X, q_pos), *iter->second[qi], params);
                             }
                         }
@@ -137,9 +145,14 @@ double HighOrderContactPotential::operator()(
 
             maybe_parallel_for(mesh.num_faces(), loop_body);
 
+            size_t total_fq_points = 0;
             for (const auto& local_potential : potential_storage) {
                 result += local_potential;
             }
+            for (const auto& n : fq_point_storage) {
+                total_fq_points += n;
+            }
+            logger().debug("[HighOrderContactPotential] face quadrature points evaluated: {}", total_fq_points);
 
             for (const auto& local_counts : count_storage) {
                 for (const auto& [id, count] : local_counts) {
@@ -275,7 +288,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         auto iter = collisions.face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
-                            total_w += qp.weight;
+                            total_w += face_quadrature_weight_scale * qp.weight;
                             if (iter != collisions.face_collisions.end() && qi < iter->second.size()) {
                                 const auto& dict = *iter->second[qi];
                                 const Eigen::RowVector3d q_pos =
@@ -287,8 +300,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                     X_qp, dict, params);
                                 const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
                                     X_qp, dict, params, qp.lambda);
-                                const_cache.push_back(ConstGradEntry{&dict.dofs(), qp.weight * grad_P});
-                                total_p += qp.weight * P;
+                                const_cache.push_back(ConstGradEntry{&dict.dofs(), face_quadrature_weight_scale * qp.weight * grad_P});
+                                total_p += face_quadrature_weight_scale * qp.weight * P;
                             }
                         }
                     }
@@ -505,7 +518,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         auto iter = collisions.face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
-                            total_w += qp.weight;
+                            total_w += face_quadrature_weight_scale * qp.weight;
                             if (iter != collisions.face_collisions.end() && qi < iter->second.size()) {
                                 const auto& dict = *iter->second[qi];
                                 const Eigen::RowVector3d q_pos =
@@ -516,11 +529,11 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 ConstHessEntry entry;
                                 entry.vertex_ids = &dict.vertex_ids();
                                 entry.dofs = &dict.dofs();
-                                entry.P = qp.weight * PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                                entry.P = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
                                     X_qp, dict, params);
-                                entry.grad_P = qp.weight * PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
+                                entry.grad_P = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
                                     X_qp, dict, params, qp.lambda);
-                                entry.local_hess = qp.weight * PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions(
+                                entry.local_hess = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions(
                                     X_qp, dict, params, qp.lambda, project_hessian_to_psd);
                                 total_p += entry.P;
                                 const_cache.push_back(std::move(entry));

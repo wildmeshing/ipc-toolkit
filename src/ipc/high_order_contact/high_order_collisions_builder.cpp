@@ -466,15 +466,11 @@ void QuadratureCollisionsBuilder::merge(
     for (const auto& storage : local_storage) {
         total_v += storage.vertex_collisions.size();
         total_ee += storage.edge_edge_collisions.size();
-        if (!merged_collisions.skip_face_collisions) {
-            total_f += storage.face_collisions.size();
-        }
+        total_f += storage.face_collisions.size();
     }
     merged_collisions.vertex_collisions.reserve(total_v);
     merged_collisions.edge_edge_collisions.reserve(total_ee);
-    if (!merged_collisions.skip_face_collisions) {
-        merged_collisions.face_collisions.reserve(total_f);
-    }
+    merged_collisions.face_collisions.reserve(total_f);
 
     for (auto& storage : local_storage) {
         for (auto& cc : storage.vertex_collisions) {
@@ -484,10 +480,8 @@ void QuadratureCollisionsBuilder::merge(
             const auto id = cc->primitive_ids();
             merged_collisions.edge_edge_collisions.insert(std::make_pair(std::make_pair(id[0], id[1]), std::move(cc)));
         }
-        if (!merged_collisions.skip_face_collisions) {
-            for (auto& [fi, dicts] : storage.face_collisions) {
-                merged_collisions.face_collisions.emplace(fi, std::move(dicts));
-            }
+        for (auto& [fi, dicts] : storage.face_collisions) {
+            merged_collisions.face_collisions.emplace(fi, std::move(dicts));
         }
         merged_collisions.num_quadrature_collision_pairs += storage.num_collision_pairs;
     }
