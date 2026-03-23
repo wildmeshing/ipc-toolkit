@@ -1,5 +1,6 @@
 #include "quadrature_potential.hpp"
 
+#include <array>
 #include "absl/strings/internal/str_format/extension.h"
 #include "ipc/candidates/candidates.hpp"
 #include "ipc/distance/edge_edge.hpp"
@@ -556,6 +557,62 @@ namespace ipc {
         return collisions;
     }
 
+    std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>
+    PointPotential::build_collisions_at_face_interior_point(
+        const Eigen::MatrixXd& V,
+        const index_t fid,
+        const std::array<double, 3>& lambda,
+        size_t& num_collision_pairs) const
+    {
+        const index_t vid = V.rows();
+
+        const Eigen::RowVector3d q_pos =
+            lambda[0] * V.row(mesh.faces()(fid, 0))
+            + lambda[1] * V.row(mesh.faces()(fid, 1))
+            + lambda[2] * V.row(mesh.faces()(fid, 2));
+        VertexMatrixView<3> V_(V, q_pos);
+
+        unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>> pairs;
+        num_collision_pairs = 0;
+
+        const auto& v_set = candidates.fv_set(fid);
+        const auto& e_set = candidates.fe_set(fid);
+        const auto& f_set = candidates.ff_set(fid);
+
+        for (const auto& other_f : f_set) {
+            assert(other_f != fid);
+            ++num_collision_pairs;
+            if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
+                FaceVertexCandidate(other_f, vid),
+                params, mesh, V_)) {
+                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+            }
+        }
+
+        for (const auto& other_e : e_set) {
+            ++num_collision_pairs;
+            if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
+                EdgeVertexCandidate(other_e, vid),
+                params, mesh, V_)) {
+                pair->weight = -1;
+                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+            }
+        }
+
+        for (const auto& other_v : v_set) {
+            if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dhat * params.dhat) {
+                continue;
+            }
+            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+                vid, other_v, mesh);
+            ++num_collision_pairs;
+            insert_pair(pairs, std::move(pair));
+        }
+        std::unique_ptr<HighOrderCollisionDict<PointType::FACE>> collisions = std::make_unique<HighOrderCollisionDict<PointType::FACE>>();
+        collisions->initialize(std::vector<index_t>{fid}, std::vector<index_t>{mesh.faces()(fid, 0), mesh.faces()(fid, 1), mesh.faces()(fid, 2)}, pairs);
+        return collisions;
+    }
+
     Eigen::VectorXd PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
@@ -655,5 +712,108 @@ namespace ipc {
         }
 
         return potential;
+    }
+
+    // -------------------------------------------------------------------------
+    // General face-interior point (arbitrary barycentric coordinates λ)
+    // These replace the hard-coded 1/3 (centroid) chain-rule factor with λk.
+    // For λ = (1/3, 1/3, 1/3) the results are identical to the face-centre
+    // variants above.
+    // -------------------------------------------------------------------------
+
+    Eigen::VectorXd PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::FACE>& collisions,
+        const HighOrderContactParameters& params,
+        const std::array<double, 3>& lambda)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id = cc.vertex_id(i);
+                if (global_id == n_real_vertices) {
+                    // Chain rule: dq/dv_k = lambda[k]
+                    for (index_t lv = 0; lv < 3; lv++) {
+                        grad.segment<3>(collisions.primary_local_ids()[lv] * 3) +=
+                            g.segment<3>(3 * i) * lambda[lv];
+                    }
+                } else {
+                    assert(global_id < n_real_vertices);
+                    grad.segment<3>(3 * collisions.vertex_ids_inverse(global_id)) +=
+                        g.segment<3>(3 * i);
+                }
+            }
+        }
+        return grad;
+    }
+
+    Eigen::MatrixXd PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::FACE>& collisions,
+        const HighOrderContactParameters& params,
+        const std::array<double, 3>& lambda,
+        PSDProjectionMethod project_to_psd)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        Eigen::MatrixXd H = Eigen::MatrixXd::Zero(
+            collisions.vertex_ids().size() * 3,
+            collisions.vertex_ids().size() * 3);
+
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params);
+            h *= cc.weight;
+
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t gi = cc.vertex_id(i);
+                for (index_t j = 0; j < cc.num_vertices(); j++) {
+                    const index_t gj = cc.vertex_id(j);
+                    if (gi == n_real_vertices && gj == n_real_vertices) {
+                        // Both indices refer to the virtual vertex q.
+                        // d²P / (dv_li dv_lj) = λ_li · λ_lj · d²P/dq²
+                        for (index_t li = 0; li < 3; li++) {
+                            for (index_t lj = 0; lj < 3; lj++) {
+                                H.block<3, 3>(
+                                    collisions.primary_local_ids()[li] * 3,
+                                    collisions.primary_local_ids()[lj] * 3) +=
+                                    h.block<3, 3>(3 * i, 3 * j)
+                                    * lambda[li] * lambda[lj];
+                            }
+                        }
+                    } else if (gi == n_real_vertices) {
+                        // d²P / (dv_li d(other)) = λ_li · d²P / (dq d(other))
+                        for (index_t li = 0; li < 3; li++) {
+                            H.block<3, 3>(
+                                collisions.primary_local_ids()[li] * 3,
+                                collisions.vertex_ids_inverse(gj) * 3) +=
+                                h.block<3, 3>(3 * i, 3 * j) * lambda[li];
+                        }
+                    } else if (gj == n_real_vertices) {
+                        // Symmetric to the gi == n_real_vertices case.
+                        for (index_t lj = 0; lj < 3; lj++) {
+                            H.block<3, 3>(
+                                collisions.vertex_ids_inverse(gi) * 3,
+                                collisions.primary_local_ids()[lj] * 3) +=
+                                h.block<3, 3>(3 * i, 3 * j) * lambda[lj];
+                        }
+                    } else {
+                        assert(gi < n_real_vertices);
+                        assert(gj < n_real_vertices);
+                        H.block<3, 3>(
+                            3 * collisions.vertex_ids_inverse(gi),
+                            3 * collisions.vertex_ids_inverse(gj)) +=
+                            h.block<3, 3>(3 * i, 3 * j);
+                    }
+                }
+            }
+        }
+
+        if (project_to_psd != PSDProjectionMethod::NONE) {
+            H = ipc::project_to_psd(H, project_to_psd);
+        }
+        return H;
     }
 }

@@ -297,7 +297,7 @@ void HighOrderCollisions::build(
         }
 
         std::vector<index_t> faces_to_process;
-        if (!skip_face_collisions) {
+        if (params.quad_order > 0) {
             faces_to_process.resize(mesh.num_faces());
             std::iota(faces_to_process.begin(), faces_to_process.end(), 0);
         }
@@ -315,7 +315,7 @@ void HighOrderCollisions::build(
                     vertices, vertices_to_process, start, end);
             });
 
-        if (!skip_face_collisions) {
+        if (params.quad_order > 0) {
             maybe_parallel_for(
                 faces_to_process.size(),
                 [&](int start, int end, int thread_id) {
@@ -372,7 +372,9 @@ size_t HighOrderCollisions::size() const
             size += cc.second->size();
         }
         for (const auto& cc : face_collisions) {
-            size += cc.second->size();
+            for (const auto& dict_ptr : cc.second) {
+                size += dict_ptr->size();
+            }
         }
         return size;
     }
@@ -446,15 +448,17 @@ std::string HighOrderCollisions::to_string(
         }
     }
     for (const auto& ccs : face_collisions) {
-        for (int i = 0; i < (*ccs.second).size(); i++) {
-            const auto& cc = (*ccs.second)[i];
-            ss << "\n";
-            {
-                ss << fmt::format(
-                    "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
-                    cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
-                    cc(cc.dof(vertices), params),
-                    cc.gradient(cc.dof(vertices), params).norm());
+        for (const auto& dict_ptr : ccs.second) {
+            for (int i = 0; i < dict_ptr->size(); i++) {
+                const auto& cc = (*dict_ptr)[i];
+                ss << "\n";
+                {
+                    ss << fmt::format(
+                        "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
+                        cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
+                        cc(cc.dof(vertices), params),
+                        cc.gradient(cc.dof(vertices), params).norm());
+                }
             }
         }
     }

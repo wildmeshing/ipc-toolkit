@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include "ipc/collision_mesh.hpp"
 #include "ipc/candidates/edge_edge.hpp"
 #include "ipc/high_order_contact/high_order_collisions.hpp"
@@ -65,6 +66,25 @@ namespace ipc
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
             PSDProjectionMethod project_to_psd);
+
+        /// @brief Gradient of the face-interior potential for an arbitrary
+        ///   interior quadrature point q = λ0·v0 + λ1·v1 + λ2·v2.
+        /// @param lambda Barycentric coordinates of the interior point.
+        ///   The chain-rule factors λk replace the 1/3 used for the centroid.
+        Eigen::VectorXd evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::FACE>& collisions,
+            const HighOrderContactParameters& params,
+            const std::array<double, 3>& lambda);
+
+        /// @brief Hessian of the face-interior potential for an arbitrary
+        ///   interior quadrature point q = λ0·v0 + λ1·v1 + λ2·v2.
+        Eigen::MatrixXd evaluate_potential_hessian_at_face_interior_point_with_cached_collisions(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::FACE>& collisions,
+            const HighOrderContactParameters& params,
+            const std::array<double, 3>& lambda,
+            PSDProjectionMethod project_to_psd);
     }
 
     class PointPotential
@@ -98,6 +118,13 @@ namespace ipc
         build_collisions_at_face_center(
         const Eigen::MatrixXd& V,
             index_t fid,
+            size_t& num_collision_pairs) const;
+
+        std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>
+        build_collisions_at_face_interior_point(
+            const Eigen::MatrixXd& V,
+            index_t fid,
+            const std::array<double, 3>& lambda,
             size_t& num_collision_pairs) const;
 
         const CollisionMesh& mesh;

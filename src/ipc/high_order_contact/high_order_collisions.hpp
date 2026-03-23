@@ -15,10 +15,7 @@ public:
     using value_type = HighOrderCollision;
 
 public:
-    HighOrderCollisions(const bool skip_face_collisions = true)
-        : skip_face_collisions(skip_face_collisions)
-    {
-    }
+    HighOrderCollisions() = default;
     virtual ~HighOrderCollisions() = default;
 
     void compute_adaptive_dhat(
@@ -164,13 +161,10 @@ public:
     unordered_map<index_t, std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>> vertex_collisions;
     // edge_edge_collisions[(ei, ej)] provides the contact set for the closest point on ei, between edge ei and ej.
     unordered_map<std::pair<index_t, index_t>, std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
-    // face_collisions[fi] provides the contact set for center of face fi
-    unordered_map<index_t, std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> face_collisions;
+    // face_collisions[fi][qi] provides the contact set for quadrature point qi of face fi
+    unordered_map<index_t, std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>>> face_collisions;
 
     /// @brief Total number of collision pairs counted across all quadrature build functions
     size_t num_quadrature_collision_pairs = 0;
-
-    /// @brief If true, skip building face_collisions during build()
-    const bool skip_face_collisions = true;
 };
 }
