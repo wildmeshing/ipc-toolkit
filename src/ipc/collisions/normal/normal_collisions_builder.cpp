@@ -11,6 +11,8 @@
 
 namespace ipc {
 
+constexpr bool skip_obstacles = false; // Hardcoded for now. turns off obstacle integration
+
 NormalCollisionsBuilder::NormalCollisionsBuilder(
     const bool _use_area_weighting,
     const bool _enable_shape_derivatives,
@@ -36,7 +38,6 @@ void NormalCollisionsBuilder::add_vertex_vertex_collisions(
 
         const double distance =
             point_point_distance(vertices.row(vi), vertices.row(vj));
-        point_point_distance(vertices.row(vi), vertices.row(vj));
         if (!is_active(distance)) {
             continue;
         }
@@ -58,6 +59,7 @@ void NormalCollisionsBuilder::add_vertex_vertex_collisions(
 
         VertexVertexNormalCollision vv(vi, vj, weight, weight_gradient);
         vv_to_id.emplace(vv, vv_collisions.size());
+        throw std::logic_error("SHOULD NOT HAPPEN");
         vv_collisions.push_back(vv);
     }
 }
@@ -111,6 +113,7 @@ void NormalCollisionsBuilder::add_edge_vertex_collisions(
             }
         }
 
+        throw std::logic_error("SHOULD NOT HAPPEN");
         add_edge_vertex_collision(
             mesh, candidates[i], dtype, weight, weight_gradient);
     }
@@ -158,6 +161,12 @@ void NormalCollisionsBuilder::add_edge_edge_collisions(
     for (size_t i = start_i; i < end_i; i++) {
         const auto& [eai, ebi] = candidates[i];
 
+        const bool is_obstacle_ea = mesh.is_obstacle_edge(eai);
+        const bool is_obstacle_eb = mesh.is_obstacle_edge(ebi);
+        if (skip_obstacles && is_obstacle_ea && is_obstacle_eb) {
+            continue;
+        }
+
         const auto [ea0i, ea1i, eb0i, eb1i] =
             candidates[i].vertex_ids(mesh.edges(), mesh.faces());
 
@@ -192,7 +201,7 @@ void NormalCollisionsBuilder::add_edge_edge_collisions(
 
         // ÷ 4 to handle double counting and PT + EE for correct integration.
         // Sum edge areas because duplicate edge candidates were removed.
-        const double weight = use_area_weighting
+        double weight = use_area_weighting
             ? (0.25 * (mesh.edge_area(eai) + mesh.edge_area(ebi)))
             : 1;
 
@@ -203,6 +212,13 @@ void NormalCollisionsBuilder::add_edge_edge_collisions(
                    * (mesh.edge_area_gradient(eai)
                       + mesh.edge_area_gradient(ebi)))
                 : Eigen::SparseVector<double>(vertices.size());
+        }
+
+        if (skip_obstacles && (is_obstacle_ea || is_obstacle_eb)) {
+            weight /= 2;
+            if (enable_shape_derivatives) {
+                weight_gradient /= 2;
+            }
         }
 
         switch (dtype) {
@@ -262,6 +278,10 @@ void NormalCollisionsBuilder::add_face_vertex_collisions(
 {
     for (size_t i = start_i; i < end_i; i++) {
         const auto& [fi, vi] = candidates[i];
+        if (skip_obstacles && mesh.is_obstacle_vertex(vi)) {
+            continue;
+        }
+
         const index_t f0i = mesh.faces()(fi, 0), f1i = mesh.faces()(fi, 1),
                       f2i = mesh.faces()(fi, 2);
 
