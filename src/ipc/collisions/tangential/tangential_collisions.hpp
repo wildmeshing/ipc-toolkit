@@ -8,6 +8,8 @@
 #include <ipc/collisions/tangential/tangential_collision.hpp>
 #include <ipc/collisions/tangential/vertex_vertex.hpp>
 #include <ipc/smooth_contact/smooth_collisions.hpp>
+#include <ipc/high_order_contact/high_order_collisions.hpp>
+#include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
 #include <Eigen/Core>
@@ -100,6 +102,26 @@ public:
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
         const SmoothCollisions& collisions,
         const SmoothContactParameters& params,
+        const double normal_stiffness,
+        Eigen::ConstRef<Eigen::VectorXd> mu_s,
+        Eigen::ConstRef<Eigen::VectorXd> mu_k,
+        const std::function<double(double, double)>& blend_mu =
+            default_blend_mu);
+
+    /// @brief Build the tangential collisions for high-order contact.
+    /// @param mesh The collision mesh.
+    /// @param vertices The vertices of the mesh.
+    /// @param collisions The set of high-order collisions.
+    /// @param params Parameters of High-Order Contact Potential.
+    /// @param normal_stiffness Stiffness of the normal potential.
+    /// @param mu_s The static friction coefficient per vertex.
+    /// @param mu_k The kinetic friction coefficient per vertex.
+    /// @param blend_mu Function to blend vertex-based coefficients of friction. Defaults to average.
+    void build(
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> vertices,
+        const HighOrderCollisions& collisions,
+        const HighOrderContactParameters& params,
         const double normal_stiffness,
         Eigen::ConstRef<Eigen::VectorXd> mu_s,
         Eigen::ConstRef<Eigen::VectorXd> mu_k,
