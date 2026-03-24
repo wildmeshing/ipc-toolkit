@@ -110,8 +110,7 @@ TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential], [hig
 
     HighOrderContactParameters params(dhat, 1., 0, 2);
 
-    const bool skip_face_collisions = GENERATE(true, false);
-    HighOrderCollisions collisions(skip_face_collisions);
+    HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
 
     HighOrderContactPotential potential(params);
@@ -143,11 +142,10 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
     const double dhat = 0.15;
     HighOrderContactParameters params(dhat, 1., 0, 2);
 
-    const bool skip_face_collisions = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
     HighOrderContactPotential potential(params, normalize_weights);
 
-    HighOrderCollisions collisions(skip_face_collisions);
+    HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
 
     // full finite difference is too expensive, verify directional derivative only
@@ -164,7 +162,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
         fd::finite_gradient(
             Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-                HighOrderCollisions collisions_(skip_face_collisions);
+                HighOrderCollisions collisions_;
                 collisions_.build(mesh, V_, params);
                 return potential(collisions_, mesh, V_);
             }, fg, fd::AccuracyOrder::SECOND, 1e-7);
@@ -179,7 +177,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
         fd::finite_jacobian(
             Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-                HighOrderCollisions collisions_(skip_face_collisions);
+                HighOrderCollisions collisions_;
                 collisions_.build(mesh, V_, params);
                 return potential.gradient(collisions_, mesh, V_);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
@@ -201,8 +199,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
     const double dhat = 0.1;
     HighOrderContactParameters params(dhat, 1., 0, 2);
 
-    const bool skip_face_collisions = GENERATE(true, false);
-    HighOrderCollisions collisions(skip_face_collisions);
+    HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
 
     const bool normalize_weights = GENERATE(true, false);
@@ -215,7 +212,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
         fd::finite_gradient(
             fd::flatten(V), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = fd::unflatten(y, 3);
-                HighOrderCollisions collisions_(skip_face_collisions);
+                HighOrderCollisions collisions_;
                 collisions_.build(mesh, V_, params);
                 return potential(collisions_, mesh, V_);
             }, fg, fd::AccuracyOrder::SECOND, 1e-8);
@@ -230,7 +227,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
         fd::finite_jacobian(
             fd::flatten(V), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = fd::unflatten(y, 3);
-                HighOrderCollisions collisions_(skip_face_collisions);
+                HighOrderCollisions collisions_;
                 collisions_.build(mesh, V_, params);
                 return potential.gradient(collisions_, mesh, V_);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
@@ -247,8 +244,7 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential], [high
     const double dhat = 0.2;
     HighOrderContactParameters params(dhat, 1., 0, 2);
 
-    const bool skip_face_collisions = GENERATE(true, false);
-    HighOrderCollisions collisions(skip_face_collisions);
+    HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
 
     HighOrderContactPotential potential(params);
@@ -264,8 +260,6 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential], [high
 
 TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]")
 {
-    const bool skip_face_collisions = GENERATE(true, false);
-
     double dhat = -1;
     std::string mesh_name;
     // SECTION("mesh1")
@@ -291,7 +285,7 @@ TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]"
         std::vector<bool>(vertices.rows(), false), vertices, edges, faces);
 
     {
-        HighOrderCollisions collisions(skip_face_collisions);
+        HighOrderCollisions collisions;
         HighOrderContactParameters params(dhat, 1., 0, 2);
         collisions.build(mesh, vertices, params);
 
@@ -306,7 +300,7 @@ TEST_CASE("Number of Pairs", "[high_order_potential], [high_order_potential_3d]"
     }
 
     {
-        HighOrderCollisions collisions(skip_face_collisions);
+        HighOrderCollisions collisions;
         HighOrderContactParameters params(dhat, 1., 0, 2);
         collisions.build(mesh, vertices, params);
 
@@ -717,22 +711,23 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
 
 // 3D FACE QUADRATURE TESTS //
 
-// Verify that quad_order=1 (centroid rule) gives gradient/hessian consistent
-// with finite differences on the wrapped-sphere geometry.
-TEST_CASE("Face Quadrature Order 1 Gradient and Hessian", "[high_order_potential], [high_order_potential_3d]")
+// Verify that face quadrature gives gradient/hessian consistent with finite
+// differences on the wrapped-sphere geometry, for several quadrature orders.
+TEST_CASE("Face Quadrature Gradient and Hessian", "[high_order_potential], [high_order_potential_3d]")
 {
     auto [V, E, F, mesh] = load_wrapped_sphere();
 
     const double dhat = 0.15;
-    // quad_order=1: centroid interior point (equivalent to old hard-coded face centre)
-    HighOrderContactParameters params(dhat, 1., 1, 2);
+    const int quad_order = GENERATE(0, 3, 6); // Using fekete rules, orders 1-2-3 and 4-5-6 are the same
+    HighOrderContactParameters params(dhat, 1., quad_order, 2);
 
-    const bool skip_face_collisions = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
     HighOrderContactPotential potential(params, normalize_weights);
 
-    HighOrderCollisions collisions(skip_face_collisions);
+    HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
+
+    REQUIRE(potential(collisions, mesh, V) != 0);
 
     // Directional finite-difference to keep the test inexpensive
     Eigen::VectorXd test_dir(V.size());
@@ -748,7 +743,7 @@ TEST_CASE("Face Quadrature Order 1 Gradient and Hessian", "[high_order_potential
         fd::finite_gradient(
             Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-                HighOrderCollisions c(skip_face_collisions);
+                HighOrderCollisions c;
                 c.build(mesh, V_, params);
                 return potential(c, mesh, V_);
             }, fg, fd::AccuracyOrder::SECOND, 1e-7);
@@ -763,151 +758,7 @@ TEST_CASE("Face Quadrature Order 1 Gradient and Hessian", "[high_order_potential
         fd::finite_jacobian(
             Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-                HighOrderCollisions c(skip_face_collisions);
-                c.build(mesh, V_, params);
-                return potential.gradient(c, mesh, V_);
-            }, fh, fd::AccuracyOrder::SECOND, 1e-8);
-
-        REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
-    }
-}
-
-// Verify that quad_order=0 (no face-interior points) gives gradient/hessian
-// consistent with finite differences.
-TEST_CASE("Face Quadrature Order 0 Gradient and Hessian", "[high_order_potential], [high_order_potential_3d]")
-{
-    auto [V, E, F, mesh] = load_wrapped_sphere();
-
-    const double dhat = 0.15;
-    // quad_order=0: no face-interior quadrature (only EE closest points + vertices)
-    HighOrderContactParameters params(dhat, 1., 0, 2);
-
-    const bool skip_face_collisions = GENERATE(true, false);
-    const bool normalize_weights = GENERATE(true, false);
-    HighOrderContactPotential potential(params, normalize_weights);
-
-    HighOrderCollisions collisions(skip_face_collisions);
-    collisions.build(mesh, V, params);
-
-    Eigen::VectorXd test_dir(V.size());
-    for (int i = 0; i < test_dir.size(); i++) {
-        test_dir(i) = i;
-    }
-    test_dir.normalize();
-
-    SECTION("gradient") {
-        Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
-
-        Eigen::VectorXd fg;
-        fd::finite_gradient(
-            Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
-                Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-                HighOrderCollisions c(skip_face_collisions);
-                c.build(mesh, V_, params);
-                return potential(c, mesh, V_);
-            }, fg, fd::AccuracyOrder::SECOND, 1e-7);
-
-        REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-5);
-    }
-
-    SECTION("hessian") {
-        Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
-
-        Eigen::MatrixXd fh;
-        fd::finite_jacobian(
-            Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
-                Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-                HighOrderCollisions c(skip_face_collisions);
-                c.build(mesh, V_, params);
-                return potential.gradient(c, mesh, V_);
-            }, fh, fd::AccuracyOrder::SECOND, 1e-8);
-
-        REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
-    }
-}
-
-// Verify that quad_order=1 and the old hard-coded face-centre path (which is
-// what the existing tests exercise via quad_order=0 in the old code) produce
-// consistent results: both evaluate the centroid, so the potential value and
-// gradient direction should agree when face_collisions exist.
-// Here we verify that quad_order=1 produces a non-zero potential where the
-// geometry has nearby faces, and that quad_order=0 produces a smaller-or-equal
-// potential (because it skips face-interior points entirely).
-TEST_CASE("Face Quadrature Order 0 vs 1 potential", "[high_order_potential], [high_order_potential_3d]")
-{
-    auto [V, E, F, mesh] = load_wrapped_sphere();
-
-    const double dhat = 0.15;
-
-    HighOrderCollisions collisions_shared(/*skip_face_collisions=*/false);
-    {
-        HighOrderContactParameters params_tmp(dhat, 1., 1, 2);
-        collisions_shared.build(mesh, V, params_tmp);
-    }
-
-    HighOrderContactParameters params0(dhat, 1., 0, 2);
-    HighOrderContactParameters params1(dhat, 1., 1, 2);
-
-    HighOrderContactPotential pot0(params0, /*normalize_weights=*/false);
-    HighOrderContactPotential pot1(params1, /*normalize_weights=*/false);
-
-    const double v0 = pot0(collisions_shared, mesh, V);
-    const double v1 = pot1(collisions_shared, mesh, V);
-
-    // order-1 adds the face-centre contribution so its value should be >= order-0
-    REQUIRE(v1 >= v0 - 1e-12);
-
-    // If there are any face collisions, order-1 should strictly exceed order-0
-    if (!collisions_shared.face_collisions.empty()) {
-        REQUIRE(v1 > v0);
-    }
-}
-
-// Verify that quad_order=2 (3-point rule) gives gradient/hessian consistent
-// with finite differences.
-TEST_CASE("Face Quadrature Order 2 Gradient and Hessian", "[high_order_potential], [high_order_potential_3d]")
-{
-    auto [V, E, F, mesh] = load_wrapped_sphere();
-
-    const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 1., 2, 2);
-
-    const bool skip_face_collisions = GENERATE(true, false);
-    const bool normalize_weights = GENERATE(true, false);
-    HighOrderContactPotential potential(params, normalize_weights);
-
-    HighOrderCollisions collisions(skip_face_collisions);
-    collisions.build(mesh, V, params);
-
-    Eigen::VectorXd test_dir(V.size());
-    for (int i = 0; i < test_dir.size(); i++) {
-        test_dir(i) = i;
-    }
-    test_dir.normalize();
-
-    SECTION("gradient") {
-        Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
-
-        Eigen::VectorXd fg;
-        fd::finite_gradient(
-            Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
-                Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-                HighOrderCollisions c(skip_face_collisions);
-                c.build(mesh, V_, params);
-                return potential(c, mesh, V_);
-            }, fg, fd::AccuracyOrder::SECOND, 1e-7);
-
-        REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-5);
-    }
-
-    SECTION("hessian") {
-        Eigen::MatrixXd h = potential.hessian(collisions, mesh, V);
-
-        Eigen::MatrixXd fh;
-        fd::finite_jacobian(
-            Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
-                Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
-                HighOrderCollisions c(skip_face_collisions);
+                HighOrderCollisions c;
                 c.build(mesh, V_, params);
                 return potential.gradient(c, mesh, V_);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
