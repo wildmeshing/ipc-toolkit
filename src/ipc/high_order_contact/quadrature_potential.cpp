@@ -579,8 +579,45 @@ namespace ipc {
         const auto& e_set = candidates.fe_set(fid);
         const auto& f_set = candidates.ff_set(fid);
 
+        // Detect boundary quadrature points (for rules that include boundary points).
+        // lambda[k] == 0.0 means the point lies on the edge opposite vertex k,
+        // i.e. edge faces_to_edges(fid, (k+1)%3).
+        const bool lam_zero[3] = { lambda[0] == 0.0, lambda[1] == 0.0, lambda[2] == 0.0 };
+        const int num_zero = lam_zero[0] + lam_zero[1] + lam_zero[2];
+
+        index_t skip_edge_id = -1; // edge the quad point lies on (1 null lambda)
+        index_t corner_vertex = -1; // vertex the quad point coincides with (2 null lambdas)
+
+        if (num_zero == 1) {
+            for (int k = 0; k < 3; k++) {
+                if (lam_zero[k]) {
+                    skip_edge_id = mesh.faces_to_edges()(fid, (k + 1) % 3);
+                    break;
+                }
+            }
+        } else if (num_zero == 2) {
+            for (int k = 0; k < 3; k++) {
+                if (!lam_zero[k]) {
+                    corner_vertex = mesh.faces()(fid, k);
+                    break;
+                }
+            }
+        }
+
         for (const auto& other_f : f_set) {
             assert(other_f != fid);
+            if (skip_edge_id >= 0) {
+                bool shares_edge = false;
+                for (int j = 0; j < 3; j++)
+                    if (mesh.faces_to_edges()(other_f, j) == skip_edge_id) { shares_edge = true; break; }
+                if (shares_edge) continue;
+            }
+            if (corner_vertex >= 0) {
+                bool has_vertex = false;
+                for (int j = 0; j < 3; j++)
+                    if (mesh.faces()(other_f, j) == corner_vertex) { has_vertex = true; break; }
+                if (has_vertex) continue;
+            }
             ++num_collision_pairs;
             if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
                 FaceVertexCandidate(other_f, vid),
@@ -590,6 +627,10 @@ namespace ipc {
         }
 
         for (const auto& other_e : e_set) {
+            if (other_e == skip_edge_id) continue;
+            if (corner_vertex >= 0 &&
+                (mesh.edges()(other_e, 0) == corner_vertex || mesh.edges()(other_e, 1) == corner_vertex))
+                continue;
             ++num_collision_pairs;
             if (auto pair = HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
                 EdgeVertexCandidate(other_e, vid),
@@ -600,6 +641,7 @@ namespace ipc {
         }
 
         for (const auto& other_v : v_set) {
+            if (other_v == corner_vertex) continue;
             if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dhat * params.dhat) {
                 continue;
             }

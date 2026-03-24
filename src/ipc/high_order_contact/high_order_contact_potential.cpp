@@ -18,10 +18,7 @@
 
 namespace ipc {
 
-/// Scale applied to face interior quadrature point weights relative to
-/// vertex and edge-edge closest-point weights (which use weight 1.0).
-/// Increase above 1.0 to emphasise face quadrature points more strongly.
-constexpr double face_quadrature_weight_scale = 3.0;
+constexpr double face_quadrature_weight_scale = 1.0;
 
 double HighOrderContactPotential::operator()(
     const HighOrderCollisions& collisions,
@@ -117,7 +114,7 @@ double HighOrderContactPotential::operator()(
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
                             total_w += face_quadrature_weight_scale * qp.weight;
-                            if (iter != collisions.face_collisions.end() && qi < iter->second.size()) {
+                            if (iter != collisions.face_collisions.end()) {
                                 local_fq_points++;
                                 const Eigen::RowVector3d q_pos =
                                     qp.lambda[0] * X.row(mesh.faces()(f, 0))
@@ -145,14 +142,16 @@ double HighOrderContactPotential::operator()(
 
             maybe_parallel_for(mesh.num_faces(), loop_body);
 
-            size_t total_fq_points = 0;
             for (const auto& local_potential : potential_storage) {
                 result += local_potential;
             }
+            /*
+            size_t total_fq_points = 0;
             for (const auto& n : fq_point_storage) {
                 total_fq_points += n;
             }
             logger().debug("[HighOrderContactPotential] face quadrature points evaluated: {}", total_fq_points);
+            */
 
             for (const auto& local_counts : count_storage) {
                 for (const auto& [id, count] : local_counts) {

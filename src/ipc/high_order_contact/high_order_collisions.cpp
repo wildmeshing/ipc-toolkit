@@ -289,10 +289,12 @@ void HighOrderCollisions::build(
             vertex_mask[candidate.vertex_id] = true;
         }
         std::vector<index_t> vertices_to_process;
-        vertices_to_process.reserve(mesh.num_vertices());
-        for (int i = 0; i < mesh.num_vertices(); ++i) {
-            if (vertex_mask[i]) {
-                vertices_to_process.push_back(i);
+        if (params.quad_order == 0) {
+            vertices_to_process.reserve(mesh.num_vertices());
+            for (int i = 0; i < mesh.num_vertices(); ++i) {
+                if (vertex_mask[i]) {
+                    vertices_to_process.push_back(i);
+                }
             }
         }
 
@@ -306,14 +308,16 @@ void HighOrderCollisions::build(
         auto storage = create_thread_storage<QuadratureCollisionsBuilder>(
             QuadratureCollisionsBuilder(mesh, candidates, params));
 
-        maybe_parallel_for(
-            vertices_to_process.size(),
-            [&](int start, int end, int thread_id) {
-                QuadratureCollisionsBuilder& local_storage =
-                    get_local_thread_storage(storage, thread_id);
-                local_storage.build_vertex_collisions(
-                    vertices, vertices_to_process, start, end);
-            });
+        if (params.quad_order == 0) {
+            maybe_parallel_for(
+                vertices_to_process.size(),
+                [&](int start, int end, int thread_id) {
+                    QuadratureCollisionsBuilder& local_storage =
+                        get_local_thread_storage(storage, thread_id);
+                    local_storage.build_vertex_collisions(
+                        vertices, vertices_to_process, start, end);
+                });
+        }
 
         if (params.quad_order > 0) {
             maybe_parallel_for(
