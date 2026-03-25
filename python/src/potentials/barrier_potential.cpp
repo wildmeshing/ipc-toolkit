@@ -191,23 +191,29 @@ void define_smooth_potential(py::module_& m)
 
 void define_high_order_potential(py::module &m)
 {
+    py::enum_<HighOrderContactParameters::IntegrationType>(m, "IntegrationType")
+        .value("BRUTE_FORCE", HighOrderContactParameters::IntegrationType::BRUTE_FORCE)
+        .value("NORMAL", HighOrderContactParameters::IntegrationType::NORMAL)
+        .value("NO_OBST", HighOrderContactParameters::IntegrationType::NO_OBST)
+        .export_values();
+
     py::class_<HighOrderContactParameters>(m, "HighOrderContactParameters")
         .def(
-            py::init<
-                const double, const double, const int, const int, const bool>(),
+            py::init<const double, const double, const int, const int,
+                     HighOrderContactParameters::IntegrationType>(),
             R"ipc_Qu8mg5v7(
             Construct parameter set for high-order contact.
 
             Parameters:
-                dhat, dbar_factor, quad_order, exponent, skip_obstacle
+                dhat, dbar_factor, quad_order, exponent, integration_type
             )ipc_Qu8mg5v7",
             py::arg("dhat"), py::arg("dbar_factor") = 1.0,
             py::arg("quad_order") = 1, py::arg("exponent") = 2,
-            py::arg("skip_obstacle") = true)
+            py::arg("integration_type") = HighOrderContactParameters::IntegrationType::NO_OBST)
         .def_readonly("dhat", &HighOrderContactParameters::dhat)
         .def_readonly("dbar", &HighOrderContactParameters::dbar)
         .def_readonly("quad_order", &HighOrderContactParameters::quad_order)
-        .def_readonly("skip_obstacle", &HighOrderContactParameters::skip_obstacle)
+        .def_readonly("integration_type", &HighOrderContactParameters::integration_type)
         .def_readonly_static("alpha", &HighOrderContactParameters::alpha)
         .def_readonly_static("r", &HighOrderContactParameters::r);
 

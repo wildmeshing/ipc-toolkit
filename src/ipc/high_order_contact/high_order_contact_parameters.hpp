@@ -4,18 +4,24 @@
 namespace ipc {
 
 struct HighOrderContactParameters {
+    enum class IntegrationType {
+        BRUTE_FORCE, ///< Integrate all pairs with no obstacle filtering
+        NORMAL,      ///< Filter obstacle-obstacle pairs; skip primitives with only obstacle candidates
+        NO_OBST      ///< Skip obstacle sources entirely, may miss collisions!
+    };
+
     HighOrderContactParameters(
         const double _dhat,
         const double _dbar_factor = 1.0,
         const int _quad_order = 1,
         const int _exponent = 2,
-        const bool _skip_obstacle = true
+        const IntegrationType _integration_type = IntegrationType::NORMAL
     ) :
         dhat(_dhat),
         dbar(dhat * _dbar_factor),
         quad_order(_quad_order),
         r(_exponent),
-        skip_obstacle(_skip_obstacle)
+        integration_type(_integration_type)
     {
     }
 
@@ -24,7 +30,7 @@ struct HighOrderContactParameters {
     const double dbar;
     const int quad_order;
     const int r = 2;
-    const bool skip_obstacle;
+    const IntegrationType integration_type;
 
     double get_dhat(bool safety_mode=false) const { return safety_mode ? dbar : dhat; }
 

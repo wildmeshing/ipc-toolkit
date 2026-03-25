@@ -11,6 +11,8 @@
 
 namespace ipc {
 
+using IntegrationType = HighOrderContactParameters::IntegrationType;
+
 namespace {
     template <typename TCollision, typename THash>
     void add_collision(
@@ -356,9 +358,20 @@ void QuadratureCollisionsBuilder::build_vertex_collisions(
     const size_t end_i)
 {
     const CollisionMesh& mesh = point_potential->mesh;
+    const HighOrderContactParameters& params = point_potential->params;
     for (size_t i = start_i; i < end_i; i++) {
         const index_t vi = vertex_indices[i];
-        if (point_potential->params.skip_obstacle && mesh.is_obstacle_vertex(vi)) continue;
+        if (params.integration_type == IntegrationType::NO_OBST && mesh.is_obstacle_vertex(vi)) continue;
+        if (params.integration_type != IntegrationType::BRUTE_FORCE && mesh.is_obstacle_vertex(vi)) {
+            const auto v_set = point_potential->candidates.vv_set(vi);
+            const auto e_set = point_potential->candidates.ve_set(vi);
+            const auto f_set = point_potential->candidates.vf_set(vi);
+            const bool has_non_obstacle =
+                std::any_of(v_set.begin(), v_set.end(), [&](index_t v){ return !mesh.is_obstacle_vertex(v); }) ||
+                std::any_of(e_set.begin(), e_set.end(), [&](index_t e){ return !mesh.is_obstacle_edge(e); }) ||
+                std::any_of(f_set.begin(), f_set.end(), [&](index_t f){ return !mesh.is_obstacle_face(f); });
+            if (!has_non_obstacle) continue;
+        }
         size_t n = 0;
         vertex_collisions.push_back(point_potential->build_collisions_at_vertex(vertices, vi, n));
         num_collision_pairs += n;
@@ -375,9 +388,20 @@ void QuadratureCollisionsBuilder::build_face_collisions(
     const auto& face_quad_rule = TriangularQuadrature::get_rule(point_potential->params.quad_order);
     if (face_quad_rule.empty()) return;
 
+    const HighOrderContactParameters& params = point_potential->params;
     for (size_t i = start_i; i < end_i; i++) {
         const index_t fi = face_indices[i];
-        if (point_potential->params.skip_obstacle && mesh.is_obstacle_face(fi)) continue;
+        if (params.integration_type == IntegrationType::NO_OBST && mesh.is_obstacle_face(fi)) continue;
+        if (params.integration_type != IntegrationType::BRUTE_FORCE && mesh.is_obstacle_face(fi)) {
+            const auto v_set = point_potential->candidates.fv_set(fi);
+            const auto e_set = point_potential->candidates.fe_set(fi);
+            const auto f_set = point_potential->candidates.ff_set(fi);
+            const bool has_non_obstacle =
+                std::any_of(v_set.begin(), v_set.end(), [&](index_t v){ return !mesh.is_obstacle_vertex(v); }) ||
+                std::any_of(e_set.begin(), e_set.end(), [&](index_t e){ return !mesh.is_obstacle_edge(e); }) ||
+                std::any_of(f_set.begin(), f_set.end(), [&](index_t f){ return !mesh.is_obstacle_face(f); });
+            if (!has_non_obstacle) continue;
+        }
 
         std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> per_qp_dicts;
         per_qp_dicts.reserve(face_quad_rule.size());
@@ -400,6 +424,17 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
     const HighOrderContactParameters& params = point_potential->params;
     const CollisionMesh& mesh = point_potential->mesh;
 
+    // Returns true if edge e (which is an obstacle) has at least one non-obstacle candidate.
+    // Used in NORMAL mode to skip placing a QP on an obstacle edge with only obstacle candidates.
+    auto obstacle_edge_has_non_obstacle_candidates = [&](index_t e) -> bool {
+        const auto v_set = point_potential->candidates.ev_set(e);
+        const auto e_set = point_potential->candidates.ee_set(e);
+        const auto f_set = point_potential->candidates.ef_set(e);
+        return std::any_of(v_set.begin(), v_set.end(), [&](index_t v){ return !mesh.is_obstacle_vertex(v); })
+            || std::any_of(e_set.begin(), e_set.end(), [&](index_t e2){ return !mesh.is_obstacle_edge(e2); })
+            || std::any_of(f_set.begin(), f_set.end(), [&](index_t f){ return !mesh.is_obstacle_face(f); });
+    };
+
     for (size_t i = start_i; i < end_i; i++) {
         const auto& candidate = ee_candidates[i];
         const index_t ei = candidate.edge0_id;
@@ -414,7 +449,8 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             continue;
         }
 
-        if (params.skip_obstacle && mesh.is_obstacle_edge(ei) && mesh.is_obstacle_edge(ej)) {
+        if (params.integration_type != IntegrationType::BRUTE_FORCE
+            && mesh.is_obstacle_edge(ei) && mesh.is_obstacle_edge(ej)) {
             continue;
         }
 
@@ -437,19 +473,24 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             continue;
         }
 
-        if (!(params.skip_obstacle && mesh.is_obstacle_edge(ei)) && (
-            dtype == EdgeEdgeDistanceType::EA_EB ||
-            dtype == EdgeEdgeDistanceType::EA_EB0 ||
-            dtype == EdgeEdgeDistanceType::EA_EB1)) {
+        const bool ei_is_obs = mesh.is_obstacle_edge(ei);
+        const bool ej_is_obs = mesh.is_obstacle_edge(ej);
+
+        if ((params.integration_type != IntegrationType::NO_OBST || !ei_is_obs)
+            && (!ei_is_obs || params.integration_type == IntegrationType::BRUTE_FORCE || obstacle_edge_has_non_obstacle_candidates(ei))
+            && (dtype == EdgeEdgeDistanceType::EA_EB ||
+                dtype == EdgeEdgeDistanceType::EA_EB0 ||
+                dtype == EdgeEdgeDistanceType::EA_EB1)) {
             size_t n = 0;
             edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej, dtype, n));
             num_collision_pairs += n;
         }
 
-        if (!(params.skip_obstacle && mesh.is_obstacle_edge(ej)) && (
-            dtype == EdgeEdgeDistanceType::EA_EB ||
-            dtype == EdgeEdgeDistanceType::EA0_EB ||
-            dtype == EdgeEdgeDistanceType::EA1_EB)) {
+        if ((params.integration_type != IntegrationType::NO_OBST || !ej_is_obs)
+            && (!ej_is_obs || params.integration_type == IntegrationType::BRUTE_FORCE || obstacle_edge_has_non_obstacle_candidates(ej))
+            && (dtype == EdgeEdgeDistanceType::EA_EB ||
+                dtype == EdgeEdgeDistanceType::EA0_EB ||
+                dtype == EdgeEdgeDistanceType::EA1_EB)) {
             size_t n = 0;
             edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei, reflectEdgeEdgeDistanceType(dtype), n));
             num_collision_pairs += n;

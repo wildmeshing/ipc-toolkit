@@ -41,7 +41,12 @@ namespace ipc {
 
         const VertexMatrixView<3> V_view(V);
 
+        const bool src_is_obstacle = mesh.is_obstacle_vertex(vid);
+        const bool filter_obstacles = src_is_obstacle
+            && params.integration_type != HighOrderContactParameters::IntegrationType::BRUTE_FORCE;
+
         for (const auto& other_f : f_set) {
+            if (filter_obstacles && mesh.is_obstacle_face(other_f)) continue;
             ++num_collision_pairs;
             if (std::shared_ptr<HighOrderCollision> pair = HighOrderCollisionsBuilder<
                 3>::reduce_point_triangle_collision(
@@ -52,6 +57,7 @@ namespace ipc {
         }
 
         for (const auto& other_e : e_set) {
+            if (filter_obstacles && mesh.is_obstacle_edge(other_e)) continue;
             ++num_collision_pairs;
             if (std::shared_ptr<HighOrderCollision> pair = HighOrderCollisionsBuilder<3>::reduce_point_edge_collision(
                 EdgeVertexCandidate(other_e, vid),
@@ -62,6 +68,7 @@ namespace ipc {
         }
 
         for (const auto& other_v : v_set) {
+            if (filter_obstacles && mesh.is_obstacle_vertex(other_v)) continue;
             if ((V.row(vid) - V.row(other_v)).squaredNorm() >= params.dhat * params.dhat) {
                 continue;
             }
@@ -203,7 +210,12 @@ namespace ipc {
             const Eigen::RowVector3d ee_closest_point = closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
             VertexMatrixView<3> V_(V, ee_closest_point);
 
+            const bool src_is_obstacle_e = mesh.is_obstacle_edge(e0);
+            const bool filter_obstacles_e = src_is_obstacle_e
+                && params.integration_type != HighOrderContactParameters::IntegrationType::BRUTE_FORCE;
+
             for (const auto& other_v : v_set) {
+                if (filter_obstacles_e && mesh.is_obstacle_vertex(other_v)) continue;
                 if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dbar * params.dbar) {
                     continue;
                 }
@@ -215,8 +227,8 @@ namespace ipc {
             }
 
             for (const auto& other_e : e_set) {
-                if (other_e == e0)
-                    continue;
+                if (other_e == e0) continue;
+                if (filter_obstacles_e && mesh.is_obstacle_edge(other_e)) continue;
 
                 auto dtype2 = point_edge_distance_type(V_(vid), V_(mesh.edges()(other_e, 0)),
                                                        V_(mesh.edges()(other_e, 1)));
@@ -269,8 +281,8 @@ namespace ipc {
             }
 
             for (const auto& other_f : f_set) {
-                if (mesh.edges_to_faces()(e0, 0) == other_f || mesh.edges_to_faces()(e0, 1) == other_f)
-                    continue;
+                if (mesh.edges_to_faces()(e0, 0) == other_f || mesh.edges_to_faces()(e0, 1) == other_f) continue;
+                if (filter_obstacles_e && mesh.is_obstacle_face(other_f)) continue;
 
                 auto dtype2 = point_triangle_distance_type(V_(vid), V_(mesh.faces()(other_f, 0)),
                                                            V_(mesh.faces()(other_f, 1)),
@@ -604,8 +616,13 @@ namespace ipc {
             }
         }
 
+        const bool src_is_obstacle_f = mesh.is_obstacle_face(fid);
+        const bool filter_obstacles_f = src_is_obstacle_f
+            && params.integration_type != HighOrderContactParameters::IntegrationType::BRUTE_FORCE;
+
         for (const auto& other_f : f_set) {
             assert(other_f != fid);
+            if (filter_obstacles_f && mesh.is_obstacle_face(other_f)) continue;
             if (skip_edge_id >= 0) {
                 bool shares_edge = false;
                 for (int j = 0; j < 3; j++)
@@ -627,6 +644,7 @@ namespace ipc {
         }
 
         for (const auto& other_e : e_set) {
+            if (filter_obstacles_f && mesh.is_obstacle_edge(other_e)) continue;
             if (other_e == skip_edge_id) continue;
             if (corner_vertex >= 0 &&
                 (mesh.edges()(other_e, 0) == corner_vertex || mesh.edges()(other_e, 1) == corner_vertex))
@@ -641,6 +659,7 @@ namespace ipc {
         }
 
         for (const auto& other_v : v_set) {
+            if (filter_obstacles_f && mesh.is_obstacle_vertex(other_v)) continue;
             if (other_v == corner_vertex) continue;
             if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dhat * params.dhat) {
                 continue;
