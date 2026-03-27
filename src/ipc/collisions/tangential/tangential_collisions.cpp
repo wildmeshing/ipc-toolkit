@@ -322,145 +322,176 @@ void TangentialCollisions::build(
 
     auto& [FC_vv, FC_ev, FC_ee, FC_fv] = *this;
 
-    for (size_t i = 0; i < collisions.size(); i++) {
-        const auto& cc = collisions[i];
+    if (dim == 2) {
+        // 2D: collisions are stored in the flat collisions.collisions vector
+        for (size_t i = 0; i < collisions.size(); i++) {
+            const auto& cc = collisions[i];
 
-        // Compute contact force from high-order potential gradient
-        Eigen::VectorXd positions = cc.dof(vertices);
-        auto grad = cc.gradient(positions, params);
-        const double contact_force = normal_stiffness * grad.norm();
+            Eigen::VectorXd positions = cc.dof(vertices);
+            auto grad = cc.gradient(positions, params);
+            const double contact_force = normal_stiffness * grad.norm();
 
-        switch (cc.type()) {
-        case HighOrderCollisionType::VERTEX_VERTEX: {
-            const index_t v0 = cc[0];
-            const index_t v1 = cc[1];
-            Eigen::VectorXd collision_points(2 * dim);
-            collision_points.head(dim) = vertices.row(v0);
-            collision_points.tail(dim) = vertices.row(v1);
+            switch (cc.type()) {
+            case HighOrderCollisionType::VERTEX_VERTEX: {
+                const index_t v0 = cc[0];
+                const index_t v1 = cc[1];
+                Eigen::VectorXd collision_points(4);
+                collision_points.head<2>() = vertices.row(v0);
+                collision_points.tail<2>() = vertices.row(v1);
 
-            FC_vv.emplace_back(
-                VertexVertexNormalCollision(
-                    v0, v1, cc.weight, Eigen::SparseVector<double>()),
-                collision_points, contact_force);
-            const auto& [v0i, v1i, _, __] =
-                FC_vv.back().vertex_ids(edges, faces);
-            FC_vv.back().mu_s = blend_mu(mu_s(v0i), mu_s(v1i));
-            FC_vv.back().mu_k = blend_mu(mu_k(v0i), mu_k(v1i));
-            break;
-        }
-        case HighOrderCollisionType::EDGE_VERTEX: {
-            const index_t edge_id = cc[0];
-            const index_t vert_id = cc[1];
-            const index_t ea0 = edges(edge_id, 0);
-            const index_t ea1 = edges(edge_id, 1);
+                FC_vv.emplace_back(
+                    VertexVertexNormalCollision(
+                        v0, v1, cc.weight, Eigen::SparseVector<double>()),
+                    collision_points, contact_force);
+                const auto& [v0i, v1i, _, __] =
+                    FC_vv.back().vertex_ids(edges, faces);
+                FC_vv.back().mu_s = blend_mu(mu_s(v0i), mu_s(v1i));
+                FC_vv.back().mu_k = blend_mu(mu_k(v0i), mu_k(v1i));
+                break;
+            }
+            case HighOrderCollisionType::EDGE_VERTEX: {
+                const index_t edge_id = cc[0];
+                const index_t vert_id = cc[1];
+                const index_t ea0 = edges(edge_id, 0);
+                const index_t ea1 = edges(edge_id, 1);
 
-            Eigen::VectorXd collision_points(3 * dim);
-            // Order: [vertex, edge_v0, edge_v1]
-            collision_points.segment(0, dim) = vertices.row(vert_id);
-            collision_points.segment(dim, dim) = vertices.row(ea0);
-            collision_points.segment(2 * dim, dim) = vertices.row(ea1);
+                Eigen::VectorXd collision_points(6);
+                // Order: [vertex, edge_v0, edge_v1]
+                collision_points.segment<2>(0) = vertices.row(vert_id);
+                collision_points.segment<2>(2) = vertices.row(ea0);
+                collision_points.segment<2>(4) = vertices.row(ea1);
 
-            FC_ev.emplace_back(
-                EdgeVertexNormalCollision(
-                    edge_id, vert_id, cc.weight,
-                    Eigen::SparseVector<double>()),
-                collision_points, contact_force);
-            const auto& [vi, e0i, e1i, _] =
-                FC_ev.back().vertex_ids(edges, faces);
+                FC_ev.emplace_back(
+                    EdgeVertexNormalCollision(
+                        edge_id, vert_id, cc.weight,
+                        Eigen::SparseVector<double>()),
+                    collision_points, contact_force);
+                const auto& [vi, e0i, e1i, _] =
+                    FC_ev.back().vertex_ids(edges, faces);
 
-            const double edge_mu_s =
-                (mu_s(e1i) - mu_s(e0i)) * FC_ev.back().closest_point[0]
-                + mu_s(e0i);
-            FC_ev.back().mu_s = blend_mu(edge_mu_s, mu_s(vi));
-            const double edge_mu_k =
-                (mu_k(e1i) - mu_k(e0i)) * FC_ev.back().closest_point[0]
-                + mu_k(e0i);
-            FC_ev.back().mu_k = blend_mu(edge_mu_k, mu_k(vi));
-            break;
-        }
-        case HighOrderCollisionType::EDGE_EDGE: {
-            const index_t edge0_id = cc[0];
-            const index_t edge1_id = cc[1];
-            const index_t ea0 = edges(edge0_id, 0);
-            const index_t ea1 = edges(edge0_id, 1);
-            const index_t eb0 = edges(edge1_id, 0);
-            const index_t eb1 = edges(edge1_id, 1);
-
-            const Eigen::Vector3d ea0_pos = vertices.row(ea0);
-            const Eigen::Vector3d ea1_pos = vertices.row(ea1);
-            const Eigen::Vector3d eb0_pos = vertices.row(eb0);
-            const Eigen::Vector3d eb1_pos = vertices.row(eb1);
-
-            // Skip EE collisions that are close to parallel
-            if (edge_edge_cross_squarednorm(ea0_pos, ea1_pos, eb0_pos, eb1_pos)
-                < edge_edge_mollifier_threshold(
-                    ea0_pos, ea1_pos, eb0_pos, eb1_pos)) {
+                const double edge_mu_s =
+                    (mu_s(e1i) - mu_s(e0i)) * FC_ev.back().closest_point[0]
+                    + mu_s(e0i);
+                FC_ev.back().mu_s = blend_mu(edge_mu_s, mu_s(vi));
+                const double edge_mu_k =
+                    (mu_k(e1i) - mu_k(e0i)) * FC_ev.back().closest_point[0]
+                    + mu_k(e0i);
+                FC_ev.back().mu_k = blend_mu(edge_mu_k, mu_k(vi));
+                break;
+            }
+            default:
                 continue;
             }
-
-            Eigen::VectorXd collision_points(12);
-            collision_points.segment<3>(0) = ea0_pos;
-            collision_points.segment<3>(3) = ea1_pos;
-            collision_points.segment<3>(6) = eb0_pos;
-            collision_points.segment<3>(9) = eb1_pos;
-
-            FC_ee.emplace_back(
-                EdgeEdgeNormalCollision(
-                    edge0_id, edge1_id, 0., EdgeEdgeDistanceType::EA_EB),
-                collision_points, contact_force);
-
-            double ea_mu_s =
-                (mu_s(ea1) - mu_s(ea0)) * FC_ee.back().closest_point[0]
-                + mu_s(ea0);
-            double eb_mu_s =
-                (mu_s(eb1) - mu_s(eb0)) * FC_ee.back().closest_point[1]
-                + mu_s(eb0);
-            FC_ee.back().mu_s = blend_mu(ea_mu_s, eb_mu_s);
-
-            double ea_mu_k =
-                (mu_k(ea1) - mu_k(ea0)) * FC_ee.back().closest_point[0]
-                + mu_k(ea0);
-            double eb_mu_k =
-                (mu_k(eb1) - mu_k(eb0)) * FC_ee.back().closest_point[1]
-                + mu_k(eb0);
-            FC_ee.back().mu_k = blend_mu(ea_mu_k, eb_mu_k);
-            break;
         }
-        case HighOrderCollisionType::FACE_VERTEX: {
-            const index_t face_id = cc[0];
-            const index_t vert_id = cc[1];
-            const index_t f0 = faces(face_id, 0);
-            const index_t f1 = faces(face_id, 1);
-            const index_t f2 = faces(face_id, 2);
+    } else {
+        // 3D: collisions are stored in per-primitive dicts
+        auto process_collision = [&](const HighOrderCollision& cc) {
+            Eigen::VectorXd positions = cc.dof(vertices);
+            auto grad = cc.gradient(positions, params);
+            const double contact_force = normal_stiffness * grad.norm();
 
-            Eigen::VectorXd collision_points(12);
-            // Order: [vertex, face_v0, face_v1, face_v2]
-            collision_points.segment<3>(0) = vertices.row(vert_id);
-            collision_points.segment<3>(3) = vertices.row(f0);
-            collision_points.segment<3>(6) = vertices.row(f1);
-            collision_points.segment<3>(9) = vertices.row(f2);
+            switch (cc.type()) {
+            case HighOrderCollisionType::VERTEX_VERTEX: {
+                const index_t v0 = cc[0];
+                const index_t v1 = cc[1];
+                Eigen::VectorXd collision_points(6);
+                collision_points.head<3>() = vertices.row(v0);
+                collision_points.tail<3>() = vertices.row(v1);
 
-            FC_fv.emplace_back(
-                FaceVertexNormalCollision(
-                    face_id, vert_id, cc.weight,
-                    Eigen::SparseVector<double>()),
-                collision_points, contact_force);
-            const auto& [vi, f0i, f1i, f2i] =
-                FC_fv.back().vertex_ids(edges, faces);
+                FC_vv.emplace_back(
+                    VertexVertexNormalCollision(
+                        v0, v1, cc.weight, Eigen::SparseVector<double>()),
+                    collision_points, contact_force);
+                const auto& [v0i, v1i, _, __] =
+                    FC_vv.back().vertex_ids(edges, faces);
+                FC_vv.back().mu_s = blend_mu(mu_s(v0i), mu_s(v1i));
+                FC_vv.back().mu_k = blend_mu(mu_k(v0i), mu_k(v1i));
+                break;
+            }
+            case HighOrderCollisionType::EDGE_VERTEX: {
+                const index_t edge_id = cc[0];
+                const index_t vert_id = cc[1];
+                const index_t ea0 = edges(edge_id, 0);
+                const index_t ea1 = edges(edge_id, 1);
 
-            double face_mu_s = mu_s(f0i)
-                + FC_fv.back().closest_point[0] * (mu_s(f1i) - mu_s(f0i))
-                + FC_fv.back().closest_point[1] * (mu_s(f2i) - mu_s(f0i));
-            FC_fv.back().mu_s = blend_mu(face_mu_s, mu_s(vi));
+                Eigen::VectorXd collision_points(9);
+                // Order: [vertex, edge_v0, edge_v1]
+                collision_points.segment<3>(0) = vertices.row(vert_id);
+                collision_points.segment<3>(3) = vertices.row(ea0);
+                collision_points.segment<3>(6) = vertices.row(ea1);
 
-            double face_mu_k = mu_k(f0i)
-                + FC_fv.back().closest_point[0] * (mu_k(f1i) - mu_k(f0i))
-                + FC_fv.back().closest_point[1] * (mu_k(f2i) - mu_k(f0i));
-            FC_fv.back().mu_k = blend_mu(face_mu_k, mu_k(vi));
-            break;
+                FC_ev.emplace_back(
+                    EdgeVertexNormalCollision(
+                        edge_id, vert_id, cc.weight,
+                        Eigen::SparseVector<double>()),
+                    collision_points, contact_force);
+                const auto& [vi, e0i, e1i, _] =
+                    FC_ev.back().vertex_ids(edges, faces);
+
+                const double edge_mu_s =
+                    (mu_s(e1i) - mu_s(e0i)) * FC_ev.back().closest_point[0]
+                    + mu_s(e0i);
+                FC_ev.back().mu_s = blend_mu(edge_mu_s, mu_s(vi));
+                const double edge_mu_k =
+                    (mu_k(e1i) - mu_k(e0i)) * FC_ev.back().closest_point[0]
+                    + mu_k(e0i);
+                FC_ev.back().mu_k = blend_mu(edge_mu_k, mu_k(vi));
+                break;
+            }
+            case HighOrderCollisionType::FACE_VERTEX: {
+                const index_t face_id = cc[0];
+                const index_t vert_id = cc[1];
+                const index_t f0 = faces(face_id, 0);
+                const index_t f1 = faces(face_id, 1);
+                const index_t f2 = faces(face_id, 2);
+
+                Eigen::VectorXd collision_points(12);
+                // Order: [vertex, face_v0, face_v1, face_v2]
+                collision_points.segment<3>(0) = vertices.row(vert_id);
+                collision_points.segment<3>(3) = vertices.row(f0);
+                collision_points.segment<3>(6) = vertices.row(f1);
+                collision_points.segment<3>(9) = vertices.row(f2);
+
+                FC_fv.emplace_back(
+                    FaceVertexNormalCollision(
+                        face_id, vert_id, cc.weight,
+                        Eigen::SparseVector<double>()),
+                    collision_points, contact_force);
+                const auto& [vi, f0i, f1i, f2i] =
+                    FC_fv.back().vertex_ids(edges, faces);
+
+                double face_mu_s = mu_s(f0i)
+                    + FC_fv.back().closest_point[0] * (mu_s(f1i) - mu_s(f0i))
+                    + FC_fv.back().closest_point[1] * (mu_s(f2i) - mu_s(f0i));
+                FC_fv.back().mu_s = blend_mu(face_mu_s, mu_s(vi));
+
+                double face_mu_k = mu_k(f0i)
+                    + FC_fv.back().closest_point[0] * (mu_k(f1i) - mu_k(f0i))
+                    + FC_fv.back().closest_point[1] * (mu_k(f2i) - mu_k(f0i));
+                FC_fv.back().mu_k = blend_mu(face_mu_k, mu_k(vi));
+                break;
+            }
+            default:
+                break;
+            }
+        };
+
+        for (const auto& [vi, dict_ptr] : collisions.vertex_collisions) {
+            for (int j = 0; j < dict_ptr->size(); j++) {
+                process_collision((*dict_ptr)[j]);
+            }
         }
-        default:
-            continue;
+
+        for (const auto& [ei_pair, dict_ptr] : collisions.edge_edge_collisions) {
+            for (int j = 0; j < dict_ptr->size(); j++) {
+                process_collision((*dict_ptr)[j]);
+            }
+        }
+
+        for (const auto& [fi, dict_ptr] : collisions.face_collisions) {
+            for (int j = 0; j < dict_ptr->size(); j++) {
+                process_collision((*dict_ptr)[j]);
+            }
         }
     }
 }

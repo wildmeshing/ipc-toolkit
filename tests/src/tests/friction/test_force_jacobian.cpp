@@ -9,6 +9,8 @@
 #include <ipc/smooth_contact/smooth_contact_potential.hpp>
 #include <ipc/potentials/friction_potential.hpp>
 #include <ipc/potentials/barrier_potential.hpp>
+#include <ipc/high_order_contact/high_order_collisions.hpp>
+#include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 
 #include <finitediff.hpp>
 #include <igl/edges.h>
@@ -619,6 +621,162 @@ TEST_CASE(
         false);
 }
 
+// ============================================================================
+
+void check_high_order_friction_force_jacobian(
+    const CollisionMesh& mesh,
+    const Eigen::MatrixXd& Ut,
+    const Eigen::MatrixXd& U,
+    const HighOrderCollisions& collisions,
+    const double mu,
+    const double epsv_times_h,
+    const HighOrderContactParameters& params,
+    const double normal_stiffness)
+{
+    const Eigen::MatrixXd& X = mesh.rest_positions();
+    const Eigen::MatrixXd velocities = U - Ut;
+
+    CAPTURE(mu, epsv_times_h, params.dhat, normal_stiffness, collisions.size());
+
+    TangentialCollisions friction_collisions;
+    friction_collisions.build(
+        mesh, X + Ut, collisions, params, normal_stiffness,
+        Eigen::VectorXd::Ones(mesh.num_vertices()) * mu,
+        Eigen::VectorXd::Ones(mesh.num_vertices()) * mu);
+    CHECK(!friction_collisions.empty());
+
+    const FrictionPotential D(epsv_times_h);
+
+    // Check: force = -grad
+    const Eigen::VectorXd force =
+        D.smooth_contact_force(friction_collisions, mesh, X, Ut, velocities);
+    const Eigen::VectorXd grad_D =
+        D.gradient(friction_collisions, mesh, velocities);
+    CHECK((force + grad_D).norm() <= 1e-8 * force.norm());
+
+    // Check: hessian vs FD of gradient wrt velocities
+    const Eigen::MatrixXd hess_D =
+        D.hessian(friction_collisions, mesh, velocities);
+
+    auto grad_func = [&](const Eigen::VectorXd& v) {
+        return D.gradient(
+            friction_collisions, mesh, fd::unflatten(v, velocities.cols()));
+    };
+    Eigen::MatrixXd fd_hessian;
+    fd::finite_jacobian(
+        fd::flatten(velocities), grad_func, fd_hessian,
+        fd::AccuracyOrder::FOURTH, 1e-6 * params.dhat);
+    CHECK(
+        (hess_D.norm() == 0
+         || (hess_D - fd_hessian).norm() <= 1e-7 * hess_D.norm()));
+}
+
+TEST_CASE(
+    "High order friction force jacobian 2D",
+    "[friction-high-order][force-jacobian]")
+{
+    constexpr double BA = 1e-7;
+    const double dhat = 0.6;
+    const double mu = 1.;
+    const double epsv_times_h = 1.;
+    const double normal_stiffness = 1.;
+    const HighOrderContactParameters params(dhat, 1., 2, 1);
+
+    // Two close 2D rectangles (gap ~0.2 < dhat=0.6)
+    Eigen::MatrixXd V0(8, 2), V1;
+    Eigen::MatrixXi E(8, 2), F;
+    V0 <<
+        -1., 1.,
+        -1., 0.,
+        -.1, 0. + BA,
+        -.1, 1. + BA,
+         .1, 1.,
+         .1, 0.,
+        1., 0.,
+        1., 1.;
+    E <<
+        0, 1,
+        1, 2,
+        2, 3,
+        3, 0,
+        4, 5,
+        5, 6,
+        6, 7,
+        7, 4;
+
+    CollisionMesh mesh(
+        std::vector<bool>(V0.rows(), true),
+        std::vector<bool>(V0.rows(), false), V0, E, F);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V0, params, false);
+    REQUIRE(!collisions.empty());
+
+    // Slide left square to the right to create tangential velocity
+    V1 = V0;
+    V1.block(0, 0, 4, 1).array() += 0.05;
+
+    const Eigen::MatrixXd Ut = Eigen::MatrixXd::Zero(V0.rows(), V0.cols());
+    const Eigen::MatrixXd U = V1 - V0;
+
+    check_high_order_friction_force_jacobian(
+        mesh, Ut, U, collisions, mu, epsv_times_h, params, normal_stiffness);
+}
+
+TEST_CASE(
+    "High order friction force jacobian 3D",
+    "[friction-high-order][force-jacobian]")
+{
+    const double dhat = 0.15;
+    const double mu = 1.;
+    const double epsv_times_h = 1.;
+    const double normal_stiffness = 1.;
+    const HighOrderContactParameters params(dhat, 1., 0, 2);
+
+    // Point above a triangle, both embedded in closed manifolds
+    const double d = dhat * 0.5;
+    Eigen::MatrixXd V0(8, 3), V1;
+    Eigen::MatrixXi E, F(8, 3);
+    V0 <<
+         0, d,      0,
+        -1, 0,      1,
+         2, 0,      0,
+        -1, 0,     -1,
+        -1, d + 2,  1,
+         2, d + 2,  0,
+        -1, d + 2, -1,
+         0, -2,     0;
+    F <<
+        1, 2, 3,
+        1, 7, 2,
+        2, 7, 3,
+        3, 7, 1,
+        4, 5, 6,
+        4, 0, 5,
+        5, 0, 6,
+        6, 0, 4;
+    igl::edges(F, E);
+
+    CollisionMesh mesh(V0, E, F);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V0, params, false);
+    REQUIRE(!collisions.empty());
+
+    // Slide the top component tangentially to create velocity
+    V1 = V0;
+    const Eigen::RowVector3d disp(0.05, 0, 0);
+    V1.row(0) += disp;
+    V1.row(4) += disp;
+    V1.row(5) += disp;
+    V1.row(6) += disp;
+
+    const Eigen::MatrixXd Ut = Eigen::MatrixXd::Zero(V0.rows(), V0.cols());
+    const Eigen::MatrixXd U = V1 - V0;
+
+    check_high_order_friction_force_jacobian(
+        mesh, Ut, U, collisions, mu, epsv_times_h, params, normal_stiffness);
+}
 TEST_CASE(
     "Smooth friction force jacobian 3D", "[friction-smooth][force-jacobian]")
 {
