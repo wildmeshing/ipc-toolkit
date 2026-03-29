@@ -488,9 +488,11 @@ void TangentialCollisions::build(
             }
         }
 
-        for (const auto& [fi, dict_ptr] : collisions.face_collisions) {
-            for (int j = 0; j < dict_ptr->size(); j++) {
-                process_collision((*dict_ptr)[j]);
+        for (const auto& [fi, dicts] : collisions.face_collisions) {
+            for (const auto& dict_ptr : dicts) {
+                for (int j = 0; j < dict_ptr->size(); j++) {
+                    process_collision((*dict_ptr)[j]);
+                }
             }
         }
     }
