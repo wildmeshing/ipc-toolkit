@@ -1,5 +1,6 @@
 #include "friction_data_generator.hpp"
 
+#include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators_range.hpp>
 
 #include <ipc/config.hpp>
@@ -390,5 +391,97 @@ SmoothFrictionData smooth_friction_data_generator_2d()
                 0, 1, PointPointDistanceType::AUTO, mesh, params, dhat, V0));
     }
 
+    return data;
+}
+
+HighOrderFrictionSceneData3D high_order_friction_scene_generator_3d(double d)
+{
+    HighOrderFrictionSceneData3D data;
+    auto& [X, E, F, upper_vertices] = data;
+
+    SECTION("point-triangle")
+    {
+        // Vertex 0 above the interior of triangle (1,2,3), both in closed manifolds.
+        X.resize(8, 3);
+        F.resize(8, 3);
+        X <<
+             0, d,      0,   // 0: upper contact point
+            -1, 0,      1,   // 1: lower triangle v0
+             2, 0,      0,   // 2: lower triangle v1
+            -1, 0,     -1,   // 3: lower triangle v2
+            -1, d + 2,  1,   // 4: upper manifold
+             2, d + 2,  0,   // 5
+            -1, d + 2, -1,   // 6
+             0, -2,     0;   // 7: lower manifold apex
+        F <<
+            1, 2, 3,
+            1, 7, 2,
+            2, 7, 3,
+            3, 7, 1,
+            4, 5, 6,
+            4, 0, 5,
+            5, 0, 6,
+            6, 0, 4;
+        upper_vertices = {0, 4, 5, 6};
+    }
+
+    SECTION("point-edge")
+    {
+        // Vertex 0 above the interior of edge (1,2) along z,
+        // vertex 0 in a closed tetrahedron, edge (1,2) in a closed bipyramid.
+        X.resize(9, 3);
+        F.resize(10, 3);
+        X <<
+             0,  d,      0,   // 0: upper contact point
+             0,  0,     -1,   // 1: lower edge v0
+             0,  0,      1,   // 2: lower edge v1
+            -1,  d + 2,  1,   // 3: upper manifold
+             2,  d + 2,  0,   // 4
+            -1,  d + 2, -1,   // 5
+             1,  0,      0,   // 6: lower manifold
+            -1,  0,      0,   // 7
+             0, -2,      0;   // 8
+        F <<
+            3, 4, 5,
+            3, 0, 4,
+            4, 0, 5,
+            5, 0, 3,
+            1, 7, 2,
+            1, 2, 6,
+            2, 7, 8,
+            7, 1, 8,
+            1, 6, 8,
+            6, 2, 8;
+        upper_vertices = {0, 3, 4, 5};
+    }
+
+    SECTION("point-point")
+    {
+        // Vertex 0 (upper tet tip) directly above vertex 1 (lower tet tip),
+        // each at the apex of its own closed tetrahedron.
+        X.resize(8, 3);
+        F.resize(8, 3);
+        X <<
+             0,  d,      0,   // 0: upper contact point (lower tip of upper tet)
+             0,  0,      0,   // 1: lower contact point (upper tip of lower tet)
+            -1, -d,      1,   // 2: lower manifold
+             2, -d,      0,   // 3
+            -1, -d,     -1,   // 4
+            -1,  d + 2,  1,   // 5: upper manifold
+             2,  d + 2,  0,   // 6
+            -1,  d + 2, -1;   // 7
+        F <<
+            1, 2, 3,
+            1, 3, 4,
+            1, 4, 2,
+            3, 2, 4,
+            5, 6, 7,
+            5, 0, 6,
+            6, 0, 7,
+            7, 0, 5;
+        upper_vertices = {0, 5, 6, 7};
+    }
+
+    igl::edges(F, E);
     return data;
 }

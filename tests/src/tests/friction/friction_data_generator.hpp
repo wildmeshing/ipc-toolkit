@@ -36,3 +36,15 @@ struct SmoothFrictionData {
 
 SmoothFrictionData smooth_friction_data_generator_2d();
 SmoothFrictionData smooth_friction_data_generator_3d();
+
+/// Scene geometry for "High order friction force jacobian 3D" tests.
+/// Sections: "point-triangle", "point-edge", "point-point".
+struct HighOrderFrictionSceneData3D {
+    Eigen::MatrixXd X;
+    Eigen::MatrixXi E;
+    Eigen::MatrixXi F;
+    /// Vertex indices of the "upper object" that slides during the test.
+    std::vector<int> upper_vertices;
+};
+
+HighOrderFrictionSceneData3D high_order_friction_scene_generator_3d(double d);

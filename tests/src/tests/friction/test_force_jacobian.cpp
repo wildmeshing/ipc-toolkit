@@ -740,70 +740,32 @@ TEST_CASE(
     const HighOrderContactParameters params(dhat, 1., 0, 2);
     const bool skip_face_collisions = GENERATE(true, false);
 
-    // Point above a triangle, both embedded in closed manifolds
-    const double d = dhat * 0.5;
-    Eigen::MatrixXd X(8, 3);
-    Eigen::MatrixXi E, F(8, 3);
-    X <<
-         0, d,      0,
-        -1, 0,      1,
-         2, 0,      0,
-        -1, 0,     -1,
-        -1, d + 2,  1,
-         2, d + 2,  0,
-        -1, d + 2, -1,
-         0, -2,     0;
-    F <<
-        1, 2, 3,
-        1, 7, 2,
-        2, 7, 3,
-        3, 7, 1,
-        4, 5, 6,
-        4, 0, 5,
-        5, 0, 6,
-        6, 0, 4;
-    igl::edges(F, E);
-
-    const Eigen::MatrixXd Ut = Eigen::MatrixXd::Zero(X.rows(), X.cols());
-
-    CollisionMesh mesh(X, E, F);
-
-    HighOrderCollisions collisions(skip_face_collisions);
-    collisions.build(mesh, X + Ut, params, false);
+    // Scene geometry splits into "point-triangle", "point-edge", "point-point".
     // TangentialCollisions::build(HighOrderCollisions) in 3D currently expects
     // real mesh vertices; edge/face dictionaries can include virtual points.
-    // Keep vertex-centered high-order collisions for a stable Jacobian test.
+    // Keep only vertex-centered high-order collisions for a stable Jacobian test.
+    auto [X, E, F, upper_vertices] =
+        high_order_friction_scene_generator_3d(dhat * 0.5);
+
+    const Eigen::MatrixXd Ut = Eigen::MatrixXd::Zero(X.rows(), X.cols());
+    CollisionMesh mesh(X, E, F);
+    HighOrderCollisions collisions(skip_face_collisions);
+    collisions.build(mesh, X + Ut, params, false);
     collisions.edge_edge_collisions.clear();
     collisions.face_collisions.clear();
     REQUIRE(!collisions.empty());
 
-    SECTION("slide_x")
-    {
+    // Test both tangential slide directions for each scene.
+    auto run_check = [&](const Eigen::RowVector3d& disp) {
         Eigen::MatrixXd V1 = X;
-        const Eigen::RowVector3d disp(0.05, 0, 0);
-        V1.row(0) += disp;
-        V1.row(4) += disp;
-        V1.row(5) += disp;
-        V1.row(6) += disp;
-
-        const Eigen::MatrixXd U = V1 - X;
+        for (int v : upper_vertices)
+            V1.row(v) += disp;
         check_high_order_friction_force_jacobian(
-            mesh, Ut, U, collisions, mu, epsv_times_h, params, normal_stiffness);
-    }
-
-    SECTION("slide_z")
-    {
-        Eigen::MatrixXd V1 = X;
-        const Eigen::RowVector3d disp(0, 0, 0.05);
-        V1.row(0) += disp;
-        V1.row(4) += disp;
-        V1.row(5) += disp;
-        V1.row(6) += disp;
-
-        const Eigen::MatrixXd U = V1 - X;
-        check_high_order_friction_force_jacobian(
-            mesh, Ut, U, collisions, mu, epsv_times_h, params, normal_stiffness);
-    }
+            mesh, Ut, V1 - X, collisions, mu, epsv_times_h, params,
+            normal_stiffness);
+    };
+    run_check({0.05, 0, 0}); // slide_x
+    run_check({0, 0, 0.05}); // slide_z
 }
 TEST_CASE(
     "Smooth friction force jacobian 3D", "[friction-smooth][force-jacobian]")
