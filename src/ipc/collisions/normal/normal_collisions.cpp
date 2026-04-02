@@ -52,7 +52,7 @@ void NormalCollisions::build(
 
     tbb::enumerable_thread_specific<NormalCollisionsBuilder> storage(
         use_area_weighting(), enable_shape_derivatives(),
-        collision_set_type() == CollisionSetType::OGC);
+        collision_set_type() == CollisionSetType::OGC, m_skip_obstacles);
 
     tbb::parallel_for(
         tbb::blocked_range<size_t>(size_t(0), candidates.vv_candidates.size()),

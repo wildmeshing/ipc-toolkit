@@ -11,15 +11,13 @@
 
 namespace ipc {
 
-constexpr bool skip_obstacles = false; // Hardcoded for now. turns off obstacle integration
-
 NormalCollisionsBuilder::NormalCollisionsBuilder(
     const bool _use_area_weighting,
     const bool _enable_shape_derivatives,
-    const bool _use_ogc)
+    const bool _use_ogc, const bool _skip_obstacles)
     : use_area_weighting(_use_area_weighting)
     , enable_shape_derivatives(_enable_shape_derivatives)
-    , use_ogc(_use_ogc)
+    , use_ogc(_use_ogc), skip_obstacles(_skip_obstacles)
 {
 }
 

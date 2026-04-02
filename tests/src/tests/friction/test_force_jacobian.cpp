@@ -737,8 +737,7 @@ TEST_CASE(
     const double mu = 1.;
     const double epsv_times_h = 1.;
     const double normal_stiffness = 1.;
-    const HighOrderContactParameters params(dhat, 1., 0, 2);
-    const bool skip_face_collisions = GENERATE(true, false);
+    const HighOrderContactParameters params(dhat, 1., GENERATE(0,1), 2);
 
     // Scene geometry splits into "point-triangle", "point-edge", "point-point".
     // TangentialCollisions::build(HighOrderCollisions) in 3D currently expects
@@ -749,7 +748,7 @@ TEST_CASE(
 
     const Eigen::MatrixXd Ut = Eigen::MatrixXd::Zero(X.rows(), X.cols());
     CollisionMesh mesh(X, E, F);
-    HighOrderCollisions collisions(skip_face_collisions);
+    HighOrderCollisions collisions;
     collisions.build(mesh, X + Ut, params, false);
     collisions.edge_edge_collisions.clear();
     collisions.face_collisions.clear();
