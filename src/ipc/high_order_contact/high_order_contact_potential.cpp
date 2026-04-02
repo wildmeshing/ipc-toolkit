@@ -1,7 +1,5 @@
 #include "high_order_contact_potential.hpp"
 
-#include "igl/write_triangle_mesh.h"
-
 #include <ipc/utils/local_to_global.hpp>
 #include <ipc/utils/maybe_parallel_for.hpp>
 
@@ -12,6 +10,7 @@
 
 #include "ipc/distance/edge_edge.hpp"
 #include "ipc/distance/edge_edge_mollifier.hpp"
+
 #include "ipc/smooth_contact/distance/point_face.hpp"
 #include "ipc/smooth_contact/distance/mollifier.hpp"
 #include "ipc/high_order_contact/quadrature_potential.hpp"
@@ -85,6 +84,9 @@ double HighOrderContactPotential::operator()(
 
                                 const auto dtype = iter->second->ee_dtype();
 
+                                // Skip non EA_EB collision types
+                                if (dtype != EdgeEdgeDistanceType::EA_EB) continue;
+
                                 const double dist = sqrt(edge_edge_distance(
                                     X.row(ea), X.row(eb),
                                     X.row(ec), X.row(ed), dtype));
@@ -95,25 +97,34 @@ double HighOrderContactPotential::operator()(
 
                                 const Eigen::RowVector3d ee_closest_point = uv * (X.row(eb) - X.row(ea)) + X.row(ea);
 
-                                double mollifier = Math<double>::cubic_spline(dist / params.dbar) * 1.5;
-                                mollifier *= half_edge_edge_mollifier<double>(
+                                const double dist_sqr = edge_edge_distance(
                                     X.row(ea), X.row(eb),
                                     X.row(ec), X.row(ed), dtype);
+                                const auto mtypes = edge_edge_mollifier_type(
+                                    X.row(ea).transpose(), X.row(eb).transpose(),
+                                    X.row(ec).transpose(), X.row(ed).transpose(), dist_sqr);
 
-                                // Apply squared IPC edge-edge mollifier for near-parallel edges
-                                {
-                                    const double cross_sqr = edge_edge_cross_squarednorm(
-                                        X.row(ea), X.row(eb), X.row(ec), X.row(ed));
-                                    const double eps_x = edge_edge_mollifier_threshold(
-                                        X.row(ea), X.row(eb), X.row(ec), X.row(ed));
-                                    const double m = edge_edge_mollifier(cross_sqr, eps_x);
-                                    const auto m2 = m * m;
-                                        mollifier *= m2 * m2;
-                                }
+                                double mollifier = Math<double>::cubic_spline(dist / params.dbar) * 1.5;
+                                mollifier *= edge_edge_mollifier<double>(
+                                    X.row(ea).transpose(), X.row(eb).transpose(),
+                                    X.row(ec).transpose(), X.row(ed).transpose(),
+                                    mtypes, dist_sqr);
 
-                                total_w += mollifier;
-                                total_p += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                // // Apply squared IPC edge-edge mollifier for near-parallel edges
+                                // {
+                                //     const double cross_sqr = edge_edge_cross_squarednorm(
+                                //         X.row(ea), X.row(eb), X.row(ec), X.row(ed));
+                                //     const double eps_x = edge_edge_mollifier_threshold(
+                                //         X.row(ea), X.row(eb), X.row(ec), X.row(ed));
+                                //     const double m = edge_edge_mollifier(cross_sqr, eps_x);
+                                //     const auto m2 = m * m;
+                                //         mollifier *= m2 * m2;
+                                // }
+
+                                const double P_val = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                     VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
+                                total_w += mollifier;
+                                total_p += mollifier * P_val;
                                 local_counts[edge_id]++;
                             }
                         }
@@ -132,8 +143,9 @@ double HighOrderContactPotential::operator()(
                                     qp.lambda[0] * X.row(mesh.faces()(f, 0))
                                     + qp.lambda[1] * X.row(mesh.faces()(f, 1))
                                     + qp.lambda[2] * X.row(mesh.faces()(f, 2));
-                                total_p += face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                                const double fq_val = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
                                     VertexMatrixView<3>(X, q_pos), *iter->second[qi], params);
+                                total_p += face_quadrature_weight_scale * qp.weight * fq_val;
                             }
                         }
                     }
@@ -142,8 +154,9 @@ double HighOrderContactPotential::operator()(
                         const index_t v = mesh.faces()(f, lv);
                         total_w += 1.;
                         if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
-                            total_p += PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                            const double vt_val = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
                                 X, *(iter->second), params);
+                            total_p += vt_val;
                         }
                     }
 
@@ -250,13 +263,13 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
                                 iter != collisions.edge_edge_collisions.end()) {
 
-                                // collisions.edge_edge_collisions only contain EA_EB* type collision
-                                // other types are ignored because the mollifier makes them vanish
+                                const auto dtype = iter->second->ee_dtype();
+
+                                // Skip non EA_EB collision types
+                                if (dtype != EdgeEdgeDistanceType::EA_EB) continue;
 
                                 Eigen::Vector<double, 12> positions;
                                 positions << X.row(ea).transpose(), X.row(eb).transpose(), X.row(ec).transpose(), X.row(ed).transpose();
-
-                                const auto dtype = iter->second->ee_dtype();
 
                                 Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(positions);
 
@@ -271,27 +284,33 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 const Eigen::RowVector3<T> ee_closest_point_T = uv * (positionsT.row(1) - positionsT.row(0)) + positionsT.row(0);
                                 const Eigen::RowVector3<double> ee_closest_point(ee_closest_point_T(0).val, ee_closest_point_T(1).val, ee_closest_point_T(2).val);
 
-                                T mollifier = Math<T>::cubic_spline(dist / params.dbar) * 1.5;
-                                mollifier *= half_edge_edge_mollifier<T>(
+                                const T dist_sqr = edge_edge_sqr_distance<T>(
                                     positionsT.row(0), positionsT.row(1),
                                     positionsT.row(2), positionsT.row(3), dtype);
+                                const auto mtypes = edge_edge_mollifier_type(
+                                    X.row(ea).transpose(), X.row(eb).transpose(),
+                                    X.row(ec).transpose(), X.row(ed).transpose(), dist_sqr.val);
 
-                                // Apply squared IPC edge-edge mollifier for near-parallel edges
-                                // Squared mollifier decays as O(sin^4 theta), suppressing
-                                // O(1/sin^2 theta) gradient singularity in line_line_sqr_distance
-                                {
-                                    const Eigen::Vector3<T> u = positionsT.row(1).transpose() - positionsT.row(0).transpose();
-                                    const Eigen::Vector3<T> v = positionsT.row(3).transpose() - positionsT.row(2).transpose();
-                                    const Eigen::Vector3<T> cross = u.cross(v);
-                                    const T cross_sqr_norm = cross.squaredNorm();
-                                    const T eps_x = T(1e-3) * u.squaredNorm() * v.squaredNorm();
-                                    if (cross_sqr_norm.val < eps_x.val) {
-                                        const T x_div_eps = cross_sqr_norm / eps_x;
-                                        const T m = (-x_div_eps + T(2)) * x_div_eps;
-                                        const auto m2 = m * m;
-                                        mollifier *= m2 * m2;
-                                    }
-                                }
+                                T mollifier = Math<T>::cubic_spline(dist / params.dbar) * 1.5;
+                                mollifier *= edge_edge_mollifier<T>(
+                                    positionsT.row(0).transpose(), positionsT.row(1).transpose(),
+                                    positionsT.row(2).transpose(), positionsT.row(3).transpose(),
+                                    mtypes, dist_sqr);
+
+                                // // Apply squared IPC edge-edge mollifier for near-parallel edges
+                                // {
+                                //     const Eigen::Vector3<T> u = positionsT.row(1).transpose() - positionsT.row(0).transpose();
+                                //     const Eigen::Vector3<T> v = positionsT.row(3).transpose() - positionsT.row(2).transpose();
+                                //     const Eigen::Vector3<T> cross = u.cross(v);
+                                //     const T cross_sqr_norm = cross.squaredNorm();
+                                //     const T eps_x = T(1e-3) * u.squaredNorm() * v.squaredNorm();
+                                //     if (cross_sqr_norm.val < eps_x.val) {
+                                //         const T x_div_eps = cross_sqr_norm / eps_x;
+                                //         const T m = (-x_div_eps + T(2)) * x_div_eps;
+                                //         const auto m2 = m * m;
+                                //         mollifier *= m2 * m2;
+                                //     }
+                                // }
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
@@ -379,6 +398,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
     for (const auto& local_storage : storage) {
         grad += local_storage;
     }
+
     return grad;
 }
 
@@ -469,13 +489,13 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                             if (auto iter = collisions.edge_edge_collisions.find(std::make_pair(edge_id, other_edge_id));
                                 iter != collisions.edge_edge_collisions.end()) {
 
-                                // collisions.edge_edge_collisions only contain EA_EB* type collision
-                                // other types are ignored because the mollifier makes them vanish
+                                const auto dtype = iter->second->ee_dtype();
+
+                                // Skip non EA_EB collision types
+                                if (dtype != EdgeEdgeDistanceType::EA_EB) continue;
 
                                 Eigen::Vector<double, 12> positions;
                                 positions << X.row(ea).transpose(), X.row(eb).transpose(), X.row(ec).transpose(), X.row(ed).transpose();
-
-                                const auto dtype = iter->second->ee_dtype();
 
                                 Eigen::Matrix<T, 4, 3> positionsT = slice_positions<T, 4, 3>(positions);
 
@@ -490,25 +510,33 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 const Eigen::RowVector3<T> ee_closest_point_T = uv * (positionsT.row(1) - positionsT.row(0)) + positionsT.row(0);
                                 const Eigen::RowVector3<double> ee_closest_point(ee_closest_point_T(0).val, ee_closest_point_T(1).val, ee_closest_point_T(2).val);
 
-                                T mollifier = Math<T>::cubic_spline(dist / params.dbar) * 1.5;
-                                mollifier *= half_edge_edge_mollifier<T>(
+                                const T dist_sqr = edge_edge_sqr_distance<T>(
                                     positionsT.row(0), positionsT.row(1),
                                     positionsT.row(2), positionsT.row(3), dtype);
+                                const auto mtypes = edge_edge_mollifier_type(
+                                    X.row(ea).transpose(), X.row(eb).transpose(),
+                                    X.row(ec).transpose(), X.row(ed).transpose(), dist_sqr.val);
 
-                                // Apply squared IPC edge-edge mollifier for near-parallel edges
-                                {
-                                    const Eigen::Vector3<T> u = positionsT.row(1).transpose() - positionsT.row(0).transpose();
-                                    const Eigen::Vector3<T> v = positionsT.row(3).transpose() - positionsT.row(2).transpose();
-                                    const Eigen::Vector3<T> cross = u.cross(v);
-                                    const T cross_sqr_norm = cross.squaredNorm();
-                                    const T eps_x = T(1e-3) * u.squaredNorm() * v.squaredNorm();
-                                    if (cross_sqr_norm.val < eps_x.val) {
-                                        const T x_div_eps = cross_sqr_norm / eps_x;
-                                        const T m = (-x_div_eps + T(2)) * x_div_eps;
-                                        const auto m2 = m * m;
-                                        mollifier *= m2 * m2;
-                                    }
-                                }
+                                T mollifier = Math<T>::cubic_spline(dist / params.dbar) * 1.5;
+                                mollifier *= edge_edge_mollifier<T>(
+                                    positionsT.row(0).transpose(), positionsT.row(1).transpose(),
+                                    positionsT.row(2).transpose(), positionsT.row(3).transpose(),
+                                    mtypes, dist_sqr);
+
+                                // // Apply squared IPC edge-edge mollifier for near-parallel edges
+                                // {
+                                //     const Eigen::Vector3<T> u = positionsT.row(1).transpose() - positionsT.row(0).transpose();
+                                //     const Eigen::Vector3<T> v = positionsT.row(3).transpose() - positionsT.row(2).transpose();
+                                //     const Eigen::Vector3<T> cross = u.cross(v);
+                                //     const T cross_sqr_norm = cross.squaredNorm();
+                                //     const T eps_x = T(1e-3) * u.squaredNorm() * v.squaredNorm();
+                                //     if (cross_sqr_norm.val < eps_x.val) {
+                                //         const T x_div_eps = cross_sqr_norm / eps_x;
+                                //         const T m = (-x_div_eps + T(2)) * x_div_eps;
+                                //         const auto m2 = m * m;
+                                //         mollifier *= m2 * m2;
+                                //     }
+                                // }
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
