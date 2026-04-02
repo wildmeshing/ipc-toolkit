@@ -11,6 +11,7 @@
 #include <tbb/parallel_for.h>
 
 #include "ipc/distance/edge_edge.hpp"
+#include "ipc/distance/edge_edge_mollifier.hpp"
 #include "ipc/smooth_contact/distance/point_face.hpp"
 #include "ipc/smooth_contact/distance/mollifier.hpp"
 #include "ipc/high_order_contact/quadrature_potential.hpp"
@@ -98,6 +99,17 @@ double HighOrderContactPotential::operator()(
                                 mollifier *= half_edge_edge_mollifier<double>(
                                     X.row(ea), X.row(eb),
                                     X.row(ec), X.row(ed), dtype);
+
+                                // Apply squared IPC edge-edge mollifier for near-parallel edges
+                                {
+                                    const double cross_sqr = edge_edge_cross_squarednorm(
+                                        X.row(ea), X.row(eb), X.row(ec), X.row(ed));
+                                    const double eps_x = edge_edge_mollifier_threshold(
+                                        X.row(ea), X.row(eb), X.row(ec), X.row(ed));
+                                    const double m = edge_edge_mollifier(cross_sqr, eps_x);
+                                    const auto m2 = m * m;
+                                        mollifier *= m2 * m2;
+                                }
 
                                 total_w += mollifier;
                                 total_p += mollifier * PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
@@ -263,6 +275,23 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 mollifier *= half_edge_edge_mollifier<T>(
                                     positionsT.row(0), positionsT.row(1),
                                     positionsT.row(2), positionsT.row(3), dtype);
+
+                                // Apply squared IPC edge-edge mollifier for near-parallel edges
+                                // Squared mollifier decays as O(sin^4 theta), suppressing
+                                // O(1/sin^2 theta) gradient singularity in line_line_sqr_distance
+                                {
+                                    const Eigen::Vector3<T> u = positionsT.row(1).transpose() - positionsT.row(0).transpose();
+                                    const Eigen::Vector3<T> v = positionsT.row(3).transpose() - positionsT.row(2).transpose();
+                                    const Eigen::Vector3<T> cross = u.cross(v);
+                                    const T cross_sqr_norm = cross.squaredNorm();
+                                    const T eps_x = T(1e-3) * u.squaredNorm() * v.squaredNorm();
+                                    if (cross_sqr_norm.val < eps_x.val) {
+                                        const T x_div_eps = cross_sqr_norm / eps_x;
+                                        const T m = (-x_div_eps + T(2)) * x_div_eps;
+                                        const auto m2 = m * m;
+                                        mollifier *= m2 * m2;
+                                    }
+                                }
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
@@ -465,6 +494,21 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 mollifier *= half_edge_edge_mollifier<T>(
                                     positionsT.row(0), positionsT.row(1),
                                     positionsT.row(2), positionsT.row(3), dtype);
+
+                                // Apply squared IPC edge-edge mollifier for near-parallel edges
+                                {
+                                    const Eigen::Vector3<T> u = positionsT.row(1).transpose() - positionsT.row(0).transpose();
+                                    const Eigen::Vector3<T> v = positionsT.row(3).transpose() - positionsT.row(2).transpose();
+                                    const Eigen::Vector3<T> cross = u.cross(v);
+                                    const T cross_sqr_norm = cross.squaredNorm();
+                                    const T eps_x = T(1e-3) * u.squaredNorm() * v.squaredNorm();
+                                    if (cross_sqr_norm.val < eps_x.val) {
+                                        const T x_div_eps = cross_sqr_norm / eps_x;
+                                        const T m = (-x_div_eps + T(2)) * x_div_eps;
+                                        const auto m2 = m * m;
+                                        mollifier *= m2 * m2;
+                                    }
+                                }
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
