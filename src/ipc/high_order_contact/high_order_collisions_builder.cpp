@@ -1,6 +1,5 @@
 #include "high_order_collisions_builder.hpp"
 #include <ipc/high_order_contact/quadrature_potential.hpp>
-#include <ipc/high_order_contact/collisions/triangular_quadrature.hpp>
 
 #include <ipc/distance/distance_type.hpp>
 #include <ipc/distance/point_edge.hpp>
@@ -385,7 +384,7 @@ void QuadratureCollisionsBuilder::build_face_collisions(
     const size_t end_i)
 {
     const CollisionMesh& mesh = point_potential->mesh;
-    const auto& face_quad_rule = TriangularQuadrature::get_rule(point_potential->params.quad_order);
+    const auto& face_quad_rule = point_potential->params.get_quad_rule();
     if (face_quad_rule.empty()) return;
 
     const HighOrderContactParameters& params = point_potential->params;

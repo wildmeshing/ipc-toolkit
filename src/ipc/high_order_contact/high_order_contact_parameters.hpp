@@ -3,6 +3,13 @@
 
 namespace ipc {
 
+/// A single face quadrature point in barycentric coordinates with its weight.
+struct FaceQuadPoint {
+    std::array<double, 3> lambda; ///< Barycentric coordinates (sum = 1)
+    double weight;
+};
+using FaceQuadRule = std::vector<FaceQuadPoint>;
+
 struct HighOrderContactParameters {
     enum class IntegrationType {
         BRUTE_FORCE, ///< Integrate all pairs with no obstacle filtering
@@ -40,6 +47,12 @@ struct HighOrderContactParameters {
     {
         m_adaptive_dhat_ratio = adaptive_dhat_ratio;
     }
+
+    const FaceQuadRule& get_quad_rule() const { return face_quad_rule; }
+
+    /// Face quadrature rule. Empty (default) skips face quadrature entirely,
+    /// matching the behaviour of quad_order == 0 in the old interface.
+    FaceQuadRule face_quad_rule;
 
 private:
     double m_adaptive_dhat_ratio = 0.5;

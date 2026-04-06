@@ -14,8 +14,6 @@
 #include "ipc/smooth_contact/distance/point_face.hpp"
 #include "ipc/smooth_contact/distance/mollifier.hpp"
 #include "ipc/high_order_contact/quadrature_potential.hpp"
-#include "ipc/high_order_contact/collisions/triangular_quadrature.hpp"
-
 namespace ipc {
 
 constexpr double face_quadrature_weight_scale = 1.0;
@@ -131,7 +129,7 @@ double HighOrderContactPotential::operator()(
                     }
 
                     // Face-interior quadrature points controlled by params.quad_order.
-                    const auto& face_quad_rule = TriangularQuadrature::get_rule(params.quad_order);
+                    const auto& face_quad_rule = params.get_quad_rule();
                     {
                         auto iter = collisions.face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
@@ -330,7 +328,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                     }
 
                     // Face-interior quadrature points
-                    const auto& face_quad_rule = TriangularQuadrature::get_rule(params.quad_order);
+                    const auto& face_quad_rule = params.get_quad_rule();
                     {
                         auto iter = collisions.face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
@@ -584,7 +582,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                     }
 
                     // Face-interior quadrature points
-                    const auto& face_quad_rule = TriangularQuadrature::get_rule(params.quad_order);
+                    const auto& face_quad_rule = params.get_quad_rule();
                     {
                         auto iter = collisions.face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
