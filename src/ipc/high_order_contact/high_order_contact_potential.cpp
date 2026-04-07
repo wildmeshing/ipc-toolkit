@@ -148,13 +148,16 @@ double HighOrderContactPotential::operator()(
                         }
                     }
 
-                    for (index_t lv = 0; lv < 3; lv++) {
-                        const index_t v = mesh.faces()(f, lv);
-                        total_w += 1.;
-                        if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
-                            const double vt_val = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                X, *(iter->second), params);
-                            total_p += vt_val;
+                    // Only integrate on vertices explicitly if there is no high-order quadrature, since that includes verts
+                    if (face_quad_rule.empty()) {
+                        for (index_t lv = 0; lv < 3; lv++) {
+                            const index_t v = mesh.faces()(f, lv);
+                            total_w += 1.;
+                            if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
+                                const double vt_val = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                                    X, *(iter->second), params);
+                                total_p += vt_val;
+                            }
                         }
                     }
 
@@ -351,16 +354,18 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         }
                     }
 
-                    for (index_t lv = 0; lv < 3; lv++) {
-                        const index_t v = mesh.faces()(f, lv);
-                        total_w += 1.;
-                        if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
-                            const double P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                X, (*iter->second), params);
-                            const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                                X, (*iter->second), params);
-                            const_cache.push_back(ConstGradEntry{&(*iter->second).dofs(), grad_P});
-                            total_p += P;
+                    if (face_quad_rule.empty()) {
+                        for (index_t lv = 0; lv < 3; lv++) {
+                            const index_t v = mesh.faces()(f, lv);
+                            total_w += 1.;
+                            if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
+                                const double P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                                    X, (*iter->second), params);
+                                const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                                    X, (*iter->second), params);
+                                const_cache.push_back(ConstGradEntry{&(*iter->second).dofs(), grad_P});
+                                total_p += P;
+                            }
                         }
                     }
 
@@ -610,22 +615,24 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         }
                     }
 
-                    for (index_t lv = 0; lv < 3; lv++) {
-                        const index_t v = mesh.faces()(f, lv);
-                        total_w += 1.;
-                        if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
-                            const auto& dict = *iter->second;
-                            ConstHessEntry entry;
-                            entry.vertex_ids = &dict.vertex_ids();
-                            entry.dofs = &dict.dofs();
-                            entry.P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                X, dict, params);
-                            entry.grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                                X, dict, params);
-                            entry.local_hess = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                                X, dict, params, project_hessian_to_psd);
-                            total_p += entry.P;
-                            const_cache.push_back(std::move(entry));
+                    if (face_quad_rule.empty()) {
+                        for (index_t lv = 0; lv < 3; lv++) {
+                            const index_t v = mesh.faces()(f, lv);
+                            total_w += 1.;
+                            if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
+                                const auto& dict = *iter->second;
+                                ConstHessEntry entry;
+                                entry.vertex_ids = &dict.vertex_ids();
+                                entry.dofs = &dict.dofs();
+                                entry.P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                                    X, dict, params);
+                                entry.grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                                    X, dict, params);
+                                entry.local_hess = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+                                    X, dict, params, project_hessian_to_psd);
+                                total_p += entry.P;
+                                const_cache.push_back(std::move(entry));
+                            }
                         }
                     }
 
