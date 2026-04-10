@@ -3,6 +3,7 @@
 #include <tests/utils.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <ipc/ipc.hpp>
 #include <ipc/collisions/tangential/tangential_collisions.hpp>
@@ -633,18 +634,21 @@ void check_high_order_friction_force_jacobian(
     const double mu,
     const double epsv_times_h,
     const HighOrderContactParameters& params,
-    const double normal_stiffness)
+    const double normal_stiffness,
+    const bool normalize_weights = true)
 {
     const Eigen::MatrixXd& X = mesh.rest_positions();
     const Eigen::MatrixXd velocities = U - Ut;
 
-    CAPTURE(mu, epsv_times_h, params.dhat, normal_stiffness, collisions.size());
+    CAPTURE(mu, epsv_times_h, params.dhat, normal_stiffness, collisions.size(),
+            normalize_weights, params.get_quad_rule().size());
 
     TangentialCollisions friction_collisions;
     friction_collisions.build(
         mesh, X + Ut, collisions, params, normal_stiffness,
         Eigen::VectorXd::Ones(mesh.num_vertices()) * mu,
-        Eigen::VectorXd::Ones(mesh.num_vertices()) * mu);
+        Eigen::VectorXd::Ones(mesh.num_vertices()) * mu,
+        normalize_weights);
     CHECK(!friction_collisions.empty());
 
     const FrictionPotential D(epsv_times_h);
@@ -686,6 +690,7 @@ TEST_CASE(
     const double mu = 1.;
     const double epsv_times_h = 1.;
     const double normal_stiffness = 1.;
+    const bool normalize_weights = GENERATE(true, false);
     const HighOrderContactParameters params(dhat, 1., 2, 1);
 
     // Two close 2D rectangles (gap ~0.2 < dhat=0.6)
@@ -726,7 +731,29 @@ TEST_CASE(
     const Eigen::MatrixXd U = V1 - V0;
 
     check_high_order_friction_force_jacobian(
-        mesh, Ut, U, collisions, mu, epsv_times_h, params, normal_stiffness);
+        mesh, Ut, U, collisions, mu, epsv_times_h, params, normal_stiffness,
+        normalize_weights);
+}
+
+/// Build a simple face quadrature rule with the 3 triangle vertices.
+static FaceQuadRule make_vertex_quad_rule()
+{
+    return {
+        {{{1.0, 0.0, 0.0}}, 1.0 / 3.0},
+        {{{0.0, 1.0, 0.0}}, 1.0 / 3.0},
+        {{{0.0, 0.0, 1.0}}, 1.0 / 3.0},
+    };
+}
+
+/// Build a face quadrature rule with 3 vertices + centroid.
+static FaceQuadRule make_vertex_plus_centroid_quad_rule()
+{
+    return {
+        {{{1.0, 0.0, 0.0}}, 0.25},
+        {{{0.0, 1.0, 0.0}}, 0.25},
+        {{{0.0, 0.0, 1.0}}, 0.25},
+        {{{1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0}}, 0.25},
+    };
 }
 
 TEST_CASE(
@@ -737,7 +764,15 @@ TEST_CASE(
     const double mu = 1.;
     const double epsv_times_h = 1.;
     const double normal_stiffness = 1.;
-    const HighOrderContactParameters params(dhat, 1., GENERATE(0,1), 2);
+    const bool normalize_weights = GENERATE(true, false);
+    // quad_order=0 uses vertex-only collisions (no face_quad_rule needed).
+    // quad_order=1 with face_quad_rule set uses face quadrature.
+    const int quad_order = GENERATE(0, 1);
+    HighOrderContactParameters params(dhat, 1., quad_order, 2);
+    if (quad_order > 0) {
+        params.face_quad_rule = GENERATE_COPY(
+            make_vertex_quad_rule(), make_vertex_plus_centroid_quad_rule());
+    }
 
     auto [X, E, F, upper_vertices] =
         high_order_friction_scene_generator_3d(dhat * 0.5);
@@ -755,7 +790,7 @@ TEST_CASE(
             V1.row(v) += disp;
         check_high_order_friction_force_jacobian(
             mesh, Ut, V1 - X, collisions, mu, epsv_times_h, params,
-            normal_stiffness);
+            normal_stiffness, normalize_weights);
     };
     run_check({0.05, 0, 0}); // slide_x
     run_check({0, 0, 0.05}); // slide_z

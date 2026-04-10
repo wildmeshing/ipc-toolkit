@@ -10,7 +10,7 @@
 #include <ipc/math/math.hpp>
 #include <ipc/utils/local_to_global.hpp>
 #include <ipc/high_order_contact/collisions/vertex_matrix_view.hpp>
-#include <ipc/high_order_contact/collisions/triangular_quadrature.hpp>
+#include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 #include <ipc/smooth_contact/distance/edge_edge.hpp>
 #include <ipc/tangent/closest_point.hpp>
 #include <ipc/utils/logger.hpp>
@@ -417,17 +417,8 @@ void TangentialCollisions::build(
 
         // Helper: compute contact force magnitude for a sub-collision.
         //
-        // Note: there is no exact per-sub-collision normal force in the HO
-        // formulation — the global normal gradient is a quadrature sum
-        // whose integrand mixes per-face outer weights, face/edge
-        // quadrature weights, and the log-barrier derivative of each
-        // sub-collision. Decomposing into independent λ values for the
-        // friction IPC formulation is therefore approximate. We use the
-        // standard IPC barrier force magnitude on the sub-collision's
-        // actual distance scaled by an outer quadrature weight. This is
-        // stable (bounded at d → dhat and d → 0) and produces zero or
-        // near-zero friction in steady state (d ≈ dhat), matching the
-        // HO normal force which also vanishes at the barrier boundary.
+        // Uses the scalar derivative of the log-barrier w.r.t. distance,
+        // scaled by outer quadrature weight and barrier stiffness.
         auto compute_contact_force = [&](
             const HighOrderCollision& cc,
             const VertexMatrixView<3>& V_ext,
@@ -457,15 +448,11 @@ void TangentialCollisions::build(
             default:
                 return 0;
             }
-            // Match the HO potential exactly: per-sub-collision normal-force
-            // contribution = stiffness * outer_w * |cc.gradient(...)|.
-            // The HO potential uses params.get_dhat() (= dhat) as the barrier
-            // support and applies the multiplicative HOP coefficient (outer_w)
-            // around cc.gradient. We replicate that here so friction matches.
-            (void)d2;
-            const Eigen::VectorXd grad = cc.gradient(positions, params);
-            const double cf = outer_w * normal_stiffness * grad.norm();
-            return cf;
+            const double dist = sqrt(d2);
+            const double dhat_val = params.get_dhat();
+            return (dist > 0 && dist < dhat_val)
+                ? outer_w * normal_stiffness * std::abs(Math<double>::log_barrier_grad(dist / dhat_val) / dhat_val)
+                : 0.0;
         };
 
         // Helper: assign EV mu values
@@ -512,16 +499,22 @@ void TangentialCollisions::build(
 
         // --- Precompute per-face normalized outer scale ---
         // HOP outer contribution per face f is: (area_f / 9) [* / total_w_f]
-        // depending on normalize_weights. total_w_f sums active EE mollifiers,
-        // face quadrature weights, and 3 (for the 3 face vertices).
-        const auto& face_quad_rule_for_total =
-            TriangularQuadrature::get_rule(params.quad_order);
+        // depending on normalize_weights. total_w_f sums active EE mollifiers
+        // and either face quadrature weights (when active) or 3 (for the 3
+        // face vertices, when face quadrature is not active).
+        const bool has_face_quad = params.quad_order > 0;
+        const auto& face_quad_rule = params.get_quad_rule();
         double sum_face_qp_w = 0.0;
-        for (const auto& qp : face_quad_rule_for_total)
+        for (const auto& qp : face_quad_rule)
             sum_face_qp_w += qp.weight;
 
+        // When face quadrature is active, vertices are already included
+        // in the quadrature rule, so don't count the 3 vertex contributions.
+        const double base_w = has_face_quad
+            ? (face_quad_rule.empty() ? 3.0 : sum_face_qp_w)
+            : 3.0;
         Eigen::VectorXd total_w_per_face =
-            Eigen::VectorXd::Constant(faces.rows(), 3.0 + sum_face_qp_w);
+            Eigen::VectorXd::Constant(faces.rows(), base_w);
         if (normalize_weights) {
             // Add per-face sum of active EE mollifiers (EA_EB only).
             for (const auto& [ei_pair, dict_ptr] :
@@ -579,6 +572,9 @@ void TangentialCollisions::build(
         }
 
         // ---- VERTEX dicts: all vertex IDs are real ----
+        // Skip when face quadrature is active (quad_order > 0), which
+        // already includes vertices, matching the normal potential's behavior.
+        if (!has_face_quad)
         for (const auto& [vi, dict_ptr] : collisions.vertex_collisions) {
             VertexMatrixView<3> V_view(vertices);
             const double v_w = v_outer_w(vi);
@@ -863,9 +859,6 @@ void TangentialCollisions::build(
         }
 
         // ---- FACE dicts: virtual vertex at face quadrature point ----
-        const auto& face_quad_rule =
-            TriangularQuadrature::get_rule(params.quad_order);
-
         for (const auto& [fi, dicts] : collisions.face_collisions) {
             const index_t f0 = faces(fi, 0);
             const index_t f1 = faces(fi, 1);
