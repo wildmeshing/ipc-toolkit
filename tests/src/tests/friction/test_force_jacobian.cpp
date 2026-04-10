@@ -739,10 +739,6 @@ TEST_CASE(
     const double normal_stiffness = 1.;
     const HighOrderContactParameters params(dhat, 1., GENERATE(0,1), 2);
 
-    // Scene geometry splits into "point-triangle", "point-edge", "point-point".
-    // TangentialCollisions::build(HighOrderCollisions) in 3D currently expects
-    // real mesh vertices; edge/face dictionaries can include virtual points.
-    // Keep only vertex-centered high-order collisions for a stable Jacobian test.
     auto [X, E, F, upper_vertices] =
         high_order_friction_scene_generator_3d(dhat * 0.5);
 
@@ -750,8 +746,6 @@ TEST_CASE(
     CollisionMesh mesh(X, E, F);
     HighOrderCollisions collisions;
     collisions.build(mesh, X + Ut, params, false);
-    collisions.edge_edge_collisions.clear();
-    collisions.face_collisions.clear();
     REQUIRE(!collisions.empty());
 
     // Test both tangential slide directions for each scene.

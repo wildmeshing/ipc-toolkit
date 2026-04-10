@@ -118,6 +118,8 @@ public:
         return m_edge_evaluation_count;
     }
 
+    bool get_normalize_weights() const { return normalize_weights; }
+
 protected:
     /// @brief GCP parameters for collision potential
     HighOrderContactParameters params;

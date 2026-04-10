@@ -125,6 +125,7 @@ public:
         const double normal_stiffness,
         Eigen::ConstRef<Eigen::VectorXd> mu_s,
         Eigen::ConstRef<Eigen::VectorXd> mu_k,
+        const bool normalize_weights = true,
         const std::function<double(double, double)>& blend_mu =
             default_blend_mu);
 
