@@ -75,14 +75,6 @@ public:
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices) const;
 
-    /// @brief Compute minimum distance between contact pairs with non-zero potential
-    /// @param mesh The collision mesh.
-    /// @param vertices Vertices of the collision mesh.
-    /// @return Squared minimum distance
-    double compute_active_minimum_distance(
-        const CollisionMesh& mesh,
-        Eigen::ConstRef<Eigen::MatrixXd> vertices) const;
-
     /// @brief Convert contact pairs to string
     std::string to_string(
         const CollisionMesh& mesh,

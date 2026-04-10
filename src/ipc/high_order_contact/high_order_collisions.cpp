@@ -502,60 +502,6 @@ double HighOrderCollisions::compute_minimum_distance(
     return storage.combine([](double a, double b) { return std::min(a, b); });
 }
 
-double HighOrderCollisions::compute_active_minimum_distance(
-    const CollisionMesh& mesh, Eigen::ConstRef<Eigen::MatrixXd> vertices) const
-{
-    assert(vertices.rows() == mesh.num_vertices());
-
-    if (empty()) {
-        return std::numeric_limits<double>::infinity();
-    }
-
-    tbb::enumerable_thread_specific<double> storage(
-        std::numeric_limits<double>::infinity());
-
-    if (mesh.dim() == 2) {
-        tbb::parallel_for(
-            tbb::blocked_range<size_t>(0, collisions.size()),
-            [&](tbb::blocked_range<size_t> r) {
-                double& local_min_dist = storage.local();
-
-                for (size_t i = r.begin(); i < r.end(); i++) {
-                    const double dist = collisions[i]->compute_distance(vertices);
-                    local_min_dist = std::min(dist, local_min_dist);
-                }
-            });
-    }
-    else {
-        const double bbox_diag = world_bbox_diagonal_length(vertices);
-        double min_dist = bbox_diag * bbox_diag;
-        for (const auto& map : vertex_collisions) {
-            for (int i = 0; i < (*map.second).size(); i++) {
-                const auto& cc = (*map.second)[i];
-                min_dist = std::min(min_dist, cc.compute_distance(vertices));
-            }
-        }
-
-        // TODO
-
-        // for (const auto& map : face_collisions) {
-        //     for (const auto& cc : (*map.second)) {
-        //         min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
-        //     }
-        // }
-
-        // for (const auto& map : edge_edge_collisions) {
-        //     for (const auto& cc : (*map.second)) {
-        //         min_dist = std::min(min_dist, cc.second->compute_distance(vertices));
-        //     }
-        // }
-
-        return min_dist;
-    }
-
-    return storage.combine([](double a, double b) { return std::min(a, b); });
-}
-
 std::map<size_t, size_t> HighOrderCollisions::edge_id_count_distribution() const
 {
     unordered_map<index_t, size_t> counts;
