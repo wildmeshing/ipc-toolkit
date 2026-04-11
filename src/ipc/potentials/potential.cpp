@@ -3,7 +3,9 @@
 #include <ipc/collisions/normal/normal_collisions.hpp>
 #include <ipc/collisions/tangential/tangential_collisions.hpp>
 #include <ipc/utils/local_to_global.hpp>
+#include <ipc/utils/logger.hpp>
 #include <ipc/utils/maybe_parallel_for.hpp>
+#include <ipc/utils/profile_registry.hpp>
 
 #include <tbb/blocked_range.h>
 #include <tbb/combinable.h>
@@ -11,6 +13,9 @@
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_for_each.h>
 #include <tbb/parallel_reduce.h>
+
+#include <string>
+#include <type_traits>
 
 namespace ipc {
 
@@ -33,6 +38,19 @@ namespace {
     }
 } // namespace
 
+namespace {
+    template <class T> const std::string& profile_prefix()
+    {
+        if constexpr (std::is_same_v<T, TangentialCollisions>) {
+            static const std::string p = "friction";
+            return p;
+        } else {
+            static const std::string p = "ipc";
+            return p;
+        }
+    }
+} // namespace
+
 template <class TCollisions>
 double Potential<TCollisions>::operator()(
     const TCollisions& collisions,
@@ -41,6 +59,7 @@ double Potential<TCollisions>::operator()(
 {
     assert(X.rows() == mesh.num_vertices());
 
+    ScopedProfileTimer _t(profile_prefix<TCollisions>() + ".potential_eval");
     return tbb::parallel_reduce(
         tbb::blocked_range<size_t>(size_t(0), collisions.size()), 0.0,
         [&](const tbb::blocked_range<size_t>& r, double partial_sum) {
@@ -67,6 +86,7 @@ Eigen::VectorXd Potential<TCollisions>::gradient(
         return Eigen::VectorXd::Zero(X.size());
     }
 
+    ScopedProfileTimer _t(profile_prefix<TCollisions>() + ".potential_gradient");
     const int dim = X.cols();
 
     tbb::combinable<Eigen::VectorXd> grad(Eigen::VectorXd::Zero(X.size()));
@@ -106,6 +126,7 @@ Eigen::SparseMatrix<double> Potential<TCollisions>::hessian(
         return Eigen::SparseMatrix<double>(X.size(), X.size());
     }
 
+    ScopedProfileTimer _t(profile_prefix<TCollisions>() + ".potential_hessian");
     const Eigen::MatrixXi& edges = mesh.edges();
     const Eigen::MatrixXi& faces = mesh.faces();
 

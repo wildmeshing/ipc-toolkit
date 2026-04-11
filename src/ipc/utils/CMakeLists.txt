@@ -7,6 +7,8 @@ set(SOURCES
   logger.cpp
   logger.hpp
   merge_thread_local.hpp
+  profile_registry.cpp
+  profile_registry.hpp
   profiler.cpp
   profiler.hpp
   save_obj.cpp

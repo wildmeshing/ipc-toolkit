@@ -11,6 +11,7 @@
 #include <ipc/utils/local_to_global.hpp>
 #include <ipc/utils/world_bbox_diagonal_length.hpp>
 #include <ipc/utils/maybe_parallel_for.hpp>
+#include <ipc/utils/profile_registry.hpp>
 #include <ipc/high_order_contact/quadrature_potential.hpp>
 
 #include <tbb/blocked_range.h>
@@ -197,6 +198,7 @@ void HighOrderCollisions::build(
 {
     assert(vertices.rows() == mesh.num_vertices());
 
+    IPC_PROFILE_SCOPE("ho.collision_build");
     clear();
 
     const double dhat = params.dhat;
@@ -342,6 +344,47 @@ void HighOrderCollisions::build(
         QuadratureCollisionsBuilder::merge(storage, *this);
     }
     m_candidates = candidates;
+
+    size_t n_face_dicts = 0;
+    size_t vert_pairs = 0, edge_pairs = 0, face_pairs = 0;
+    for (const auto& cc : vertex_collisions) {
+        vert_pairs += cc.second->size();
+    }
+    for (const auto& cc : edge_edge_collisions) {
+        edge_pairs += cc.second->size();
+    }
+    for (const auto& fc : face_collisions) {
+        n_face_dicts += fc.second.size();
+        for (const auto& dict_ptr : fc.second) {
+            face_pairs += dict_ptr->size();
+        }
+    }
+    auto& reg = ProfileRegistry::instance();
+    reg.add_value(
+        "ho.collision_set.vertex_dicts",
+        static_cast<double>(vertex_collisions.size()));
+    reg.add_value(
+        "ho.collision_set.edge_dicts",
+        static_cast<double>(edge_edge_collisions.size()));
+    reg.add_value(
+        "ho.collision_set.face_dicts", static_cast<double>(n_face_dicts));
+    reg.add_value(
+        "ho.collision_set.vertex_pairs", static_cast<double>(vert_pairs));
+    reg.add_value(
+        "ho.collision_set.edge_pairs", static_cast<double>(edge_pairs));
+    reg.add_value(
+        "ho.collision_set.face_pairs", static_cast<double>(face_pairs));
+    reg.add_value(
+        "ho.collision_set.total_pairs",
+        static_cast<double>(vert_pairs + edge_pairs + face_pairs));
+    reg.add_value(
+        "ho.candidates.fv",
+        static_cast<double>(candidates.fv_candidates.size()));
+    reg.add_value(
+        "ho.candidates.ee",
+        static_cast<double>(candidates.ee_candidates.size()));
+    reg.add_value(
+        "ho.candidates.total", static_cast<double>(candidates.size()));
 }
 
 void HighOrderCollisions::build(
@@ -355,9 +398,14 @@ void HighOrderCollisions::build(
 
     double inflation_radius = params.dhat / 2;  //TODO use dbar for EE collisions broad phase
 
-    // Candidates m_candidates;
-    m_candidates.build(mesh, vertices, inflation_radius, broad_phase, true);
-    m_candidates.convert_candidates_to_sets();
+    {
+        IPC_PROFILE_SCOPE("ho.broad_phase");
+        m_candidates.build(mesh, vertices, inflation_radius, broad_phase, true);
+        m_candidates.convert_candidates_to_sets();
+    }
+
+    // The inner overload accumulates collision_build + collision/candidate
+    // counts into the ProfileRegistry.
     this->build(m_candidates, mesh, vertices, params, use_adaptive_dhat);
 }
 

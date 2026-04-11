@@ -2,6 +2,7 @@
 
 #include <ipc/utils/local_to_global.hpp>
 #include <ipc/utils/maybe_parallel_for.hpp>
+#include <ipc/utils/profile_registry.hpp>
 
 #include <tbb/blocked_range.h>
 #include <tbb/combinable.h>
@@ -14,6 +15,7 @@
 #include "ipc/smooth_contact/distance/point_face.hpp"
 #include "ipc/smooth_contact/distance/mollifier.hpp"
 #include "ipc/high_order_contact/quadrature_potential.hpp"
+
 namespace ipc {
 
 constexpr double face_quadrature_weight_scale = 1.0;
@@ -23,6 +25,7 @@ double HighOrderContactPotential::operator()(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> X) const
 {
+    IPC_PROFILE_SCOPE("ho.potential_eval");
     assert(X.rows() == mesh.num_vertices());
 
     m_edge_evaluation_count.clear();
@@ -194,6 +197,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> X) const
 {
+    IPC_PROFILE_SCOPE("ho.potential_gradient");
     assert(X.rows() == mesh.num_vertices());
 
     if (collisions.empty()) {
@@ -411,6 +415,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
     Eigen::ConstRef<Eigen::MatrixXd> X,
     const PSDProjectionMethod project_hessian_to_psd) const
 {
+    IPC_PROFILE_SCOPE("ho.potential_hessian");
     assert(X.rows() == mesh.num_vertices());
 
     if (collisions.empty()) {
