@@ -55,31 +55,6 @@ enum class EdgeEdgeDistanceType : uint8_t {
     AUTO
 };
 
-inline EdgeEdgeDistanceType reflectEdgeEdgeDistanceType(EdgeEdgeDistanceType dtype) {
-    switch (dtype) {
-        case EdgeEdgeDistanceType::EA0_EB:
-            return EdgeEdgeDistanceType::EA_EB0;
-        case EdgeEdgeDistanceType::EA1_EB:
-            return EdgeEdgeDistanceType::EA_EB1;
-        case EdgeEdgeDistanceType::EA0_EB0:
-            return EdgeEdgeDistanceType::EA0_EB0;
-        case EdgeEdgeDistanceType::EA1_EB0:
-            return EdgeEdgeDistanceType::EA0_EB1;
-        case EdgeEdgeDistanceType::EA0_EB1:
-            return EdgeEdgeDistanceType::EA1_EB0;
-        case EdgeEdgeDistanceType::EA1_EB1:
-            return EdgeEdgeDistanceType::EA1_EB1;
-        case EdgeEdgeDistanceType::EA_EB0:
-            return EdgeEdgeDistanceType::EA0_EB;
-        case EdgeEdgeDistanceType::EA_EB1:
-            return EdgeEdgeDistanceType::EA1_EB;
-        case EdgeEdgeDistanceType::EA_EB:
-            return EdgeEdgeDistanceType::EA_EB;
-        default:
-            return EdgeEdgeDistanceType::AUTO;
-    }
-}
-
 /// @brief Determine the closest pair between a point and edge.
 /// @param p The point.
 /// @param e0 The first vertex of the edge.

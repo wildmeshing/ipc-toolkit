@@ -57,7 +57,6 @@ void NormalCollisionsBuilder::add_vertex_vertex_collisions(
 
         VertexVertexNormalCollision vv(vi, vj, weight, weight_gradient);
         vv_to_id.emplace(vv, vv_collisions.size());
-        throw std::logic_error("SHOULD NOT HAPPEN");
         vv_collisions.push_back(vv);
     }
 }
@@ -111,7 +110,6 @@ void NormalCollisionsBuilder::add_edge_vertex_collisions(
             }
         }
 
-        throw std::logic_error("SHOULD NOT HAPPEN");
         add_edge_vertex_collision(
             mesh, candidates[i], dtype, weight, weight_gradient);
     }

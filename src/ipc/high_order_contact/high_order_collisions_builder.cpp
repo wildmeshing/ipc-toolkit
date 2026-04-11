@@ -372,7 +372,10 @@ void QuadratureCollisionsBuilder::build_vertex_collisions(
             if (!has_non_obstacle) continue;
         }
         size_t n = 0;
-        vertex_collisions.push_back(point_potential->build_collisions_at_vertex(vertices, vi, n));
+        auto dict = point_potential->build_collisions_at_vertex(vertices, vi, n);
+        if (dict && dict->size() > 0) {
+            vertex_collisions.push_back(std::move(dict));
+        }
         num_collision_pairs += n;
     }
 }
@@ -404,13 +407,21 @@ void QuadratureCollisionsBuilder::build_face_collisions(
 
         std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>> per_qp_dicts;
         per_qp_dicts.reserve(face_quad_rule.size());
+        bool any_nonempty = false;
         for (const auto& qp : face_quad_rule) {
             size_t n = 0;
-            per_qp_dicts.push_back(
-                point_potential->build_collisions_at_face_interior_point(vertices, fi, qp.lambda, n));
+            auto dict = point_potential->build_collisions_at_face_interior_point(vertices, fi, qp.lambda, n);
+            if (dict && dict->size() > 0) {
+                any_nonempty = true;
+            }
+            // Keep the qi indexing aligned with face_quad_rule, even if the
+            // dict is empty for this quadrature point.
+            per_qp_dicts.push_back(std::move(dict));
             num_collision_pairs += n;
         }
-        face_collisions.push_back({fi, std::move(per_qp_dicts)});
+        if (any_nonempty) {
+            face_collisions.push_back({fi, std::move(per_qp_dicts)});
+        }
     }
 }
 
@@ -472,26 +483,36 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             continue;
         }
 
+        // HighOrderContactPotential only ever evaluates dicts whose stored
+        // dtype is EA_EB (see the `if (dtype != EA_EB) continue;` guards in
+        // high_order_contact_potential.cpp). All other edge-edge distance
+        // types are captured through vertex_collisions at the relevant
+        // endpoint, so building EA_EB0/EA_EB1/EA0_EB/EA1_EB dicts here is
+        // dead work.
+        if (dtype != EdgeEdgeDistanceType::EA_EB) {
+            continue;
+        }
+
         const bool ei_is_obs = mesh.is_obstacle_edge(ei);
         const bool ej_is_obs = mesh.is_obstacle_edge(ej);
 
         if ((params.integration_type != IntegrationType::NO_OBST || !ei_is_obs)
-            && (!ei_is_obs || params.integration_type == IntegrationType::BRUTE_FORCE || obstacle_edge_has_non_obstacle_candidates(ei))
-            && (dtype == EdgeEdgeDistanceType::EA_EB ||
-                dtype == EdgeEdgeDistanceType::EA_EB0 ||
-                dtype == EdgeEdgeDistanceType::EA_EB1)) {
+            && (!ei_is_obs || params.integration_type == IntegrationType::BRUTE_FORCE || obstacle_edge_has_non_obstacle_candidates(ei))) {
             size_t n = 0;
-            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej, dtype, n));
+            auto dict = point_potential->build_collisions_at_edge_edge_closest_point(vertices, ei, ej, dtype, n);
+            if (dict && dict->size() > 0) {
+                edge_edge_collisions.push_back(std::move(dict));
+            }
             num_collision_pairs += n;
         }
 
         if ((params.integration_type != IntegrationType::NO_OBST || !ej_is_obs)
-            && (!ej_is_obs || params.integration_type == IntegrationType::BRUTE_FORCE || obstacle_edge_has_non_obstacle_candidates(ej))
-            && (dtype == EdgeEdgeDistanceType::EA_EB ||
-                dtype == EdgeEdgeDistanceType::EA0_EB ||
-                dtype == EdgeEdgeDistanceType::EA1_EB)) {
+            && (!ej_is_obs || params.integration_type == IntegrationType::BRUTE_FORCE || obstacle_edge_has_non_obstacle_candidates(ej))) {
             size_t n = 0;
-            edge_edge_collisions.push_back(point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei, reflectEdgeEdgeDistanceType(dtype), n));
+            auto dict = point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei, dtype, n);
+            if (dict && dict->size() > 0) {
+                edge_edge_collisions.push_back(std::move(dict));
+            }
             num_collision_pairs += n;
         }
     }
