@@ -30,6 +30,18 @@ struct HighOrderContactParameters {
         r(_exponent),
         integration_type(_integration_type)
     {
+        if (quad_order > 14) {
+            throw std::invalid_argument("Quadrature order >14 is too large.");
+        }
+        else if (quad_order == 6 || quad_order == 8) {
+            logger().error("Quadrature orders 6 and 8 has negative vertex weights.");
+        }
+        else if (quad_order >= 10 && quad_order <= 12) {
+            logger().warn("Quadrature orders 10-12 are not implemented, and instead use order 13.");
+        }
+        else if (quad_order == 1) {
+            logger().warn("Quadrature order 1 is equivalent to vertex quadrature.");
+        }
     }
 
     constexpr static double alpha = 0.; // For compatibility
