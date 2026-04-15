@@ -1,5 +1,7 @@
 #pragma once
 #include <ipc/utils/logger.hpp>
+#include <ipc/barrier/barrier.hpp>
+#include <memory>
 
 namespace ipc {
 
@@ -47,6 +49,9 @@ struct HighOrderContactParameters {
     constexpr static double alpha = 0.; // For compatibility
     const double dhat;
     const double dbar;
+
+    /// Barrier function used in 3D collision evaluation.
+    std::shared_ptr<Barrier> barrier = std::make_shared<NormalizedClampedLogBarrier>();
     const int quad_order;
     const int r = 2;
     const IntegrationType integration_type;

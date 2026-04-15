@@ -162,7 +162,8 @@ double HighOrderCollision3DTemplate<Vertex3, Vertex3>::operator()(
     const HighOrderContactParameters& params) const
 {
     const double dist = (positions.template head<3>() - positions.template segment<3>(3)).norm();
-    return Math<double>::log_barrier(dist / params.get_dhat(safety_mode));
+    const double eps = params.get_dhat(safety_mode);
+    return (*params.barrier)(dist, eps);
 }
 
 template <>
@@ -174,7 +175,8 @@ double HighOrderCollision3DTemplate<Edge3P1, Vertex3>::operator()(
         positions.template segment<3>(6),
         positions.template head<3>(),
         positions.template segment<3>(3)));
-    return Math<double>::log_barrier(dist / params.get_dhat(safety_mode));
+    const double eps = params.get_dhat(safety_mode);
+    return (*params.barrier)(dist, eps);
 }
 
 template <>
@@ -187,7 +189,8 @@ double HighOrderCollision3DTemplate<Face3P1, Vertex3>::operator()(
         positions.template head<3>(),
         positions.template segment<3>(3),
         positions.template segment<3>(6)));
-    return Math<double>::log_barrier(dist / params.get_dhat(safety_mode));
+    const double eps = params.get_dhat(safety_mode);
+    return (*params.barrier)(dist, eps);
 }
 
 template <>
@@ -199,8 +202,7 @@ auto HighOrderCollision3DTemplate<Vertex3, Vertex3>::gradient(
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
     const double eps = params.get_dhat(safety_mode);
-    double deriv = Math<double>::log_barrier_grad(dist / eps);
-    deriv *= 1. / eps / dist / 2.;
+    const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.);
 
     Vector6d grad = deriv * point_point_distance_gradient(positions.template head<3>(), positions.template tail<3>());
 
@@ -226,8 +228,7 @@ auto HighOrderCollision3DTemplate<Edge3P1, Vertex3>::gradient(
         positions.template segment<3>(3), dtype));
 
     const double eps = params.get_dhat(safety_mode);
-    double deriv = Math<double>::log_barrier_grad(dist / eps);
-    deriv *= 1. / eps / dist / 2.;
+    const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.);
 
     Vector9d grad = point_edge_distance_gradient(
         positions.template segment<3>(6),
@@ -261,8 +262,7 @@ auto HighOrderCollision3DTemplate<Face3P1, Vertex3>::gradient(
         positions.template segment<3>(6), dtype));
 
     const double eps = params.get_dhat(safety_mode);
-    double deriv = Math<double>::log_barrier_grad(dist / eps);
-    deriv *= 1. / eps / dist / 2.;
+    const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.);
 
     Vector12d grad = point_triangle_distance_gradient(
         positions.template segment<3>(9),
@@ -285,10 +285,10 @@ auto HighOrderCollision3DTemplate<Vertex3, Vertex3>::hessian(
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
     const double eps = params.get_dhat(safety_mode);
-    double deriv1 = Math<double>::log_barrier_grad(dist / eps);
-    double deriv2 = Math<double>::log_barrier_hess(dist / eps);
-    deriv2 = deriv2 * (1. / eps / eps / 4 / dist / dist) - deriv1 * (1. / eps / 4 / dist / dist / dist);
-    deriv1 *= 1. / eps / dist / 2.;
+    double deriv1 = params.barrier->first_derivative(dist, eps);
+    double deriv2 = params.barrier->second_derivative(dist, eps);
+    deriv2 = deriv2 / (4 * dist * dist) - deriv1 / (4 * dist * dist * dist);
+    deriv1 /= (2 * dist);
 
     const Vector6d g = point_point_distance_gradient(positions.template head<3>(), positions.template tail<3>());
     const Matrix6d h = point_point_distance_hessian(positions.template head<3>(), positions.template tail<3>());
@@ -315,10 +315,10 @@ auto HighOrderCollision3DTemplate<Edge3P1, Vertex3>::hessian(
         positions.template segment<3>(3), dtype));
 
     const double eps = params.get_dhat(safety_mode);
-    double deriv1 = Math<double>::log_barrier_grad(dist / eps);
-    double deriv2 = Math<double>::log_barrier_hess(dist / eps);
-    deriv2 = deriv2 * (1. / eps / eps / 4 / dist / dist) - deriv1 * (1. / eps / 4 / dist / dist / dist);
-    deriv1 *= 1. / eps / dist / 2.;
+    double deriv1 = params.barrier->first_derivative(dist, eps);
+    double deriv2 = params.barrier->second_derivative(dist, eps);
+    deriv2 = deriv2 / (4 * dist * dist) - deriv1 / (4 * dist * dist * dist);
+    deriv1 /= (2 * dist);
 
     const Vector9d g = point_edge_distance_gradient(
         positions.template segment<3>(6),
@@ -357,10 +357,10 @@ auto HighOrderCollision3DTemplate<Face3P1, Vertex3>::hessian(
         positions.template segment<3>(6), dtype));
 
     const double eps = params.get_dhat(safety_mode);
-    double deriv1 = Math<double>::log_barrier_grad(dist / eps);
-    double deriv2 = Math<double>::log_barrier_hess(dist / eps);
-    deriv2 = deriv2 * (1. / eps / eps / 4 / dist / dist) - deriv1 * (1. / eps / 4 / dist / dist / dist);
-    deriv1 *= 1. / eps / dist / 2.;
+    double deriv1 = params.barrier->first_derivative(dist, eps);
+    double deriv2 = params.barrier->second_derivative(dist, eps);
+    deriv2 = deriv2 / (4 * dist * dist) - deriv1 / (4 * dist * dist * dist);
+    deriv1 /= (2 * dist);
 
     const Vector12d g = point_triangle_distance_gradient(
         positions.template segment<3>(9),
