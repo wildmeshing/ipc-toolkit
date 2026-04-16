@@ -401,7 +401,10 @@ void HighOrderCollisions::build(
     {
         IPC_PROFILE_SCOPE("ho.broad_phase");
         m_candidates.build(mesh, vertices, inflation_radius, broad_phase, true);
-        m_candidates.convert_candidates_to_sets();
+        {
+            IPC_PROFILE_SCOPE("ho.convert_sets");
+            m_candidates.convert_candidates_to_sets();
+        }
     }
 
     // The inner overload accumulates collision_build + collision/candidate
