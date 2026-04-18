@@ -44,7 +44,7 @@ void HighOrderCollisionsBuilder<2>::build_edge_collisions(
         bool has_any = false;
 
         for (const auto& qp : rule) {
-            const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+            const std::array<double, 2> lambda = {{1.0 - qp.xi, qp.xi}};
             size_t n = 0;
             auto dict = pp.build_collisions_at_edge_qp(V, ei, lambda, dhat, n);
             if (dict && dict->size() > 0) has_any = true;

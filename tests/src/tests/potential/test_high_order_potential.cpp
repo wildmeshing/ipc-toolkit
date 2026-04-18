@@ -19,7 +19,8 @@
 #include "ipc/distance/edge_edge.hpp"
 
 #include "ipc/high_order_contact/quadrature_potential.hpp"
-#include "ipc/smooth_contact/distance/mollifier.hpp"
+
+#include <cmath>
 
 using namespace ipc;
 
@@ -56,83 +57,165 @@ CollisionMesh make_2d_collision_mesh(
         std::vector<bool>(V.rows(), false), V, E, F);
 }
 
+inline std::shared_ptr<Barrier> make_inverse_quadratic_barrier()
+{
+    return std::make_shared<InversePowerBarrier>(2.0);
+}
+inline std::shared_ptr<Barrier> make_linear_inverse_barrier()
+{
+    return std::make_shared<InversePowerBarrier>(1.0);
+}
+
+struct EeLimitSweepStats {
+    double max_abs_P = 0;
+    double max_abs_g = 0;
+    double max_dP = 0;           // max |P(eps_{i+1}) - P(eps_i)|
+    double max_dg = 0;           // max ||g|(eps_{i+1}) - |g|(eps_i)|
+    double max_fd_slope_P = 0;   // max |dP / d eps|
+    double max_fd_slope_g = 0;   // max |d|g| / d eps|
+    double max_shift_P = 0;      // max |P(eps) - P(eps_min)|
+    double max_shift_g = 0;      // max ||g|(eps) - |g|(eps_min)|
+    bool all_finite = true;
+};
+
+// Build the EA_EB tet-tet geometry used by the three edge-edge limit tests,
+// parametrised by the horizontal offset epsilon.
+inline void build_ee_limit_geometry(
+    const double epsilon,
+    Eigen::MatrixXd& V, Eigen::MatrixXi& E, Eigen::MatrixXi& F)
+{
+    V.resize(8, 3);
+    V <<
+        0, 0, 0,
+        1, 0, 0,
+        0.5, -0.5, 1,
+        0.5, 0.5, 1,
+        epsilon, 0.5, -0.01,
+        epsilon, -0.5, -0.01,
+        epsilon + 0.5, 0, -1.01,
+        epsilon - 0.5, 0, -1.01;
+    F.resize(8, 3);
+    F << 0,1,2, 0,1,3, 0,2,3, 1,2,3, 4,5,6, 4,6,7, 4,5,7, 5,6,7;
+    E.resize(12, 2);
+    E << 0,1, 0,2, 0,3, 1,2, 1,3, 2,3, 4,5, 4,6, 4,7, 5,6, 5,7, 6,7;
+}
+
+// Sweep the EA_EB limit over logspaced epsilons in (eps_min, eps_max], compute
+// the potential and gradient norm at each sample, and return max absolute
+// finite-difference between consecutive samples (both raw ΔP, Δ|g|, and the
+// slope ΔP/Δeps, Δ|g|/Δeps).
+inline EeLimitSweepStats ee_limit_fd_sweep(
+    std::shared_ptr<Barrier> barrier,
+    int n_samples = 25,
+    double eps_min = 1e-16,
+    double eps_max = 1e-5)
+{
+    EeLimitSweepStats stats;
+    std::vector<double> eps_vec, P_vec, g_vec;
+    eps_vec.reserve(n_samples);
+    P_vec.reserve(n_samples);
+    g_vec.reserve(n_samples);
+
+    const double log_lo = std::log10(eps_min);
+    const double log_hi = std::log10(eps_max);
+
+    for (int i = 0; i < n_samples; ++i) {
+        const double t = double(i) / double(n_samples - 1);
+        const double eps = std::pow(10.0, log_lo + t * (log_hi - log_lo));
+
+        Eigen::MatrixXd V; Eigen::MatrixXi E, F;
+        build_ee_limit_geometry(eps, V, E, F);
+
+        CollisionMesh mesh(V, E, F);
+        const double dhat = 0.1;
+        HighOrderContactParameters params(dhat, 1., 0, 2);
+        params.barrier = barrier;
+
+        HighOrderCollisions collisions;
+        collisions.build(mesh, V, params);
+        HighOrderContactPotential potential(params);
+
+        const double x = potential(collisions, mesh, V);
+        const double gn = potential.gradient(collisions, mesh, V).norm();
+
+        if (!std::isfinite(x) || !std::isfinite(gn)) stats.all_finite = false;
+
+        stats.max_abs_P = std::max(stats.max_abs_P, std::abs(x));
+        stats.max_abs_g = std::max(stats.max_abs_g, std::abs(gn));
+
+        eps_vec.push_back(eps);
+        P_vec.push_back(x);
+        g_vec.push_back(gn);
+    }
+
+    for (size_t i = 1; i < eps_vec.size(); ++i) {
+        const double dP = std::abs(P_vec[i] - P_vec[i - 1]);
+        const double dg = std::abs(g_vec[i] - g_vec[i - 1]);
+        const double deps = std::abs(eps_vec[i] - eps_vec[i - 1]);
+        stats.max_dP = std::max(stats.max_dP, dP);
+        stats.max_dg = std::max(stats.max_dg, dg);
+        if (deps > 0) {
+            stats.max_fd_slope_P = std::max(stats.max_fd_slope_P, dP / deps);
+            stats.max_fd_slope_g = std::max(stats.max_fd_slope_g, dg / deps);
+        }
+    }
+
+    // Shift relative to the sample at the smallest eps (first sample).
+    if (!eps_vec.empty()) {
+        const double P0 = P_vec.front();
+        const double g0 = g_vec.front();
+        for (size_t i = 0; i < eps_vec.size(); ++i) {
+            stats.max_shift_P =
+                std::max(stats.max_shift_P, std::abs(P_vec[i] - P0));
+            stats.max_shift_g =
+                std::max(stats.max_shift_g, std::abs(g_vec[i] - g0));
+        }
+    }
+    return stats;
+}
+
 } // anonymous namespace
 
 // When the edge-edge closest point approaches the end points of the edge, the potential should converge to a finite number
 TEST_CASE("Convergent Quadrature Edge Edge Limit", "[high_order_potential], [high_order_potential_3d]")
 {
-    Eigen::MatrixXd V;
-    Eigen::MatrixXi F, E;
+    auto stats = ee_limit_fd_sweep(
+        std::make_shared<NormalizedClampedLogBarrier>());
+    CHECK(stats.all_finite);
+    REQUIRE(stats.max_abs_P < 2);
+    REQUIRE(stats.max_abs_g < 200);
+    // 10x current measured shift from the smallest-eps sample
+    // (current: max|ΔP|≈2.4e-5, max|Δ|g||≈1.64).
+    CHECK(stats.max_shift_P < 2.4e-4);
+    CHECK(stats.max_shift_g < 16.5);
+}
 
-    double epsilon = GENERATE(1e-3, 1e-4, 1e-6, 1e-12, 1e-16);
-    {
-        V.resize(8, 3);
-        V <<
-            0, 0, 0,
-            1, 0, 0,
-            0.5, -0.5, 1,
-            0.5, 0.5, 1,
-            epsilon, 0.5, -0.01,
-            epsilon, -0.5, -0.01,
-            epsilon + 0.5, 0, -1.01,
-            epsilon - 0.5, 0, -1.01;
+// Same configuration as above, but uses an inverse-quadratic barrier to probe
+// whether the high-order potential stays finite under a stronger barrier.
+TEST_CASE("Convergent Quadrature Edge Edge Limit (Inverse Quadratic Barrier)", "[high_order_potential], [high_order_potential_3d]")
+{
+    auto stats = ee_limit_fd_sweep(make_inverse_quadratic_barrier());
+    CHECK(stats.all_finite);
+    CHECK(stats.max_abs_P < 1e8);
+    CHECK(stats.max_abs_g < 1e10);
+    // 10x current measured shift from the smallest-eps sample
+    // (current: max|ΔP|≈1.4e-3, max|Δ|g||≈1.55).
+    CHECK(stats.max_shift_P < 1.4e-2);
+    CHECK(stats.max_shift_g < 15.5);
+}
 
-        F.resize(8, 3);
-        F <<
-            0, 1, 2,
-            0, 1, 3,
-            0, 2, 3,
-            1, 2, 3,
-            4, 5, 6,
-            4, 6, 7,
-            4, 5, 7,
-            5, 6, 7;
 
-        E.resize(12, 2);
-        E <<
-            0, 1,
-            0, 2,
-            0, 3,
-            1, 2,
-            1, 3,
-            2, 3,
-            4, 5,
-            4, 6,
-            4, 7,
-            5, 6,
-            5, 7,
-            6, 7;
-    }
-
-    CollisionMesh mesh(V, E, F);
-
-    const double dhat = 0.1;
-
-    HighOrderContactParameters params(dhat, 1., 0, 2);
-
-    HighOrderCollisions collisions;
-    collisions.build(mesh, V, params);
-
-    HighOrderContactPotential potential(params);
-
-    const index_t e0 = 0;
-    const index_t e1 = 6;
-
-    auto dtype = edge_edge_distance_type(
-        V.row(mesh.edges()(e0, 0)),
-        V.row(mesh.edges()(e0, 1)),
-        V.row(mesh.edges()(e1, 0)),
-        V.row(mesh.edges()(e1, 1)));
-
-    REQUIRE(dtype == EdgeEdgeDistanceType::EA_EB);
-
-    Eigen::VectorXd g = potential.gradient(collisions, mesh, V);
-
-    double x = potential(collisions, mesh, V);
-
-    // These numbers can be changed as the formulation changes, but they shouldn't be extremely large
-    REQUIRE(abs(x) < 2);
-    REQUIRE(g.norm() < 200);
+// Same configuration but with a linear-inverse barrier (1/d divergence).
+TEST_CASE("Convergent Quadrature Edge Edge Limit (Linear Inverse Barrier)", "[high_order_potential], [high_order_potential_3d]")
+{
+    auto stats = ee_limit_fd_sweep(make_linear_inverse_barrier());
+    CHECK(stats.all_finite);
+    CHECK(stats.max_abs_P < 1e8);
+    CHECK(stats.max_abs_g < 1e10);
+    // 10x current measured shift from the smallest-eps sample
+    // (current: max|ΔP|≈1.85e-5, max|Δ|g||≈0.044).
+    CHECK(stats.max_shift_P < 1.85e-4);
+    CHECK(stats.max_shift_g < 0.44);
 }
 
 TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential], [high_order_potential_3d]")

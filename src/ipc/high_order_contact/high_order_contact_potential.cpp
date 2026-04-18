@@ -9,6 +9,7 @@
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 
+#include "ipc/barrier/barrier.hpp"
 #include "ipc/distance/edge_edge.hpp"
 #include "ipc/distance/edge_edge_mollifier.hpp"
 
@@ -21,6 +22,28 @@
 namespace ipc {
 
 constexpr double face_quadrature_weight_scale = 1.0;
+
+namespace {
+// Adapt mollifier order to the barrier singularity.
+// - Log / default barriers: order 1 (no extra power).
+// - InversePowerBarrier(p): order = round(p) + 1, so p=1 -> 2, p=2 -> 3.
+int mollifier_order_for_barrier(const std::shared_ptr<Barrier>& barrier)
+{
+    if (const auto* ip = dynamic_cast<const InversePowerBarrier*>(barrier.get())) {
+        const int p = static_cast<int>(std::lround(ip->power()));
+        return std::max(1, p + 1);
+    }
+    return 1;
+}
+
+template <class T>
+inline T pow_int(T x, int n)
+{
+    T r = T(1);
+    for (int i = 0; i < n; ++i) r = r * x;
+    return r;
+}
+} // namespace
 
 double HighOrderContactPotential::operator()(
     const HighOrderCollisions& collisions,
@@ -65,7 +88,7 @@ double HighOrderContactPotential::operator()(
                         const auto& dict = *qp_dicts[qi];
                         if (dict.size() == 0) continue;
                         const auto& qp = rule[qi];
-                        const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+                        const std::array<double, 2> lambda = {{1.0 - qp.xi, qp.xi}};
                         const Eigen::RowVector2d q_pos =
                             lambda[0] * X.row(e0) + lambda[1] * X.row(e1);
                         VertexMatrixView<2> X_ext(X, q_pos);
@@ -141,17 +164,7 @@ double HighOrderContactPotential::operator()(
                                     X.row(ea).transpose(), X.row(eb).transpose(),
                                     X.row(ec).transpose(), X.row(ed).transpose(),
                                     mtypes, dist_sqr);
-
-                                // // Apply squared IPC edge-edge mollifier for near-parallel edges
-                                // {
-                                //     const double cross_sqr = edge_edge_cross_squarednorm(
-                                //         X.row(ea), X.row(eb), X.row(ec), X.row(ed));
-                                //     const double eps_x = edge_edge_mollifier_threshold(
-                                //         X.row(ea), X.row(eb), X.row(ec), X.row(ed));
-                                //     const double m = edge_edge_mollifier(cross_sqr, eps_x);
-                                //     const auto m2 = m * m;
-                                //         mollifier *= m2 * m2;
-                                // }
+                                mollifier = pow_int(mollifier, mollifier_order_for_barrier(params.barrier));
 
                                 const double P_val = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                     VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
@@ -266,7 +279,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         const auto& dict = *qp_dicts[qi];
                         if (dict.size() == 0) continue;
                         const auto& qp = rule[qi];
-                        const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+                        const std::array<double, 2> lambda = {{1.0 - qp.xi, qp.xi}};
                         const Eigen::RowVector2d q_pos =
                             lambda[0] * X.row(e0) + lambda[1] * X.row(e1);
                         VertexMatrixView<2> X_ext(X, q_pos);
@@ -357,21 +370,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                     positionsT.row(0).transpose(), positionsT.row(1).transpose(),
                                     positionsT.row(2).transpose(), positionsT.row(3).transpose(),
                                     mtypes, dist_sqr);
-
-                                // // Apply squared IPC edge-edge mollifier for near-parallel edges
-                                // {
-                                //     const Eigen::Vector3<T> u = positionsT.row(1).transpose() - positionsT.row(0).transpose();
-                                //     const Eigen::Vector3<T> v = positionsT.row(3).transpose() - positionsT.row(2).transpose();
-                                //     const Eigen::Vector3<T> cross = u.cross(v);
-                                //     const T cross_sqr_norm = cross.squaredNorm();
-                                //     const T eps_x = T(1e-3) * u.squaredNorm() * v.squaredNorm();
-                                //     if (cross_sqr_norm.val < eps_x.val) {
-                                //         const T x_div_eps = cross_sqr_norm / eps_x;
-                                //         const T m = (-x_div_eps + T(2)) * x_div_eps;
-                                //         const auto m2 = m * m;
-                                //         mollifier *= m2 * m2;
-                                //     }
-                                // }
+                                mollifier = pow_int(mollifier, mollifier_order_for_barrier(params.barrier));
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 
@@ -511,7 +510,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         const auto& dict = *qp_dicts[qi];
                         if (dict.size() == 0) continue;
                         const auto& qp = rule[qi];
-                        const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+                        const std::array<double, 2> lambda = {{1.0 - qp.xi, qp.xi}};
                         const Eigen::RowVector2d q_pos =
                             lambda[0] * X.row(e0) + lambda[1] * X.row(e1);
                         VertexMatrixView<2> X_ext(X, q_pos);
@@ -609,21 +608,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     positionsT.row(0).transpose(), positionsT.row(1).transpose(),
                                     positionsT.row(2).transpose(), positionsT.row(3).transpose(),
                                     mtypes, dist_sqr);
-
-                                // // Apply squared IPC edge-edge mollifier for near-parallel edges
-                                // {
-                                //     const Eigen::Vector3<T> u = positionsT.row(1).transpose() - positionsT.row(0).transpose();
-                                //     const Eigen::Vector3<T> v = positionsT.row(3).transpose() - positionsT.row(2).transpose();
-                                //     const Eigen::Vector3<T> cross = u.cross(v);
-                                //     const T cross_sqr_norm = cross.squaredNorm();
-                                //     const T eps_x = T(1e-3) * u.squaredNorm() * v.squaredNorm();
-                                //     if (cross_sqr_norm.val < eps_x.val) {
-                                //         const T x_div_eps = cross_sqr_norm / eps_x;
-                                //         const T m = (-x_div_eps + T(2)) * x_div_eps;
-                                //         const auto m2 = m * m;
-                                //         mollifier *= m2 * m2;
-                                //     }
-                                // }
+                                mollifier = pow_int(mollifier, mollifier_order_for_barrier(params.barrier));
 
                                 const HighOrderCollisionDict<PointType::EDGE>& dict = *(iter->second);
 

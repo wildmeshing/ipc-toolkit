@@ -394,7 +394,7 @@ void TangentialCollisions::build(
                 if (!dict_ptr || dict_ptr->size() == 0)
                     continue;
                 const auto& qp = rule[qi];
-                const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+                const std::array<double, 2> lambda = {{1.0 - qp.xi, qp.xi}};
                 const Eigen::RowVector2d virtual_pos =
                     lambda[0] * vertices.row(e0)
                     + lambda[1] * vertices.row(e1);
