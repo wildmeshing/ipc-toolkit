@@ -29,6 +29,15 @@ void HighOrderCollisionsBuilder<2>::build_edge_collisions(
 
         if (candidates.ev_set(ei).empty() && candidates.ee_set(ei).empty()) continue;
 
+        if (params.integration_type == IntegrationType::NO_OBST && mesh.is_obstacle_edge(ei)) continue;
+        if (params.integration_type != IntegrationType::BRUTE_FORCE && mesh.is_obstacle_edge(ei)) {
+            const auto& ev = candidates.ev_set(ei);
+            const bool has_non_obstacle =
+                std::any_of(ev.begin(), ev.end(),
+                    [&](index_t v) { return !mesh.is_obstacle_vertex(v); });
+            if (!has_non_obstacle) continue;
+        }
+
         const double dhat = edge_dhat_fn(ei);
         std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>> qp_dicts;
         qp_dicts.reserve(rule.size());
