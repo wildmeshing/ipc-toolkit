@@ -476,6 +476,9 @@ TEST_CASE("Barrier derivatives", "[barrier]")
     }
     SECTION("Cubic") { barrier = std::make_unique<ipc::CubicBarrier>(); }
     SECTION("TwoStage") { barrier = std::make_unique<ipc::TwoStageBarrier>(); }
+    SECTION("InversePower1") { barrier = std::make_unique<ipc::InversePowerBarrier>(1.0); }
+    SECTION("InversePower2") { barrier = std::make_unique<ipc::InversePowerBarrier>(2.0); }
+    SECTION("InversePower3") { barrier = std::make_unique<ipc::InversePowerBarrier>(3.0); }
 
     if (use_dist_sqr) {
         d_vec *= d;

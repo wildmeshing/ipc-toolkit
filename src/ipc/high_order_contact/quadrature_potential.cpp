@@ -5,6 +5,7 @@
 #include "ipc/candidates/candidates.hpp"
 #include "ipc/distance/edge_edge.hpp"
 #include "ipc/distance/point_edge.hpp"
+#include "ipc/distance/point_point.hpp"
 #include "ipc/distance/point_triangle.hpp"
 #include "ipc/distance/distance_type.hpp"
 #include "ipc/high_order_contact/high_order_collisions_builder.hpp"
@@ -72,7 +73,7 @@ namespace ipc {
             if ((V.row(vid) - V.row(other_v)).squaredNorm() >= params.dhat * params.dhat) {
                 continue;
             }
-            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                 vid, other_v, mesh);
             ++num_collision_pairs;
             insert_pair(pairs, std::move(pair));
@@ -219,7 +220,7 @@ namespace ipc {
                 if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dbar * params.dbar) {
                     continue;
                 }
-                auto pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+                auto pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                     vid, other_v, mesh);
                 ++num_collision_pairs;
                 pair->flag_as_safety();
@@ -243,7 +244,7 @@ namespace ipc {
                 switch (dtype2) {
                 case PointEdgeDistanceType::P_E0:
                     {
-                        auto pair = std::make_shared<HighOrderCollision3DTemplate<
+                        auto pair = std::make_shared<HighOrderCollisionTemplate<
                             Vertex3, Vertex3>>(
                             vid, mesh.edges()(other_e, 0), mesh);
                         ++num_collision_pairs;
@@ -254,7 +255,7 @@ namespace ipc {
                     }
                 case PointEdgeDistanceType::P_E1:
                     {
-                        auto pair = std::make_shared<HighOrderCollision3DTemplate<
+                        auto pair = std::make_shared<HighOrderCollisionTemplate<
                             Vertex3, Vertex3>>(
                             vid, mesh.edges()(other_e, 1), mesh);
                         ++num_collision_pairs;
@@ -265,7 +266,7 @@ namespace ipc {
                     }
                 case PointEdgeDistanceType::P_E:
                     {
-                        auto pair = std::make_shared<HighOrderCollision3DTemplate<
+                        auto pair = std::make_shared<HighOrderCollisionTemplate<
                             Edge3P1, Vertex3>>(
                             other_e, vid, mesh);
                         ++num_collision_pairs;
@@ -301,7 +302,7 @@ namespace ipc {
                     {
                         ++num_collision_pairs;
                         auto pair =
-                            std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+                            std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                             vid, mesh.faces()(other_f, 0), mesh);
                         pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
@@ -311,7 +312,7 @@ namespace ipc {
                     {
                         ++num_collision_pairs;
                         auto pair =
-                            std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+                            std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                             vid, mesh.faces()(other_f, 1), mesh);
                         pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
@@ -321,7 +322,7 @@ namespace ipc {
                     {
                         ++num_collision_pairs;
                         auto pair =
-                            std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+                            std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                             vid, mesh.faces()(other_f, 2), mesh);
                         pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
@@ -331,7 +332,7 @@ namespace ipc {
                     {
                         ++num_collision_pairs;
                         auto pair =
-                            std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
+                            std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
                             mesh.faces_to_edges()(other_f, 0), vid, mesh);
                         pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
@@ -341,7 +342,7 @@ namespace ipc {
                     {
                         ++num_collision_pairs;
                         auto pair =
-                            std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
+                            std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
                             mesh.faces_to_edges()(other_f, 1), vid, mesh);
                         pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
@@ -351,7 +352,7 @@ namespace ipc {
                     {
                         ++num_collision_pairs;
                         auto pair =
-                            std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
+                            std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
                             mesh.faces_to_edges()(other_f, 2), vid, mesh);
                         pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
@@ -361,7 +362,7 @@ namespace ipc {
                     {
                         ++num_collision_pairs;
                         auto pair =
-                            std::make_shared<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(
+                            std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(
                             other_f, vid, mesh);
                         pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
@@ -559,7 +560,7 @@ namespace ipc {
             if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dhat * params.dhat) {
                 continue;
             }
-            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                 vid, other_v, mesh);
             ++num_collision_pairs;
             insert_pair(pairs, std::move(pair));
@@ -664,7 +665,7 @@ namespace ipc {
             if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dhat * params.dhat) {
                 continue;
             }
-            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+            std::shared_ptr<HighOrderCollision> pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                 vid, other_v, mesh);
             ++num_collision_pairs;
             insert_pair(pairs, std::move(pair));
@@ -867,6 +868,196 @@ namespace ipc {
                             3 * collisions.vertex_ids_inverse(gi),
                             3 * collisions.vertex_ids_inverse(gj)) +=
                             h.block<3, 3>(3 * i, 3 * j);
+                    }
+                }
+            }
+        }
+
+        if (project_to_psd != PSDProjectionMethod::NONE) {
+            H = ipc::project_to_psd(H, project_to_psd);
+        }
+        return H;
+    }
+
+    // =========================================================================
+    // 2D edge quadrature point — collision building
+    // =========================================================================
+
+    std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>
+    PointPotential::build_collisions_at_edge_qp(
+        const Eigen::MatrixXd& V,
+        const index_t ei,
+        const std::array<double, 2>& lambda,
+        const double dhat,
+        size_t& num_collision_pairs) const
+    {
+        const index_t e0 = mesh.edges()(ei, 0);
+        const index_t e1 = mesh.edges()(ei, 1);
+        const index_t virtual_vid = static_cast<index_t>(V.rows());
+
+        const Eigen::RowVector2d q_pos =
+            lambda[0] * V.row(e0) + lambda[1] * V.row(e1);
+        VertexMatrixView<2> V_(V, q_pos);
+
+        // If lambda[k] == 0 the QP coincides with the opposite endpoint.
+        // Parallel to the 3D corner_vertex exclusion.
+        index_t corner_vertex = -1;
+        if (lambda[0] == 0.0) corner_vertex = e1;
+        else if (lambda[1] == 0.0) corner_vertex = e0;
+
+        const bool src_is_obstacle = mesh.is_obstacle_edge(ei);
+        const bool filter_obstacles = src_is_obstacle
+            && params.integration_type != HighOrderContactParameters::IntegrationType::BRUTE_FORCE;
+
+        unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>> pairs;
+        num_collision_pairs = 0;
+        const double dhat2 = dhat * dhat;
+
+        // Edges already handled (source edge always skipped).
+        std::unordered_set<index_t> processed_edges;
+        processed_edges.insert(ei);
+
+        // For each nearby vertex: add -1 VV pair, then infer +1 edge pairs from
+        // its incident edges (EE candidates are empty for 2D broad phase, so we
+        // reconstruct them from the EV candidates and mesh topology).
+        for (const index_t vj : candidates.ev_set(ei)) {
+            if (vj == corner_vertex) continue;
+            if (filter_obstacles && mesh.is_obstacle_vertex(vj)) continue;
+            if (point_point_distance(q_pos, V.row(vj)) >= dhat2) continue;
+            ++num_collision_pairs;
+
+            std::shared_ptr<HighOrderCollision> vv_pair =
+                std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(virtual_vid, vj, mesh);
+            vv_pair->weight = -1;
+            insert_pair(pairs, std::move(vv_pair));
+
+            // Infer +1 edge pairs from edges incident to vj.
+            for (const index_t ej : mesh.vertices_to_edges()[vj]) {
+                if (processed_edges.count(ej)) continue;
+                processed_edges.insert(ej);
+                const index_t ea = mesh.edges()(ej, 0);
+                const index_t eb = mesh.edges()(ej, 1);
+                if (corner_vertex >= 0 && (ea == corner_vertex || eb == corner_vertex)) continue;
+                if (filter_obstacles && mesh.is_obstacle_edge(ej)) continue;
+
+                ++num_collision_pairs;
+                const auto dtype = point_edge_distance_type(q_pos, V.row(ea), V.row(eb));
+                if (dtype == PointEdgeDistanceType::P_E0) {
+                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+                        std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(virtual_vid, ea, mesh)));
+                } else if (dtype == PointEdgeDistanceType::P_E1) {
+                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+                        std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(virtual_vid, eb, mesh)));
+                } else {
+                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+                        std::make_shared<HighOrderCollisionTemplate<Vertex2, Edge2P1>>(virtual_vid, ej, mesh)));
+                }
+            }
+        }
+
+        auto dict = std::make_unique<HighOrderCollisionDict<PointType::EDGE, 2>>();
+        dict->initialize({ei}, {e0, e1}, pairs);
+        return dict;
+    }
+
+    // =========================================================================
+    // 2D edge quadrature point — potential evaluation
+    // =========================================================================
+
+    double PointPotentialHelper::evaluate_potential_at_edge_qp(
+        VertexMatrixView<2> V_extended,
+        const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
+        const HighOrderContactParameters& params)
+    {
+        double potential = 0;
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            potential += cc.weight * cc(cc.dof(V_extended), params);
+        }
+        return potential;
+    }
+
+    Eigen::VectorXd PointPotentialHelper::evaluate_potential_gradient_at_edge_qp(
+        VertexMatrixView<2> V_extended,
+        const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
+        const HighOrderContactParameters& params,
+        const std::array<double, 2>& lambda)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 2);
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id = cc.vertex_id(i);
+                if (global_id == n_real_vertices) {
+                    // Chain rule: dq/dv_k = lambda[k]
+                    for (index_t lv = 0; lv < 2; lv++) {
+                        grad.segment<2>(collisions.primary_local_ids()[lv] * 2) +=
+                            g.segment<2>(2 * i) * lambda[lv];
+                    }
+                } else {
+                    assert(global_id < n_real_vertices);
+                    grad.segment<2>(2 * collisions.vertex_ids_inverse(global_id)) +=
+                        g.segment<2>(2 * i);
+                }
+            }
+        }
+        return grad;
+    }
+
+    Eigen::MatrixXd PointPotentialHelper::evaluate_potential_hessian_at_edge_qp(
+        VertexMatrixView<2> V_extended,
+        const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
+        const HighOrderContactParameters& params,
+        const std::array<double, 2>& lambda,
+        PSDProjectionMethod project_to_psd)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        Eigen::MatrixXd H = Eigen::MatrixXd::Zero(
+            collisions.vertex_ids().size() * 2,
+            collisions.vertex_ids().size() * 2);
+
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params);
+            h *= cc.weight;
+
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t gi = cc.vertex_id(i);
+                for (index_t j = 0; j < cc.num_vertices(); j++) {
+                    const index_t gj = cc.vertex_id(j);
+                    if (gi == n_real_vertices && gj == n_real_vertices) {
+                        for (index_t li = 0; li < 2; li++) {
+                            for (index_t lj = 0; lj < 2; lj++) {
+                                H.block<2, 2>(
+                                    collisions.primary_local_ids()[li] * 2,
+                                    collisions.primary_local_ids()[lj] * 2) +=
+                                    h.block<2, 2>(2 * i, 2 * j)
+                                    * lambda[li] * lambda[lj];
+                            }
+                        }
+                    } else if (gi == n_real_vertices) {
+                        for (index_t li = 0; li < 2; li++) {
+                            H.block<2, 2>(
+                                collisions.primary_local_ids()[li] * 2,
+                                collisions.vertex_ids_inverse(gj) * 2) +=
+                                h.block<2, 2>(2 * i, 2 * j) * lambda[li];
+                        }
+                    } else if (gj == n_real_vertices) {
+                        for (index_t lj = 0; lj < 2; lj++) {
+                            H.block<2, 2>(
+                                collisions.vertex_ids_inverse(gi) * 2,
+                                collisions.primary_local_ids()[lj] * 2) +=
+                                h.block<2, 2>(2 * i, 2 * j) * lambda[lj];
+                        }
+                    } else {
+                        assert(gi < n_real_vertices);
+                        assert(gj < n_real_vertices);
+                        H.block<2, 2>(
+                            2 * collisions.vertex_ids_inverse(gi),
+                            2 * collisions.vertex_ids_inverse(gj)) +=
+                            h.block<2, 2>(2 * i, 2 * j);
                     }
                 }
             }

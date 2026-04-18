@@ -2,7 +2,6 @@
 
 #include <ipc/collision_mesh.hpp>
 #include <ipc/high_order_contact/high_order_collisions.hpp>
-#include <ipc/high_order_contact/collisions/triple_pair_collision.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
 #include <map>
@@ -85,32 +84,6 @@ public:
         const PSDProjectionMethod project_hessian_to_psd =
             PSDProjectionMethod::NONE) const;
 
-
-    /// @brief Compute the potential for a single collision.
-    /// @param collision The collision.
-    /// @param positions The collision stencil's positions.
-    /// @return The potential.
-    double operator()(
-        const TriplePairCollision& collision,
-        Eigen::ConstRef<Eigen::VectorXd> positions) const;
-
-    /// @brief Compute the gradient of the potential for a single collision.
-    /// @param collision The collision.
-    /// @param positions The collision stencil's positions.
-    /// @return The gradient of the potential.
-    Eigen::VectorXd gradient(
-        const TriplePairCollision& collision,
-        Eigen::ConstRef<Eigen::VectorXd> positions) const;
-
-    /// @brief Compute the hessian of the potential for a single collision.
-    /// @param collision The collision.
-    /// @param positions The collision stencil's positions.
-    /// @return The hessian of the potential.
-    Eigen::MatrixXd hessian(
-        const TriplePairCollision& collision,
-        Eigen::ConstRef<Eigen::VectorXd> positions,
-        const PSDProjectionMethod project_hessian_to_psd =
-            PSDProjectionMethod::NONE) const;
 
     using CountMap = std::map<index_t, unsigned>;
     const CountMap& get_edge_evaluation_count() const

@@ -47,19 +47,14 @@ public:
     Eigen::RowVector<double, ncols> operator()(index_t i) const
     {
         assert(i < rows());
-        if (i < n_A_rows) {
-            return Eigen::RowVector<double, ncols>(
-                m_A[i + 0 * n_A_rows],
-                m_A[i + 1 * n_A_rows],
-                m_A[i + 2 * n_A_rows]);
+        Eigen::RowVector<double, ncols> row;
+        const double* src   = (i < n_A_rows) ? m_A : m_B;
+        const index_t nrows = (i < n_A_rows) ? n_A_rows : n_B_rows;
+        const index_t li    = (i < n_A_rows) ? i : (i - n_A_rows);
+        for (int d = 0; d < ncols; ++d) {
+            row[d] = src[li + d * nrows];
         }
-        else {
-            i -= n_A_rows;
-            return Eigen::RowVector<double, ncols>(
-                m_B[i + 0 * n_B_rows],
-                m_B[i + 1 * n_B_rows],
-                m_B[i + 2 * n_B_rows]);
-        }
+        return row;
     }
 
     /// @brief Total number of rows (A rows + B rows).

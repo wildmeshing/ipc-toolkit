@@ -1,11 +1,12 @@
 #pragma once
 #include "high_order_collision.hpp"
+#include "high_order_primitives.hpp"
 
 namespace ipc {
 
 /// @brief Templated class for various types of contact pairs
 template <typename PrimitiveA, typename PrimitiveB>
-class HighOrderCollision3DTemplate : public HighOrderCollision {
+class HighOrderCollisionTemplate : public HighOrderCollision {
 public:
     using Super = HighOrderCollision;
     static constexpr int N_CORE_POINTS =
@@ -16,12 +17,12 @@ public:
     static constexpr int N_CORE_DOFS = N_CORE_POINTS * DIM;
     static constexpr int ELEMENT_SIZE = Super::ELEMENT_SIZE;
 
-    HighOrderCollision3DTemplate(
+    HighOrderCollisionTemplate(
         index_t primitive0,
         index_t primitive1,
         const CollisionMesh& mesh);
 
-    virtual ~HighOrderCollision3DTemplate() = default;
+    virtual ~HighOrderCollisionTemplate() = default;
 
     std::string name() const override;
 
@@ -62,45 +63,33 @@ public:
     size_t n_vertices_a() const override { return primitive_a.n_vertices(); }
     size_t n_vertices_b() const override { return primitive_b.n_vertices(); }
 
-    // ---- non distance type potential ----
-
-    /// @brief Compute the GCP potential
-    /// @param positions Vertex positions
-    /// @param params GCP parameters
-    /// @return GCP potential value
     double operator()(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
-    /// @brief Compute the potential gradient wrt. positions
-    /// @param positions Vertex positions
-    /// @param params GCP parameters
-    /// @return GCP potential gradient
     VectorMax<double, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
-    /// @brief Compute the potential Hessian wrt. positions
-    /// @param positions Vertex positions
-    /// @param params GCP parameters
-    /// @return GCP potential Hessian
     MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params) const override;
 
-    // ---- distance ----
-
-    /// @brief Compute the minimum squared distance between two primitives
-    double
-    compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
+    double compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
 
     void flag_as_safety() { safety_mode = true; }
 private:
-    /// @brief The first primitive in the contact pair
     PrimitiveA primitive_a;
-    /// @brief The second primitive in the contact pair
     PrimitiveB primitive_b;
-    /// @brief Whether this contact pair uses the smaller distance
     bool safety_mode = false;
 };
+
+// Keep old name as alias for backward compatibility within this codebase
+template <typename PrimitiveA, typename PrimitiveB>
+using HighOrderCollision3DTemplate = HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>;
+
+// 2D alias (for use with 2D primitives)
+template <typename PrimitiveA, typename PrimitiveB>
+using HighOrderCollision2DTemplate = HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>;
+
 }

@@ -490,12 +490,13 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
     Eigen::MatrixXd V;
     Eigen::MatrixXi E;
     double dhat = 1.;
-    const int quadrature_order = GENERATE(2, 4, 10, 20);
+    const int quadrature_order = GENERATE(1, 2, 7, 10, 14);
     HighOrderContactParameters params(dhat, 1., quadrature_order, 1);
 
-    SECTION("single_square")
+    std::string name;
+    SECTION("square_1")
     {
-        INFO("single_square");
+        name = "square_1";
         V.resize(4, 2);
         E.resize(4, 2);
         V <<
@@ -509,9 +510,9 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
             2, 3,
             3, 0;
     }
-    SECTION("single_square_2")
+    SECTION("square_2")
     {
-        INFO("single_square_2");
+        name = "square_2";
         V.resize(8, 2);
         E.resize(8, 2);
         V <<
@@ -534,8 +535,8 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
             7, 0;
     }
     SECTION("circle") {
-        INFO("circle");
-        const int n = GENERATE(10, 50, 100, 200);
+        const int n = GENERATE(5, 6, 7, 8, 9, 10, 50, 100, 200, 2000);
+        name = "circle" + std::to_string(n);
         V.resize(n, 2);
         E.resize(n, 2);
         for (int i = 0; i < n; i++) {
@@ -557,6 +558,7 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
 
     HighOrderContactPotential potential(params);
     double energy = potential(collisions, mesh, V);
+    CAPTURE(name);
     CAPTURE(quadrature_order);
     CHECK(energy == 0);
 
@@ -573,8 +575,8 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
     Eigen::MatrixXd V;
     Eigen::MatrixXi E;
     double dhat = 0.6;
-    constexpr double BA = 1e-7; // a small constant to break perfect alignments
-    const int quadrature_order = GENERATE(2, 4, 10, 20);
+    constexpr double BA = 0; // a small constant to break perfect alignments
+    const int quadrature_order = GENERATE(1, 2, 7, 14);
     HighOrderContactParameters params(dhat, 1., quadrature_order, 1);
     CAPTURE(quadrature_order);
 
@@ -612,7 +614,7 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
             [&](const Eigen::VectorXd& x) {
                 return potential.gradient(collisions, mesh, fd::unflatten(x, V.cols()));
             },
-            fhess, fd::AccuracyOrder::SECOND, 1e-10);
+            fhess, fd::AccuracyOrder::SECOND, 1e-12);
         CAPTURE(hess.norm());
         CAPTURE(fhess.norm());
         CHECK((hess - fhess).norm() < 1e-3 * std::max({hess.norm(), fhess.norm(), 1e-8}));

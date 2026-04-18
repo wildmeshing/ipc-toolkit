@@ -1,180 +1,82 @@
 #include "high_order_collisions_builder.hpp"
 #include <ipc/high_order_contact/quadrature_potential.hpp>
 
-#include <ipc/distance/distance_type.hpp>
-#include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_triangle.hpp>
+#include "collisions/high_order_quadrature.hpp"
 
 #include <tbb/enumerable_thread_specific.h>
+#include <sstream>
 
 namespace ipc {
 
 using IntegrationType = HighOrderContactParameters::IntegrationType;
 
-namespace {
-    template <typename TCollision, typename THash>
-    void add_collision(
-        const std::shared_ptr<TCollision> pair,
-        unordered_map<THash, index_t>& cc_to_id,
-        std::vector<std::shared_ptr<TCollision>>& collisions)
-    {
-        assert(pair != nullptr);
-        // filters dupes
-        auto found_item = cc_to_id.find(pair->get_hash());
-        if (found_item == cc_to_id.end()) {
-            // New collision, so add it to the end of collisions
-            cc_to_id.emplace(pair->get_hash(), collisions.size());
-            collisions.push_back(pair);
-        }
-        else {
-            collisions[found_item->second]->weight += pair->weight;
-        }
-    }
-} // namespace
-
-void HighOrderCollisionsBuilder<2>::add_edge_vertex_collisions(
+void HighOrderCollisionsBuilder<2>::build_edge_collisions(
     const CollisionMesh& mesh,
-    const Eigen::MatrixXd& vertices,
-    const std::vector<EdgeVertexCandidate>& candidates,
+    const Eigen::MatrixXd& V,
+    const Candidates& candidates,
     const HighOrderContactParameters& params,
-    const std::function<double(const index_t)>& vert_dhat,
-    const std::function<double(const index_t)>& edge_dhat,
-    const size_t start_i,
-    const size_t end_i)
+    const std::function<double(index_t)>& edge_dhat_fn,
+    size_t start,
+    size_t end)
 {
-    if (params.quad_order == 0) throw std::logic_error("Vertex integration temporarily removed");
-    const double dhat = params.dhat;
-    const double dhat2 = dhat * dhat;
+    const PointPotential pp(mesh, candidates, params);
+    const GaussLobatto::Rule& rule = GaussLobatto::get_rule(params.quad_order);
 
-    // go over EV candidates and add those with nonzero potential.
-    for (size_t i = start_i; i < end_i; i++) {
-        const auto& [ei, vi] = candidates[i];
-        const auto &v = vertices.row(vi);
-        const auto &ei0 = vertices.row(mesh.edges()(ei, 0));
-        const auto &ei1 = vertices.row(mesh.edges()(ei, 1));
-        const double d2 = point_edge_distance(v, ei0, ei1, point_edge_distance_type(v, ei0, ei1));
-        if (d2 < dhat2) {
-            const auto pair = std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
-                ei, vi, mesh, params, dhat, vertices);
-            pair->weight = -1;
-            add_collision<HighOrderCollision>(pair, vert_edge_2_to_id, collisions);
+    for (size_t edge_idx = start; edge_idx < end; ++edge_idx) {
+        const index_t ei = static_cast<index_t>(edge_idx);
+
+        if (candidates.ev_set(ei).empty() && candidates.ee_set(ei).empty()) continue;
+
+        if (params.integration_type == IntegrationType::NO_OBST && mesh.is_obstacle_edge(ei)) continue;
+        if (params.integration_type != IntegrationType::BRUTE_FORCE && mesh.is_obstacle_edge(ei)) {
+            const auto& ev = candidates.ev_set(ei);
+            const bool has_non_obstacle =
+                std::any_of(ev.begin(), ev.end(),
+                    [&](index_t v) { return !mesh.is_obstacle_vertex(v); });
+            if (!has_non_obstacle) continue;
         }
-    }
-}
 
-void HighOrderCollisionsBuilder<2>::add_edge_edge_collisions(
-    const CollisionMesh& mesh,
-    const Eigen::MatrixXd& vertices,
-    const std::vector<EdgeEdgeCandidate>& candidates,
-    const HighOrderContactParameters& params,
-    const std::function<double(const index_t)>& vert_dhat,
-    const std::function<double(const index_t)>& edge_dhat,
-    const size_t start_i,
-    const size_t end_i)
-{
-    if (params.quad_order == 0) throw std::logic_error("Vertex integration temporarily removed");
-    const double dhat = params.dhat;
-    //const double dhat2 = dhat * dhat;
+        const double dhat = edge_dhat_fn(ei);
+        std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>> qp_dicts;
+        qp_dicts.reserve(rule.size());
+        bool has_any = false;
 
-    for (size_t i = start_i; i < end_i; i++) {
-        const auto& [ei, ej] = candidates[i];
-        auto collision = reduce_edge_edge_collision(ei, ej, dhat, mesh, vertices, params);
-        if (!collision) {
-            continue;
+        for (const auto& qp : rule) {
+            const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+            size_t n = 0;
+            auto dict = pp.build_collisions_at_edge_qp(V, ei, lambda, dhat, n);
+            if (dict && dict->size() > 0) has_any = true;
+            qp_dicts.push_back(std::move(dict));
         }
-        if (collision->type() == HighOrderCollisionType::EDGE_EDGE) {
-            add_collision<HighOrderCollision>(
-                std::static_pointer_cast<HighOrderCollisionTemplate<Edge2P1, Edge2P1>>(collision),
-                edge_edge_2_to_id, collisions);
-        } else {
-            add_collision<HighOrderCollision>(
-                std::static_pointer_cast<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(collision),
-                vert_edge_2_to_id, collisions);
-        }
-    }
-}
 
-std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<2>::reduce_edge_edge_collision(
-    const index_t ei,
-    const index_t ej,
-    const double dhat,
-    const CollisionMesh& mesh,
-    const Eigen::MatrixXd& vertices,
-    const HighOrderContactParameters& params)
-{
-    const auto& ea0 = vertices.row(mesh.edges()(ei, 0));
-    const auto& ea1 = vertices.row(mesh.edges()(ei, 1));
-    const auto& eb0 = vertices.row(mesh.edges()(ej, 0));
-    const auto& eb1 = vertices.row(mesh.edges()(ej, 1));
-
-    const auto dtype0 = point_edge_distance_type(ea0, eb0, eb1);
-    const auto dtype1 = point_edge_distance_type(ea1, eb0, eb1);
-
-    if (dtype0 == dtype1 && (dtype0 == PointEdgeDistanceType::P_E0 || dtype0 == PointEdgeDistanceType::P_E1)) {
-        const index_t vi = (dtype0 == PointEdgeDistanceType::P_E0) ? mesh.edges()(ej, 0) : mesh.edges()(ej, 1);
-        if (point_edge_distance(vertices.row(vi), ea0, ea1) >= dhat * dhat) {
-            return nullptr;
+        if (has_any) {
+            edge_collisions_2d.emplace_back(ei, std::move(qp_dicts));
         }
-        return std::make_shared<HighOrderCollisionTemplate<Edge2P1, Vertex2>>(
-            ei, vi, mesh, params, dhat, vertices);
-    }
-    else {
-        const double dist_sqr = std::min({
-            point_edge_distance(ea0, eb0, eb1),
-            point_edge_distance(ea1, eb0, eb1),
-            point_edge_distance(eb0, ea0, ea1),
-            point_edge_distance(eb1, ea0, ea1)
-        });
-        if (dist_sqr >= dhat * dhat) {
-            return nullptr;
-        }
-        return std::make_shared<HighOrderCollisionTemplate<Edge2P1, Edge2P1>>(
-            ei, ej, mesh, params, dhat, vertices);
     }
 }
 
 void HighOrderCollisionsBuilder<2>::merge(
-    const ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
+    ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
     HighOrderCollisions& merged_collisions)
 {
-    unordered_map<std::pair<index_t, index_t>, index_t> edge_edge_2_to_id;
-    unordered_map<std::pair<index_t, index_t>, index_t> vert_vert_2_to_id;
-    unordered_map<std::pair<index_t, index_t>, index_t> vert_edge_2_to_id;
+    size_t total_pairs = 0;
 
-    // size up the hash items
-    size_t total = 0;
-    for (const auto& storage : local_storage) {
-        total += storage.collisions.size();
-    }
-
-    merged_collisions.collisions.reserve(total);
-
-    // merge
-    for (const auto& builder : local_storage) {
-        for (const auto& ve : builder.vert_edge_2_to_id) {
-            add_collision<HighOrderCollision>(builder.collisions[ve.second], vert_edge_2_to_id, merged_collisions.collisions);
-        }
-        for (const auto& ee : builder.edge_edge_2_to_id) {
-            add_collision<HighOrderCollision>(builder.collisions[ee.second], edge_edge_2_to_id, merged_collisions.collisions);
+    // Move per-edge dicts into merged_collisions. No edge is processed by
+    // more than one thread, so there are no duplicate edge keys.
+    for (auto& builder : local_storage) {
+        for (auto& [ei, dicts] : builder.edge_collisions_2d) {
+            for (const auto& dict : dicts) {
+                total_pairs += dict->size();
+            }
+            // Use insert with a value_type pair to force the move path.
+            merged_collisions.edge_collisions_2d.insert(
+                std::make_pair(ei, std::move(dicts)));
         }
     }
 
-    // remove 0-weight collisions
-    merged_collisions.collisions.erase(
-    std::remove_if(
-        merged_collisions.collisions.begin(), merged_collisions.collisions.end(),
-        [&](std::shared_ptr<HighOrderCollision> cc) {
-            return cc->weight == 0;
-        }), merged_collisions.collisions.end());
-
-    int edge_edge_count = edge_edge_2_to_id.size();
-    int vert_vert_count = vert_vert_2_to_id.size();
-    int vert_edge_count = vert_edge_2_to_id.size();
-
-    logger().trace(
-        "VV pairs: {}; VE pairs: {}; EE pairs: {}.",
-        vert_vert_count, vert_edge_count, edge_edge_count);
+    logger().trace("2D edge QP collision pairs: {}.", total_pairs);
 }
 
 // ============================================================================
@@ -216,37 +118,37 @@ std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_
 
     switch (dtype) {
     case PointTriangleDistanceType::P_T0:
-        return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
             t0, vi, mesh);
 
     case PointTriangleDistanceType::P_T1:
-        return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
             t1, vi, mesh);
 
     case PointTriangleDistanceType::P_T2:
-        return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
             t2, vi, mesh);
 
     case PointTriangleDistanceType::P_E0:
-        return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
             e0, vi, mesh);
 
     case PointTriangleDistanceType::P_E1:
-        return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
             e1, vi, mesh);
 
     case PointTriangleDistanceType::P_E2:
-        return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
             e2, vi, mesh);
 
     case PointTriangleDistanceType::P_T:
-        return std::make_shared<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(
             fi, vi, mesh);
 
     case PointTriangleDistanceType::AUTO:
     default:
         assert(false);
-        return std::make_shared<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(
             fi, vi, mesh);
     }
 }
@@ -279,17 +181,17 @@ std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_
 
     switch (dtype) {
     case PointEdgeDistanceType::P_E0:
-        return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
             t0, vi, mesh);
     case PointEdgeDistanceType::P_E1:
-        return std::make_shared<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
             t1, vi, mesh);
     case PointEdgeDistanceType::P_E:
-        return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
             ei, vi, mesh);
     default:
         assert(false);
-        return std::make_shared<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(
+        return std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
             ei, vi, mesh);
     }
 }

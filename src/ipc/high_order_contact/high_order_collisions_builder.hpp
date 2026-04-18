@@ -8,7 +8,6 @@
 #include <Eigen/Core>
 
 #include <memory>
-#include "collisions/triple_pair_collision.hpp"
 
 namespace ipc {
 
@@ -18,66 +17,34 @@ class QuadratureCollisionsBuilder;
 
 template <> class HighOrderCollisionsBuilder<2> {
 public:
-    HighOrderCollisionsBuilder() { }
+    HighOrderCollisionsBuilder() = default;
+    // Copy creates an empty builder (used by tbb::enumerable_thread_specific).
+    HighOrderCollisionsBuilder(const HighOrderCollisionsBuilder&) : HighOrderCollisionsBuilder() {}
 
-    void add_edge_vertex_collisions(
+    /// @brief Build per-edge, per-QP collision dicts for the 2D quadrature path.
+    /// For each edge ei in [start, end), places Gauss-Lobatto QPs on ei and
+    /// finds nearby vertices/edges from candidates.ev_set(ei) and
+    /// candidates.ee_set(ei). Results are stored in edge_collisions_2d.
+    void build_edge_collisions(
         const CollisionMesh& mesh,
         const Eigen::MatrixXd& vertices,
-        const std::vector<EdgeVertexCandidate>& candidates,
+        const Candidates& candidates,
         const HighOrderContactParameters& params,
-        const std::function<double(const index_t)>& vert_dhat,
-        const std::function<double(const index_t)>& edge_dhat,
-        const size_t start_i,
-        const size_t end_i);
-
-    void add_edge_edge_collisions(
-        const CollisionMesh& mesh,
-        const Eigen::MatrixXd& vertices,
-        const std::vector<EdgeEdgeCandidate>& candidates,
-        const HighOrderContactParameters& params,
-        const std::function<double(const index_t)>& vert_dhat,
-        const std::function<double(const index_t)>& edge_dhat,
-        const size_t start_i,
-        const size_t end_i);
-
-    static std::shared_ptr<HighOrderCollision> reduce_edge_edge_collision(
-        const index_t ei,
-        const index_t ej,
-        const double dhat,
-        const CollisionMesh& mesh,
-        const Eigen::MatrixXd& vertices,
-        const HighOrderContactParameters& params);
+        const std::function<double(index_t)>& edge_dhat,
+        size_t start,
+        size_t end);
 
     // -------------------------------------------------------------------------
 
     static void merge(
-        const ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
+        ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
         HighOrderCollisions& merged_collisions);
 
-    // Constructed collisions
-    std::vector<std::shared_ptr<HighOrderCollision>> collisions;
-
-    // -------------------------------------------------------------------------
-
-    // Store the indices to pairs to avoid duplicates.
-    /*
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Vertex2, Vertex2>>>
-        vert_vert_2_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge2P1, Vertex2>>>
-        vert_edge_2_to_id;
-    unordered_map<
-        std::pair<index_t, index_t>,
-        std::shared_ptr<HighOrderCollisionTemplate<Edge2P1, Edge2P1>>>
-        edge_edge_2_to_id;
-    */
-
-    unordered_map<std::pair<index_t, index_t>, index_t> vert_vert_2_to_id;
-    unordered_map<std::pair<index_t, index_t>, index_t> vert_edge_2_to_id;
-    unordered_map<std::pair<index_t, index_t>, index_t> edge_edge_2_to_id;
+    // Per-edge QP collision dicts: each entry is {edge_id, [dict_qp0, ...]}.
+    // Stored as a vector of pairs (not a map) so structured-binding iteration
+    // gives mutable references, enabling std::move in merge().
+    std::vector<std::pair<index_t,
+        std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>>>> edge_collisions_2d;
 };
 
 template <> class HighOrderCollisionsBuilder<3> {
@@ -170,7 +137,6 @@ public:
 
     // Constructed collisions
     std::vector<std::shared_ptr<HighOrderCollision>> collisions;
-    std::vector<std::shared_ptr<TriplePairCollision>> triple_collisions;
 
     // -------------------------------------------------------------------------
 

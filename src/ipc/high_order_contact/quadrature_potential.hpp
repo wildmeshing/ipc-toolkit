@@ -85,6 +85,35 @@ namespace ipc
             const HighOrderContactParameters& params,
             const std::array<double, 3>& lambda,
             PSDProjectionMethod project_to_psd);
+
+        // ---- 2D edge quadrature point helpers ----
+
+        /// @brief Evaluate P(q) = sum of barrier values for all pairs in the dict.
+        /// @param V_extended Vertices extended with the virtual QP as last row.
+        /// @param dict Per-QP collision dict for edge quadrature.
+        /// @param params Contact parameters.
+        double evaluate_potential_at_edge_qp(
+            VertexMatrixView<2> V_extended,
+            const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
+            const HighOrderContactParameters& params);
+
+        /// @brief Gradient of P(q) w.r.t. all real vertices, using chain rule
+        /// dP/de_k += lambda[k] * dP/dq.
+        /// @param lambda Barycentric coords of QP on the edge: q = lambda[0]*e0 + lambda[1]*e1.
+        Eigen::VectorXd evaluate_potential_gradient_at_edge_qp(
+            VertexMatrixView<2> V_extended,
+            const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
+            const HighOrderContactParameters& params,
+            const std::array<double, 2>& lambda);
+
+        /// @brief Hessian of P(q) w.r.t. all real vertices.
+        /// @param lambda Barycentric coords of QP on the edge: q = lambda[0]*e0 + lambda[1]*e1.
+        Eigen::MatrixXd evaluate_potential_hessian_at_edge_qp(
+            VertexMatrixView<2> V_extended,
+            const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
+            const HighOrderContactParameters& params,
+            const std::array<double, 2>& lambda,
+            PSDProjectionMethod project_to_psd);
     }
 
     class PointPotential
@@ -125,6 +154,19 @@ namespace ipc
             const Eigen::MatrixXd& V,
             index_t fid,
             const std::array<double, 3>& lambda,
+            size_t& num_collision_pairs) const;
+
+        /// @brief Build a per-QP collision dict for a 2D edge quadrature point.
+        /// @param V Vertex positions (2D).
+        /// @param ei Source edge index.
+        /// @param lambda Barycentric coords of QP: q = lambda[0]*e0 + lambda[1]*e1.
+        /// @param dhat Distance threshold for this edge.
+        std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>
+        build_collisions_at_edge_qp(
+            const Eigen::MatrixXd& V,
+            index_t ei,
+            const std::array<double, 2>& lambda,
+            double dhat,
             size_t& num_collision_pairs) const;
 
         const CollisionMesh& mesh;
