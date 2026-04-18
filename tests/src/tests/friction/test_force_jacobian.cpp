@@ -671,7 +671,7 @@ void check_high_order_friction_force_jacobian(
     Eigen::MatrixXd fd_hessian;
     fd::finite_jacobian(
         fd::flatten(velocities), grad_func, fd_hessian,
-        fd::AccuracyOrder::FOURTH, 1e-6 * params.dhat);
+        fd::AccuracyOrder::FOURTH, 1e-8 * params.dhat);
     CHECK(
         (hess_D.norm() == 0
          || (hess_D - fd_hessian).norm() <= 1e-7 * hess_D.norm()));

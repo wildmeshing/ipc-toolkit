@@ -123,35 +123,7 @@ void HighOrderCollisions::compute_adaptive_dhat(
         a = std::min(a, b);
     };
 
-    for (const auto& cc : collisions) {
-        const double dist =
-            params.adaptive_dhat_ratio() * sqrt(cc->compute_distance(vertices));
-        switch (cc->type()) {
-        case HighOrderCollisionType::EDGE_EDGE: {
-            assign_min(edge_adaptive_dhat((*cc)[0]), dist);
-            assign_min(edge_adaptive_dhat((*cc)[1]), dist);
-            break;
-        }
-        case HighOrderCollisionType::EDGE_VERTEX: {
-            assign_min(edge_adaptive_dhat((*cc)[0]), dist);
-            assign_min(vert_adaptive_dhat((*cc)[1]), dist);
-            break;
-        }
-        case HighOrderCollisionType::FACE_VERTEX: {
-            assign_min(face_adaptive_dhat((*cc)[0]), dist);
-            assign_min(vert_adaptive_dhat((*cc)[1]), dist);
-            break;
-        }
-        case HighOrderCollisionType::VERTEX_VERTEX: {
-            assign_min(vert_adaptive_dhat((*cc)[0]), dist);
-            assign_min(vert_adaptive_dhat((*cc)[1]), dist);
-            break;
-        }
-        default: {
-            throw std::runtime_error("Invalid collision type!");
-        }
-        }
-    }
+    // TODO: update adaptive dhat computation to work with QP-based collisions
 
     // face adaptive dhat should be minimum of all its adjacent vertices and
     // edges
@@ -224,59 +196,25 @@ void HighOrderCollisions::build(
 
     if (mesh.dim() == 2) {
         if (use_adaptive_dhat) {
-            log_and_throw_error("Adaptive dhat with exact cancellation is not implemented!");
+            log_and_throw_error("Adaptive dhat not implemented for 2D quadrature path!");
         }
+        // Ensure candidate sets are populated (ev_set/ee_set lookups below require them).
+        const_cast<Candidates&>(candidates).convert_candidates_to_sets();
+
         auto storage = create_thread_storage<HighOrderCollisionsBuilder<2>>(
             HighOrderCollisionsBuilder<2>());
-        // add all EV collision pairs for adjacent vertices
-        std::vector<EdgeVertexCandidate> ev_candidates;
-        ev_candidates.reserve(candidates.ev_candidates.size() + mesh.num_edges()*2);
-        std::copy(candidates.ev_candidates.begin(), candidates.ev_candidates.end(), std::back_inserter(ev_candidates));
-        for (index_t ei = 0; ei < mesh.num_edges(); ei++) {
-            for (int j = 0; j < 2; j++) {
-                ev_candidates.emplace_back(ei, mesh.edges()(ei, j));
-            }
-        }
-        if (candidates.ev_candidates.size() + mesh.num_edges()*2 != ev_candidates.size()) throw std::logic_error("unexpected size of ev_candidates" + std::to_string(ev_candidates.size()) + " != " + std::to_string(candidates.ev_candidates.size() + mesh.num_edges()*2));
+
+        // Loop over all edges; each edge builds per-QP collision dicts.
         maybe_parallel_for(
-            ev_candidates.size(),
+            static_cast<int>(mesh.num_edges()),
             [&](int start, int end, int thread_id) {
                 HighOrderCollisionsBuilder<2>& local_storage =
                     get_local_thread_storage(storage, thread_id);
-                local_storage.add_edge_vertex_collisions(
-                    mesh, vertices, ev_candidates, params, vert_dhat,
-                    edge_dhat, start, end);
+                local_storage.build_edge_collisions(
+                    mesh, vertices, candidates, params, edge_dhat,
+                    static_cast<size_t>(start), static_cast<size_t>(end));
             });
-        // build set of EE candidates from EV candidates
-        // start with sets to filter duplicates
-        std::vector<std::set<index_t>> ee_candidates_set;
-        ee_candidates_set.resize(mesh.num_edges());
-        const auto &ve_adj = mesh.vertex_edge_adjacencies();
-        for (const auto& [ei, vi] : ev_candidates) {
-            for (const auto &ej : ve_adj[vi]) {
-                if (ei != ej) {
-                    ee_candidates_set[ei].insert(ej);
-                    ee_candidates_set[ej].insert(ei);
-                }
-            }
-        }
-        std::vector<EdgeEdgeCandidate> ee_candidates;
-        //each edge gets at least its two neighbors, potentially more
-        ee_candidates.reserve(mesh.num_edges()*3);
-        for (index_t ei=0; ei<mesh.num_edges(); ++ei) {
-            for (const index_t ej : ee_candidates_set[ei]) {
-                ee_candidates.emplace_back(ei, ej);
-            }
-        }
-        maybe_parallel_for(
-            ee_candidates.size(),
-            [&](int start, int end, int thread_id) {
-                HighOrderCollisionsBuilder<2>& local_storage =
-                    get_local_thread_storage(storage, thread_id);
-                local_storage.add_edge_edge_collisions(
-                    mesh, vertices, ee_candidates, params, vert_dhat,
-                    edge_dhat, start, end);
-            });
+
         HighOrderCollisionsBuilder<2>::merge(storage, *this);
     }
     else {
@@ -412,49 +350,32 @@ void HighOrderCollisions::build(
 // ============================================================================
 size_t HighOrderCollisions::size() const
 {
-    if (collisions.size() > 0) {
-        return collisions.size();
+    size_t size = 0;
+    for (const auto& cc : vertex_collisions) {
+        size += cc.second->size();
     }
-    else {
-        size_t size = 0;
-        for (const auto& cc : vertex_collisions) {
-            size += cc.second->size();
-        }
-        for (const auto& cc : edge_edge_collisions) {
-            size += cc.second->size();
-        }
-        for (const auto& cc : face_collisions) {
-            for (const auto& dict_ptr : cc.second) {
-                size += dict_ptr->size();
-            }
-        }
-        return size;
+    for (const auto& cc : edge_edge_collisions) {
+        size += cc.second->size();
     }
+    for (const auto& cc : face_collisions) {
+        for (const auto& dict_ptr : cc.second) {
+            size += dict_ptr->size();
+        }
+    }
+    for (const auto& cc : edge_collisions_2d) {
+        for (const auto& dict_ptr : cc.second) {
+            size += dict_ptr->size();
+        }
+    }
+    return size;
 }
-bool HighOrderCollisions::empty() const { return collisions.empty() && vertex_collisions.empty() && edge_edge_collisions.empty() && face_collisions.empty(); }
+bool HighOrderCollisions::empty() const { return vertex_collisions.empty() && edge_edge_collisions.empty() && face_collisions.empty() && edge_collisions_2d.empty(); }
 void HighOrderCollisions::clear()
 {
-    collisions.clear();
-
     vertex_collisions.clear();
     edge_edge_collisions.clear();
     face_collisions.clear();
-}
-
-HighOrderCollision& HighOrderCollisions::operator[](size_t i)
-{
-    if (i < collisions.size()) {
-        return *collisions[i];
-    }
-    throw std::out_of_range("Collision index is out of range!");
-}
-
-const HighOrderCollision& HighOrderCollisions::operator[](size_t i) const
-{
-    if (i < collisions.size()) {
-        return *collisions[i];
-    }
-    throw std::out_of_range("Collision index is out of range!");
+    edge_collisions_2d.clear();
 }
 
 std::string HighOrderCollisions::to_string(
@@ -463,16 +384,6 @@ std::string HighOrderCollisions::to_string(
     const HighOrderContactParameters& params) const
 {
     std::stringstream ss;
-    for (const auto& cc : collisions) {
-        ss << "\n";
-        {
-            ss << fmt::format(
-                "[{}]: ({} {}) weight {} dist {} potential {} grad {}", cc->name(),
-                (*cc)[0], (*cc)[1], cc->weight, cc->compute_distance(vertices),
-                (*cc)(cc->dof(vertices), params),
-                (*cc).gradient(cc->dof(vertices), params).norm());
-        }
-    }
 
     for (const auto& ccs : vertex_collisions) {
         for (int i = 0; i < (*ccs.second).size(); i++) {

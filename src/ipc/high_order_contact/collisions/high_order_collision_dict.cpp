@@ -2,8 +2,8 @@
 
 namespace ipc
 {
-    template <PointType pType>
-    void HighOrderCollisionDict<pType>::initialize(
+    template <PointType pType, int DIM>
+    void HighOrderCollisionDict<pType, DIM>::initialize(
         const std::vector<index_t>& primitive_ids,
         const std::vector<index_t>& primary_vertex_ids,
         const unordered_map<std::array<index_t, 3>, std::shared_ptr<HighOrderCollision>>& map
@@ -71,46 +71,56 @@ namespace ipc
             }
         }
 
-        // Convert unordered_map to vectors
+        // Convert unordered_map to typed vectors
         for (const auto& [key, val] : map) {
             switch (val->type()) {
             case HighOrderCollisionType::VERTEX_VERTEX:
-                {
-                    auto ptr = std::dynamic_pointer_cast<HighOrderCollision3DTemplate<Vertex3, Vertex3>>(val);
+                if constexpr (DIM == 2) {
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Vertex2, Vertex2>>(val);
                     assert(ptr);
                     vv_collisions.push_back(*ptr);
-                    break;
+                } else {
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Vertex3, Vertex3>>(val);
+                    assert(ptr);
+                    vv_collisions.push_back(*ptr);
                 }
+                break;
             case HighOrderCollisionType::EDGE_VERTEX:
-                {
-                    auto ptr = std::dynamic_pointer_cast<HighOrderCollision3DTemplate<Edge3P1, Vertex3>>(val);
+                if constexpr (DIM == 2) {
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Vertex2, Edge2P1>>(val);
                     assert(ptr);
                     ev_collisions.push_back(*ptr);
-                    break;
+                } else {
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(val);
+                    assert(ptr);
+                    ev_collisions.push_back(*ptr);
                 }
+                break;
             case HighOrderCollisionType::FACE_VERTEX:
-                {
-                    auto ptr = std::dynamic_pointer_cast<HighOrderCollision3DTemplate<Face3P1, Vertex3>>(val);
+                if constexpr (DIM == 3) {
+                    auto ptr = std::dynamic_pointer_cast<HighOrderCollisionTemplate<Face3P1, Vertex3>>(val);
                     assert(ptr);
                     fv_collisions.push_back(*ptr);
-                    break;
+                } else {
+                    log_and_throw_error("FACE_VERTEX collision type not supported in 2D dict");
                 }
+                break;
             default:
-                log_and_throw_error("Invalid PointType!");
+                log_and_throw_error("Invalid collision type!");
             }
         }
     }
 
-    template <PointType pType>
-    HighOrderCollision& HighOrderCollisionDict<pType>::operator[](int i)
+    template <PointType pType, int DIM>
+    HighOrderCollision& HighOrderCollisionDict<pType, DIM>::operator[](int i)
     {
         return const_cast<HighOrderCollision&>(
             static_cast<const HighOrderCollisionDict&>(*this)[i]
         );
     }
 
-    template <PointType pType>
-    const HighOrderCollision& HighOrderCollisionDict<pType>::operator[](int i) const
+    template <PointType pType, int DIM>
+    const HighOrderCollision& HighOrderCollisionDict<pType, DIM>::operator[](int i) const
     {
         if (i < vv_collisions.size()) {
             return vv_collisions[i];
@@ -132,26 +142,26 @@ namespace ipc
         }
     }
 
-    template <PointType pType>
-    const std::vector<index_t>& HighOrderCollisionDict<pType>::vertex_ids() const
+    template <PointType pType, int DIM>
+    const std::vector<index_t>& HighOrderCollisionDict<pType, DIM>::vertex_ids() const
     {
         return m_vertex_ids;
     }
 
-    template <PointType pType>
-    const std::vector<index_t>& HighOrderCollisionDict<pType>::primary_dofs() const
+    template <PointType pType, int DIM>
+    const std::vector<index_t>& HighOrderCollisionDict<pType, DIM>::primary_dofs() const
     {
         return m_primary_dofs;
     }
 
-    template <PointType pType>
-    const std::vector<index_t>& HighOrderCollisionDict<pType>::dofs() const
+    template <PointType pType, int DIM>
+    const std::vector<index_t>& HighOrderCollisionDict<pType, DIM>::dofs() const
     {
         return m_dofs;
     }
 
-    template <PointType pType>
-    index_t HighOrderCollisionDict<pType>::vertex_ids_inverse(index_t id) const
+    template <PointType pType, int DIM>
+    index_t HighOrderCollisionDict<pType, DIM>::vertex_ids_inverse(index_t id) const
     {
         auto iter = m_vertex_ids_inverse.find(id);
         if (iter == m_vertex_ids_inverse.end()) {
@@ -163,4 +173,5 @@ namespace ipc
     template class HighOrderCollisionDict<PointType::VERTEX>;
     template class HighOrderCollisionDict<PointType::EDGE>;
     template class HighOrderCollisionDict<PointType::FACE>;
+    template class HighOrderCollisionDict<PointType::EDGE, 2>;
 } // namespace ipc

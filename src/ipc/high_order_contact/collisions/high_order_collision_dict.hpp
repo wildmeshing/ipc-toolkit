@@ -1,5 +1,5 @@
 #pragma once
-#include "high_order_collision_3d.hpp"
+#include "high_order_collision_template.hpp"
 #include <ipc/distance/distance_type.hpp>
 #include <ipc/utils/unordered_map_and_set.hpp>
 
@@ -16,13 +16,22 @@ enum class PointType : std::uint8_t
 /// The first entry of the pairs is always "Vert", which could be actually:
 ///     1. A real vertex
 ///     2. A point on an edge, as the closest point between a pair of edges
-///     3. A point at the face center
+///     3. A point at the face center / edge quadrature point
 /// In 2 and 3, the "Vert" is a virtual vertex that does not exist in the CollisionMesh, the ID of a
 /// virtual vertex is always #n_verts, i.e. immediately after all real vertices.
-template <PointType pType> class HighOrderCollisionDict
+/// @tparam DIM Spatial dimension (2 or 3). Default is 3.
+template <PointType pType, int DIM = 3> class HighOrderCollisionDict
 {
 public:
-    static constexpr int dim = 3;
+    static constexpr int dim = DIM;
+
+    // Collision pair types depend on dimension.
+    using VVType = std::conditional_t<DIM == 2,
+        HighOrderCollisionTemplate<Vertex2, Vertex2>,
+        HighOrderCollisionTemplate<Vertex3, Vertex3>>;
+    using EVType = std::conditional_t<DIM == 2,
+        HighOrderCollisionTemplate<Vertex2, Edge2P1>,
+        HighOrderCollisionTemplate<Edge3P1, Vertex3>>;
 
     HighOrderCollisionDict() = default;
     ~HighOrderCollisionDict() = default;
@@ -72,9 +81,9 @@ public:
     index_t vertex_ids_inverse(index_t id) const;
 
 private:
-    std::vector<HighOrderCollision3DTemplate<Vertex3, Vertex3>> vv_collisions;
-    std::vector<HighOrderCollision3DTemplate<Edge3P1, Vertex3>> ev_collisions;
-    std::vector<HighOrderCollision3DTemplate<Face3P1, Vertex3>> fv_collisions;
+    std::vector<VVType> vv_collisions;
+    std::vector<EVType> ev_collisions;
+    std::vector<HighOrderCollisionTemplate<Face3P1, Vertex3>> fv_collisions; // unused in DIM=2
 
     std::array<index_t, 2> m_primitive_ids{{-1, -1}};
 

@@ -15,6 +15,8 @@
 #include "ipc/smooth_contact/distance/point_face.hpp"
 #include "ipc/smooth_contact/distance/mollifier.hpp"
 #include "ipc/high_order_contact/quadrature_potential.hpp"
+#include "ipc/high_order_contact/collisions/high_order_quadrature.hpp"
+#include "ipc/high_order_contact/collisions/vertex_matrix_view.hpp"
 
 namespace ipc {
 
@@ -37,17 +39,46 @@ double HighOrderContactPotential::operator()(
     double result = 0;
 
     if (mesh.dim() == 2) {
-        tbb::enumerable_thread_specific<double> storage(0);
-        tbb::parallel_for(
-            tbb::blocked_range<size_t>(size_t(0), collisions.size()),
-            [&](const tbb::blocked_range<size_t>& r) {
-                auto& local_potential = storage.local();
-                for (size_t i = r.begin(); i < r.end(); i++) {
-                    // Quadrature weight is premultiplied by local potential
-                    local_potential += (*this)(collisions[i], collisions[i].dof(X));
+        auto potential_storage = create_thread_storage(0.0);
+        const GaussLobatto::Rule& rule = GaussLobatto::get_rule(params.quad_order);
+
+        // Collect active edge ids into a flat vector for parallel indexing.
+        std::vector<index_t> active_edges;
+        active_edges.reserve(collisions.edge_collisions_2d.size());
+        for (const auto& [ei, _] : collisions.edge_collisions_2d) {
+            active_edges.push_back(ei);
+        }
+
+        maybe_parallel_for(
+            static_cast<int>(active_edges.size()),
+            [&](int start, int end, int thread_id) {
+                double& total = get_local_thread_storage(potential_storage, thread_id);
+                for (int k = start; k < end; ++k) {
+                    const index_t ei       = active_edges[k];
+                    const auto&   qp_dicts = collisions.edge_collisions_2d.at(ei);
+                    const double  L        = mesh.edge_length(ei);
+                    const double  w_edge   = L;
+                    const index_t e0 = mesh.edges()(ei, 0);
+                    const index_t e1 = mesh.edges()(ei, 1);
+
+                    for (size_t qi = 0; qi < qp_dicts.size(); ++qi) {
+                        const auto& dict = *qp_dicts[qi];
+                        if (dict.size() == 0) continue;
+                        const auto& qp = rule[qi];
+                        const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+                        const Eigen::RowVector2d q_pos =
+                            lambda[0] * X.row(e0) + lambda[1] * X.row(e1);
+                        VertexMatrixView<2> X_ext(X, q_pos);
+                        total += w_edge * qp.weight
+                            * PointPotentialHelper::evaluate_potential_at_edge_qp(
+                                X_ext, dict, params);
+                    }
                 }
             });
-        result = storage.combine([](double a, double b) { return a + b; });
+
+        for (const double v : potential_storage) {
+            result += v;
+        }
     }
     else if (mesh.dim() == 3) {
         {
@@ -210,18 +241,43 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
         create_thread_storage<Eigen::VectorXd>(Eigen::VectorXd::Zero(X.size()));
 
     if (mesh.dim() == 2) {
+        const GaussLobatto::Rule& rule = GaussLobatto::get_rule(params.quad_order);
+
+        std::vector<index_t> active_edges;
+        active_edges.reserve(collisions.edge_collisions_2d.size());
+        for (const auto& [ei, _] : collisions.edge_collisions_2d)
+            active_edges.push_back(ei);
+
         maybe_parallel_for(
-            collisions.size(), [&](int start, int end, int thread_id) {
-                auto& global_grad = get_local_thread_storage(storage, thread_id);
+            static_cast<int>(active_edges.size()),
+            [&](int start, int end, int thread_id) {
+                Eigen::VectorXd& global_grad =
+                    get_local_thread_storage(storage, thread_id);
 
-                for (size_t i = start; i < end; i++) {
-                    const HighOrderCollision& collision = collisions[i];
+                for (int k = start; k < end; ++k) {
+                    const index_t ei       = active_edges[k];
+                    const auto&   qp_dicts = collisions.edge_collisions_2d.at(ei);
+                    const double  L        = mesh.edge_length(ei);
+                    const double  w_edge   = L;
+                    const index_t e0 = mesh.edges()(ei, 0);
+                    const index_t e1 = mesh.edges()(ei, 1);
 
-                    const Eigen::VectorXd local_grad =
-                        this->gradient(collision, collision.dof(X));
+                    for (size_t qi = 0; qi < qp_dicts.size(); ++qi) {
+                        const auto& dict = *qp_dicts[qi];
+                        if (dict.size() == 0) continue;
+                        const auto& qp = rule[qi];
+                        const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+                        const Eigen::RowVector2d q_pos =
+                            lambda[0] * X.row(e0) + lambda[1] * X.row(e1);
+                        VertexMatrixView<2> X_ext(X, q_pos);
 
-                    local_gradient_to_global_gradient(
-                        local_grad, collision.vertex_ids(), dim, global_grad);
+                        const Eigen::VectorXd local_grad = w_edge * qp.weight
+                            * PointPotentialHelper::evaluate_potential_gradient_at_edge_qp(
+                                X_ext, dict, params, lambda);
+
+                        local_gradient_to_global_gradient(
+                            local_grad, dict.vertex_ids(), dim, global_grad);
+                    }
                 }
             });
     }
@@ -431,20 +487,43 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
         create_thread_storage(LocalThreadMatStorage(buffer_size, ndof, ndof));
 
     if (mesh.dim() == 2) {
+        const GaussLobatto::Rule& rule = GaussLobatto::get_rule(params.quad_order);
+
+        std::vector<index_t> active_edges;
+        active_edges.reserve(collisions.edge_collisions_2d.size());
+        for (const auto& [ei, _] : collisions.edge_collisions_2d)
+            active_edges.push_back(ei);
+
         maybe_parallel_for(
-            collisions.size(), [&](int start, int end, int thread_id) {
+            static_cast<int>(active_edges.size()),
+            [&](int start, int end, int thread_id) {
                 auto& hess_triplets = get_local_thread_storage(storage, thread_id);
 
-                for (size_t i = start; i < end; i++) {
-                    const HighOrderCollision& collision = collisions[i];
+                for (int k = start; k < end; ++k) {
+                    const index_t ei       = active_edges[k];
+                    const auto&   qp_dicts = collisions.edge_collisions_2d.at(ei);
+                    const double  L        = mesh.edge_length(ei);
+                    const double  w_edge   = L;
+                    const index_t e0 = mesh.edges()(ei, 0);
+                    const index_t e1 = mesh.edges()(ei, 1);
 
-                    const Eigen::MatrixXd local_hess = this->hessian(
-                        collisions[i], collisions[i].dof(X),
-                        project_hessian_to_psd);
+                    for (size_t qi = 0; qi < qp_dicts.size(); ++qi) {
+                        const auto& dict = *qp_dicts[qi];
+                        if (dict.size() == 0) continue;
+                        const auto& qp = rule[qi];
+                        const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+                        const Eigen::RowVector2d q_pos =
+                            lambda[0] * X.row(e0) + lambda[1] * X.row(e1);
+                        VertexMatrixView<2> X_ext(X, q_pos);
 
-                    local_hessian_to_global_triplets(
-                        local_hess, collision.vertex_ids(), dim,
-                        *(hess_triplets.cache));
+                        const Eigen::MatrixXd local_hess = w_edge * qp.weight
+                            * PointPotentialHelper::evaluate_potential_hessian_at_edge_qp(
+                                X_ext, dict, params, lambda, project_hessian_to_psd);
+
+                        local_hessian_to_global_triplets(
+                            local_hess, dict.vertex_ids(), dim,
+                            *(hess_triplets.cache));
+                    }
                 }
             });
     }
@@ -824,26 +903,4 @@ Eigen::MatrixXd HighOrderContactPotential::hessian(
     return project_to_psd(hess, project_hessian_to_psd);
 }
 
-double HighOrderContactPotential::operator()(
-        const TriplePairCollision& collision,
-        Eigen::ConstRef<Eigen::VectorXd> positions) const
-{
-    return collision.weight * collision(positions, params);
-}
-
-    Eigen::VectorXd HighOrderContactPotential::gradient(
-        const TriplePairCollision& collision,
-        Eigen::ConstRef<Eigen::VectorXd> positions) const
-{
-    return collision.weight * collision.gradient(positions, params);
-}
-
-Eigen::MatrixXd HighOrderContactPotential::hessian(
-        const TriplePairCollision& collision,
-        Eigen::ConstRef<Eigen::VectorXd> positions,
-        const PSDProjectionMethod project_hessian_to_psd) const
-{
-    Eigen::MatrixXd hess = collision.weight * collision.hessian(positions, params);
-    return project_to_psd(hess, project_hessian_to_psd);
-}
 } // namespace ipc

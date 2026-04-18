@@ -10,6 +10,7 @@
 #include <ipc/math/math.hpp>
 #include <ipc/utils/local_to_global.hpp>
 #include <ipc/high_order_contact/collisions/vertex_matrix_view.hpp>
+#include <ipc/high_order_contact/collisions/high_order_quadrature.hpp>
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 #include <ipc/smooth_contact/distance/edge_edge.hpp>
 #include <ipc/tangent/closest_point.hpp>
@@ -337,73 +338,142 @@ void TangentialCollisions::build(
 
     auto& [FC_vv, FC_ev, FC_ee, FC_fv] = *this;
 
+    auto assign_ev_mu = [&](EdgeVertexTangentialCollision& tc) {
+        const auto& [vi, e0i, e1i, _] = tc.vertex_ids(edges, faces);
+        const double edge_mu_s =
+            (mu_s(e1i) - mu_s(e0i)) * tc.closest_point[0] + mu_s(e0i);
+        tc.mu_s = blend_mu(edge_mu_s, mu_s(vi));
+        const double edge_mu_k =
+            (mu_k(e1i) - mu_k(e0i)) * tc.closest_point[0] + mu_k(e0i);
+        tc.mu_k = blend_mu(edge_mu_k, mu_k(vi));
+    };
 
     if (dim == 2) {
-        // 2D: collisions are stored in the flat collisions.collisions vector
-        for (size_t i = 0; i < collisions.size(); i++) {
-            const auto& cc = collisions[i];
+        const GaussLobatto::Rule& rule =
+            GaussLobatto::get_rule(params.quad_order);
+        const index_t n_verts = vertices.rows();
 
-            Eigen::VectorXd positions = cc.dof(vertices);
-            auto grad = cc.gradient(positions, params);
-            const double contact_force = normal_stiffness * grad.norm();
-
-            // Skip collisions with no contact force to avoid NaN from
-            // degenerate tangent basis computations at non-contact pairs.
-            if (contact_force == 0)
-                continue;
-
+        auto compute_contact_force_2d = [&](
+            const HighOrderCollision& cc,
+            const VertexMatrixView<2>& V_ext,
+            const double outer_w) -> double
+        {
+            const Eigen::VectorXd positions = cc.dof(V_ext);
+            double d2 = 0;
             switch (cc.type()) {
-            case HighOrderCollisionType::VERTEX_VERTEX: {
-                const index_t v0 = cc[0];
-                const index_t v1 = cc[1];
-                Eigen::VectorXd collision_points(4);
-                collision_points.head<2>() = vertices.row(v0);
-                collision_points.tail<2>() = vertices.row(v1);
-
-                FC_vv.emplace_back(
-                    VertexVertexNormalCollision(
-                        v0, v1, cc.weight, Eigen::SparseVector<double>()),
-                    collision_points, contact_force);
-                FC_vv.back().weight = cc.weight;
-                const auto& [v0i, v1i, _, __] =
-                    FC_vv.back().vertex_ids(edges, faces);
-                FC_vv.back().mu_s = blend_mu(mu_s(v0i), mu_s(v1i));
-                FC_vv.back().mu_k = blend_mu(mu_k(v0i), mu_k(v1i));
+            case HighOrderCollisionType::VERTEX_VERTEX:
+                d2 = point_point_distance(
+                    Eigen::Vector2d(positions.segment<2>(0)),
+                    Eigen::Vector2d(positions.segment<2>(2)));
                 break;
-            }
-            case HighOrderCollisionType::EDGE_VERTEX: {
-                const index_t edge_id = cc[0];
-                const index_t vert_id = cc[1];
-                const index_t ea0 = edges(edge_id, 0);
-                const index_t ea1 = edges(edge_id, 1);
-
-                Eigen::VectorXd collision_points(6);
-                // Order: [vertex, edge_v0, edge_v1]
-                collision_points.segment<2>(0) = vertices.row(vert_id);
-                collision_points.segment<2>(2) = vertices.row(ea0);
-                collision_points.segment<2>(4) = vertices.row(ea1);
-
-                FC_ev.emplace_back(
-                    EdgeVertexNormalCollision(
-                        edge_id, vert_id, cc.weight,
-                        Eigen::SparseVector<double>()),
-                    collision_points, contact_force);
-                FC_ev.back().weight = cc.weight;
-                const auto& [vi, e0i, e1i, _] =
-                    FC_ev.back().vertex_ids(edges, faces);
-
-                const double edge_mu_s =
-                    (mu_s(e1i) - mu_s(e0i)) * FC_ev.back().closest_point[0]
-                    + mu_s(e0i);
-                FC_ev.back().mu_s = blend_mu(edge_mu_s, mu_s(vi));
-                const double edge_mu_k =
-                    (mu_k(e1i) - mu_k(e0i)) * FC_ev.back().closest_point[0]
-                    + mu_k(e0i);
-                FC_ev.back().mu_k = blend_mu(edge_mu_k, mu_k(vi));
+            case HighOrderCollisionType::EDGE_VERTEX:
+                d2 = point_edge_distance(
+                    Eigen::Vector2d(positions.segment<2>(0)),
+                    Eigen::Vector2d(positions.segment<2>(2)),
+                    Eigen::Vector2d(positions.segment<2>(4)));
                 break;
-            }
             default:
-                continue;
+                return 0;
+            }
+            const double dist = std::sqrt(d2);
+            const double dhat_val = params.get_dhat();
+            return (dist > 0 && dist < dhat_val)
+                ? outer_w * normal_stiffness
+                    * std::abs(
+                        params.barrier->first_derivative(dist, dhat_val))
+                : 0.0;
+        };
+
+        for (const auto& [ei, qp_dicts] : collisions.edge_collisions_2d) {
+            const index_t e0 = edges(ei, 0);
+            const index_t e1 = edges(ei, 1);
+            const double L  = mesh.edge_length(ei);
+
+            for (size_t qi = 0; qi < qp_dicts.size(); ++qi) {
+                const auto& dict_ptr = qp_dicts[qi];
+                if (!dict_ptr || dict_ptr->size() == 0)
+                    continue;
+                const auto& qp = rule[qi];
+                const std::array<double, 2> lambda = {1.0 - qp.xi, qp.xi};
+                const Eigen::RowVector2d virtual_pos =
+                    lambda[0] * vertices.row(e0)
+                    + lambda[1] * vertices.row(e1);
+                VertexMatrixView<2> V_ext(vertices, virtual_pos);
+                const double outer_w = L * qp.weight;
+
+                for (int j = 0; j < dict_ptr->size(); ++j) {
+                    const auto& cc = (*dict_ptr)[j];
+                    const double contact_force =
+                        compute_contact_force_2d(cc, V_ext, outer_w);
+                    if (contact_force == 0)
+                        continue;
+
+                    switch (cc.type()) {
+                    case HighOrderCollisionType::VERTEX_VERTEX: {
+                        // One vertex is virtual (n_verts), other is real.
+                        // Elevate to EdgeVertex: edge ei vs the real vertex.
+                        const index_t v0 = cc.vertex_id(0);
+                        const index_t v1 = cc.vertex_id(1);
+                        const index_t v_real = (v0 == n_verts) ? v1 : v0;
+
+                        Eigen::Matrix<double, 6, 1> cp;
+                        cp.segment<2>(0) = vertices.row(v_real).transpose();
+                        cp.segment<2>(2) = vertices.row(e0).transpose();
+                        cp.segment<2>(4) = vertices.row(e1).transpose();
+
+                        FC_ev.emplace_back(
+                            EdgeVertexNormalCollision(
+                                ei, v_real, cc.weight,
+                                Eigen::SparseVector<double>()),
+                            cp, contact_force);
+                        FC_ev.back().weight = cc.weight;
+                        assign_ev_mu(FC_ev.back());
+                        break;
+                    }
+                    case HighOrderCollisionType::EDGE_VERTEX: {
+                        // Virtual vertex on edge ei vs real edge ej.
+                        // Distribute to the two endpoints of ej weighted by
+                        // the projection parameter u (parallel to 3D face
+                        // dict EV elevation).
+                        const index_t ej  = cc[1]; // Edge2P1 id
+                        const index_t ea  = cc.vertex_id(1);
+                        const index_t eb  = cc.vertex_id(2);
+                        const Eigen::Vector2d ea_pos =
+                            vertices.row(ea).transpose();
+                        const Eigen::Vector2d eb_pos =
+                            vertices.row(eb).transpose();
+                        const Eigen::Vector2d vp = virtual_pos.transpose();
+
+                        double u = point_edge_closest_point(
+                            vp, ea_pos, eb_pos);
+                        if (!std::isfinite(u))
+                            break;
+                        u = std::clamp(u, 0.0, 1.0);
+
+                        auto emit_ev = [&](index_t v_edge, double w) {
+                            if (w <= 0)
+                                return;
+                            Eigen::Matrix<double, 6, 1> cp;
+                            cp.segment<2>(0) =
+                                vertices.row(v_edge).transpose();
+                            cp.segment<2>(2) = vertices.row(e0).transpose();
+                            cp.segment<2>(4) = vertices.row(e1).transpose();
+                            FC_ev.emplace_back(
+                                EdgeVertexNormalCollision(
+                                    ei, v_edge, cc.weight,
+                                    Eigen::SparseVector<double>()),
+                                cp, w * contact_force);
+                            FC_ev.back().weight = cc.weight;
+                            assign_ev_mu(FC_ev.back());
+                        };
+                        emit_ev(ea, 1.0 - u);
+                        emit_ev(eb, u);
+                        break;
+                    }
+                    default:
+                        break;
+                    }
+                }
             }
         }
     } else {
@@ -451,20 +521,9 @@ void TangentialCollisions::build(
             const double dist = sqrt(d2);
             const double dhat_val = params.get_dhat();
             return (dist > 0 && dist < dhat_val)
-                ? outer_w * normal_stiffness * std::abs(Math<double>::log_barrier_grad(dist / dhat_val) / dhat_val)
+                ? outer_w * normal_stiffness
+                    * std::abs(params.barrier->first_derivative(dist, dhat_val))
                 : 0.0;
-        };
-
-        // Helper: assign EV mu values
-        auto assign_ev_mu = [&](EdgeVertexTangentialCollision& tc) {
-            const auto& [vi, e0i, e1i, _] =
-                tc.vertex_ids(edges, faces);
-            const double edge_mu_s =
-                (mu_s(e1i) - mu_s(e0i)) * tc.closest_point[0] + mu_s(e0i);
-            tc.mu_s = blend_mu(edge_mu_s, mu_s(vi));
-            const double edge_mu_k =
-                (mu_k(e1i) - mu_k(e0i)) * tc.closest_point[0] + mu_k(e0i);
-            tc.mu_k = blend_mu(edge_mu_k, mu_k(vi));
         };
 
         // Helper: assign EE mu values

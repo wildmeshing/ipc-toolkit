@@ -11,9 +11,6 @@
 namespace ipc {
 class HighOrderCollisions {
 public:
-    /// @brief The type of the collisions.
-    using value_type = HighOrderCollision;
-
 public:
     HighOrderCollisions() = default;
     virtual ~HighOrderCollisions() = default;
@@ -56,16 +53,6 @@ public:
 
     /// @brief Clear the collision set.
     void clear();
-
-    /// @brief Get a reference to collision at index i.
-    /// @param i The index of the collision.
-    /// @return A reference to the collision.
-    HighOrderCollision& operator[](size_t i);
-
-    /// @brief Get a const reference to collision at index i.
-    /// @param i The index of the collision.
-    /// @return A const reference to the collision.
-    const HighOrderCollision& operator[](size_t i) const;
 
     /// @brief Compute minimum distance between all contact candidates
     /// @param mesh The collision mesh.
@@ -133,9 +120,6 @@ public:
     Eigen::VectorXd edge_collision_counts(size_t num_edges) const;
 
 public:
-    /// @brief (active) collision pairs
-    std::vector<std::shared_ptr<HighOrderCollision>> collisions;
-
     /// @brief per-vertex adaptive dhat
     Eigen::VectorXd vert_adaptive_dhat;
     /// @brief per-edge adaptive dhat
@@ -155,6 +139,10 @@ public:
     unordered_map<std::pair<index_t, index_t>, std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
     // face_collisions[fi][qi] provides the contact set for quadrature point qi of face fi
     unordered_map<index_t, std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>>> face_collisions;
+
+    /// @brief collision sets for 2D quadrature
+    // edge_collisions_2d[ei][qi] provides the contact set for Gauss-Lobatto QP qi on edge ei
+    unordered_map<index_t, std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>>> edge_collisions_2d;
 
     /// @brief Total number of collision pairs counted across all quadrature build functions
     size_t num_quadrature_collision_pairs = 0;

@@ -74,14 +74,15 @@ namespace {
     }
 }
 
-class Vertex2 : public HighOrderPrimitive {
+/// @brief 2D vertex primitive with neighbor storage, for OGC.
+class Vertex2ogc : public HighOrderPrimitive {
 public:
     static constexpr int N_CORE_POINTS = 1;
     static constexpr int N_POINTS = 1;
     static constexpr int DIM = 2;
     static constexpr int N_DOFS = N_POINTS * DIM;
 
-    Vertex2(
+    Vertex2ogc(
         const index_t id,
         const CollisionMesh& mesh,
         const Eigen::MatrixXd& V)
@@ -109,10 +110,7 @@ public:
     static constexpr int DIM = 2;
     static constexpr int N_DOFS = N_POINTS * DIM;
 
-    Edge2P1(
-        const index_t id,
-        const CollisionMesh& mesh,
-        const Eigen::MatrixXd& V)
+    Edge2P1(const index_t id, const CollisionMesh& mesh)
         : HighOrderPrimitive(id)
     {
         m_vertex_ids[0] = mesh.edges()(id, 0);
@@ -121,6 +119,24 @@ public:
 
     int n_vertices() const override { return 2; }
     int n_dofs() const override { return n_vertices() * DIM; }
+};
+
+/// @brief Simple 2D vertex primitive (single vertex, no neighbor storage).
+class Vertex2 : public HighOrderPrimitive {
+public:
+    static constexpr int N_CORE_POINTS = 1;
+    static constexpr int N_POINTS = 1;
+    static constexpr int DIM = 2;
+    static constexpr int N_DOFS = N_POINTS * DIM;
+
+    Vertex2(const index_t id, const CollisionMesh& /*mesh*/)
+        : HighOrderPrimitive(id)
+    {
+        m_vertex_ids[0] = id;
+    }
+
+    int n_vertices() const override { return 1; }
+    int n_dofs() const override { return N_DOFS; }
 };
 
 class Vertex3 : public HighOrderPrimitive {

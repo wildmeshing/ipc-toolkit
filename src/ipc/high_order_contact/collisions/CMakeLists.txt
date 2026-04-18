@@ -2,8 +2,8 @@ set(SOURCES
     high_order_collision.cpp
     high_order_collision.hpp
     vertex_matrix_view.hpp
-    high_order_collision_3d.cpp
-    high_order_collision_3d.hpp
+    high_order_collision_template.cpp
+    high_order_collision_template.hpp
     high_order_collision_dict.cpp
     high_order_collision_dict.hpp
 )
