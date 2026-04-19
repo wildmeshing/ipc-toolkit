@@ -71,6 +71,11 @@ void NormalCollisionsBuilder::add_edge_vertex_collisions(
 {
     for (size_t i = start_i; i < end_i; i++) {
         const auto& [ei, vi] = candidates[i];
+
+        if (skip_obstacles && mesh.is_obstacle_vertex(vi)) {
+            continue;
+        }
+
         const auto [v, e0, e1, _] =
             candidates[i].vertices(vertices, mesh.edges(), mesh.faces());
 
