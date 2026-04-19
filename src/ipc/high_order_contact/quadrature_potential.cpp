@@ -913,13 +913,7 @@ namespace ipc {
         num_collision_pairs = 0;
         const double dhat2 = dhat * dhat;
 
-        // Edges already handled (source edge always skipped).
-        std::unordered_set<index_t> processed_edges;
-        processed_edges.insert(ei);
-
-        // For each nearby vertex: add -1 VV pair, then infer +1 edge pairs from
-        // its incident edges (EE candidates are empty for 2D broad phase, so we
-        // reconstruct them from the EV candidates and mesh topology).
+        // VV pairs (weight=-1): for each nearby vertex within dhat of the QP.
         for (const index_t vj : candidates.ev_set(ei)) {
             if (vj == corner_vertex) continue;
             if (filter_obstacles && mesh.is_obstacle_vertex(vj)) continue;
@@ -930,28 +924,34 @@ namespace ipc {
                 std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(virtual_vid, vj, mesh);
             vv_pair->weight = -1;
             insert_pair(pairs, std::move(vv_pair));
+        }
 
-            // Infer +1 edge pairs from edges incident to vj.
-            for (const index_t ej : mesh.vertices_to_edges()[vj]) {
-                if (processed_edges.count(ej)) continue;
-                processed_edges.insert(ej);
-                const index_t ea = mesh.edges()(ej, 0);
-                const index_t eb = mesh.edges()(ej, 1);
-                if (corner_vertex >= 0 && (ea == corner_vertex || eb == corner_vertex)) continue;
-                if (filter_obstacles && mesh.is_obstacle_edge(ej)) continue;
-
+        // EV pairs (weight=+1): iterate ee_set directly.
+        std::unordered_set<index_t> processed_edges;
+        processed_edges.insert(ei);
+        for (const index_t ej : candidates.ee_set(ei)) {
+            //if (processed_edges.count(ej)) continue;
+            processed_edges.insert(ej);
+            const index_t ea = mesh.edges()(ej, 0);
+            const index_t eb = mesh.edges()(ej, 1);
+            if (corner_vertex >= 0 && (ea == corner_vertex || eb == corner_vertex)) continue;
+            if (filter_obstacles && mesh.is_obstacle_edge(ej)) continue;
+            const auto dtype = point_edge_distance_type(q_pos, V.row(ea), V.row(eb));
+            if (dtype == PointEdgeDistanceType::P_E0) {
+                if (point_point_distance(q_pos, V.row(ea)) >= dhat2) continue;
                 ++num_collision_pairs;
-                const auto dtype = point_edge_distance_type(q_pos, V.row(ea), V.row(eb));
-                if (dtype == PointEdgeDistanceType::P_E0) {
-                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
-                        std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(virtual_vid, ea, mesh)));
-                } else if (dtype == PointEdgeDistanceType::P_E1) {
-                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
-                        std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(virtual_vid, eb, mesh)));
-                } else {
-                    insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
-                        std::make_shared<HighOrderCollisionTemplate<Vertex2, Edge2P1>>(virtual_vid, ej, mesh)));
-                }
+                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+                    std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(virtual_vid, ea, mesh)));
+            } else if (dtype == PointEdgeDistanceType::P_E1) {
+                if (point_point_distance(q_pos, V.row(eb)) >= dhat2) continue;
+                ++num_collision_pairs;
+                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+                    std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(virtual_vid, eb, mesh)));
+            } else {
+                if (point_edge_distance(q_pos, V.row(ea), V.row(eb), dtype) >= dhat2) continue;
+                ++num_collision_pairs;
+                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+                    std::make_shared<HighOrderCollisionTemplate<Vertex2, Edge2P1>>(virtual_vid, ej, mesh)));
             }
         }
 

@@ -22,10 +22,15 @@ public:
     /// @param barrier The barrier function.
     /// @param dhat The activation distance of the barrier.
     /// @param use_physical_barrier Whether to use the physical barrier.
+    /// @param use_squared_distance If true (default), the barrier receives
+    ///        squared distance d² as input (standard IPC convention). If false,
+    ///        the barrier receives the actual Euclidean distance d, with chain-
+    ///        rule corrections applied internally so NormalPotential is unchanged.
     BarrierPotential(
         std::shared_ptr<Barrier> barrier,
         const double dhat,
-        const bool use_physical_barrier = false);
+        const bool use_physical_barrier = false,
+        const bool use_squared_distance = true);
 
     /// @brief Get the activation distance of the barrier.
     double dhat() const { return m_dhat; }
@@ -79,6 +84,9 @@ public:
         const double dmin,
         const double barrier_stiffness) const override;
 
+    /// @brief Get whether to use squared distance as input to the barrier.
+    bool use_squared_distance() const { return m_use_squared_distance; }
+
     /// @brief Get whether to use the physical barrier.
     /// @note When using the convergent formulation we want the barrier to
     ///       have units of Pa⋅m, so κ gets units of Pa and the barrier function
@@ -131,6 +139,11 @@ protected:
     ///       should have units of m. See notebooks/physical_barrier.ipynb for
     ///       more details.
     bool m_use_physical_barrier = false;
+
+    /// @brief If true (default), the barrier receives d² as input (standard
+    ///        IPC convention). If false, it receives actual distance d, with
+    ///        chain-rule corrections applied so NormalPotential is unchanged.
+    bool m_use_squared_distance = true;
 };
 
 } // namespace ipc

@@ -742,6 +742,23 @@ std::set<index_t> Candidates::ee_set(index_t id) const
             out.insert(eid);
         }
     }
+    // In 2D, EE candidates are never built by the broad phase. Reconstruct
+    // them from EV candidates symmetrically:
+    // (a) edges adjacent to vertices that are close to edge id (via ev_set)
+    // (b) edges that id's own endpoints are close to (via ve_set)
+    if (mesh_.dim() == 2) {
+        for (const index_t vj : ev_set(id)) {
+            for (const index_t ej : mesh_.vertices_to_edges()[vj]) {
+                out.insert(ej);
+            }
+        }
+        for (index_t lv = 0; lv < 2; ++lv) {
+            const index_t vi = mesh_.edges()(id, lv);
+            for (const index_t ej : ve_set(vi)) {
+                out.insert(ej);
+            }
+        }
+    }
     out.erase(id);
     return out;
 }
