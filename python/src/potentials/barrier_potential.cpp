@@ -199,23 +199,21 @@ void define_high_order_potential(py::module &m)
 
     py::class_<HighOrderContactParameters>(m, "HighOrderContactParameters")
         .def(
-            py::init<const double, const double, const int, const int,
+            py::init<const double, const double, const int,
                      HighOrderContactParameters::IntegrationType>(),
             R"ipc_Qu8mg5v7(
             Construct parameter set for high-order contact.
 
             Parameters:
-                dhat, dbar_factor, quad_order, exponent, integration_type
+                dhat, dbar_factor, quad_order, integration_type
             )ipc_Qu8mg5v7",
             py::arg("dhat"), py::arg("dbar_factor") = 1.0,
-            py::arg("quad_order") = 1, py::arg("exponent") = 2,
+            py::arg("quad_order") = 1,
             py::arg("integration_type") = HighOrderContactParameters::IntegrationType::NO_OBST)
         .def_readonly("dhat", &HighOrderContactParameters::dhat)
         .def_readonly("dbar", &HighOrderContactParameters::dbar)
         .def_readonly("quad_order", &HighOrderContactParameters::quad_order)
-        .def_readonly("integration_type", &HighOrderContactParameters::integration_type)
-        .def_readonly_static("alpha", &HighOrderContactParameters::alpha)
-        .def_readonly_static("r", &HighOrderContactParameters::r);
+        .def_readonly("integration_type", &HighOrderContactParameters::integration_type);
 
 
     py::class_<HighOrderContactPotential>(m, "HighOrderContactPotential")

@@ -691,7 +691,7 @@ TEST_CASE(
     const double epsv_times_h = 1.;
     const double normal_stiffness = 1.;
     const bool normalize_weights = GENERATE(true, false);
-    const HighOrderContactParameters params(dhat, 1., 2, 1);
+    const HighOrderContactParameters params(dhat, 1., 2);
 
     // Two close 2D rectangles (gap ~0.2 < dhat=0.6)
     Eigen::MatrixXd V0(8, 2), V1;
@@ -768,7 +768,7 @@ TEST_CASE(
     // quad_order=0 uses vertex-only collisions (no face_quad_rule needed).
     // quad_order=1 with face_quad_rule set uses face quadrature.
     const int quad_order = GENERATE(0, 1);
-    HighOrderContactParameters params(dhat, 1., quad_order, 2);
+    HighOrderContactParameters params(dhat, 1., quad_order);
     if (quad_order > 0) {
         params.face_quad_rule = GENERATE_COPY(
             make_vertex_quad_rule(), make_vertex_plus_centroid_quad_rule());
