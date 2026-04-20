@@ -1,6 +1,8 @@
 #pragma once
 #include <ipc/utils/logger.hpp>
 #include <ipc/barrier/barrier.hpp>
+#include <atomic>
+#include <limits>
 #include <memory>
 
 namespace ipc {
@@ -67,8 +69,27 @@ struct HighOrderContactParameters {
     /// matching the behaviour of quad_order == 0 in the old interface.
     FaceQuadRule face_quad_rule;
 
+    /// Record a distance passed to the barrier; tracks the running minimum
+    /// across all threads. Copies of this struct share the same tracker
+    /// (shared_ptr), so pass-by-value sites still update the original.
+    void record_dist(double d) const {
+        auto& a = *m_min_dist_seen;
+        double cur = a.load(std::memory_order_relaxed);
+        while (d < cur && !a.compare_exchange_weak(cur, d, std::memory_order_relaxed)) {}
+    }
+
+    double min_dist_seen() const {
+        return m_min_dist_seen->load(std::memory_order_relaxed);
+    }
+
+    void reset_min_dist() const {
+        m_min_dist_seen->store(std::numeric_limits<double>::infinity(), std::memory_order_relaxed);
+    }
+
 private:
     double m_adaptive_dhat_ratio = 0.5;
+    std::shared_ptr<std::atomic<double>> m_min_dist_seen =
+        std::make_shared<std::atomic<double>>(std::numeric_limits<double>::infinity());
 };
 
 } // namespace ipc

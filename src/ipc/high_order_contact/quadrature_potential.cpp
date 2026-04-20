@@ -10,6 +10,7 @@
 #include "ipc/distance/distance_type.hpp"
 #include "ipc/high_order_contact/high_order_collisions_builder.hpp"
 #include "ipc/smooth_contact/distance/mollifier.hpp"
+#include "ipc/utils/profile_registry.hpp"
 
 namespace ipc {
     namespace {
@@ -143,6 +144,8 @@ namespace ipc {
         }
 
         if (project_to_psd != PSDProjectionMethod::NONE) {
+            ProfileRegistry::instance().add_value(
+                "ho.psd_projection.size", H.rows());
             H = ipc::project_to_psd(H, project_to_psd);
         }
         return H;
@@ -757,6 +760,8 @@ namespace ipc {
         }
 
         if (project_to_psd != PSDProjectionMethod::NONE) {
+            ProfileRegistry::instance().add_value(
+                "ho.psd_projection.size", H.rows());
             H = ipc::project_to_psd(H, project_to_psd);
         }
         return H;
@@ -874,6 +879,8 @@ namespace ipc {
         }
 
         if (project_to_psd != PSDProjectionMethod::NONE) {
+            ProfileRegistry::instance().add_value(
+                "ho.psd_projection.size", H.rows());
             H = ipc::project_to_psd(H, project_to_psd);
         }
         return H;
@@ -1064,6 +1071,8 @@ namespace ipc {
         }
 
         if (project_to_psd != PSDProjectionMethod::NONE) {
+            ProfileRegistry::instance().add_value(
+                "ho.psd_projection.size", H.rows());
             H = ipc::project_to_psd(H, project_to_psd);
         }
         return H;

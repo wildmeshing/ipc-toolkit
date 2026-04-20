@@ -851,3 +851,75 @@ TEST_CASE("Face Quadrature Gradient and Hessian", "[high_order_potential], [high
         REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
     }
 }
+
+// Verify that with normalize_weights = true, the global hessian is PSD whenever
+// project_hessian_to_psd is set. The non-normalized branch uses local PSD
+// projection which trivially yields a PSD assembly.
+TEST_CASE("Convergent Quadrature Hessian PSD", "[high_order_potential], [high_order_potential_3d]")
+{
+    auto [V, E, F, mesh] = load_wrapped_sphere();
+
+    const double dhat = 0.15;
+    HighOrderContactParameters params(dhat, 1., 0);
+
+    const bool normalize_weights = GENERATE(true, false);
+    const PSDProjectionMethod psd_method =
+        GENERATE(PSDProjectionMethod::CLAMP, PSDProjectionMethod::ABS);
+
+    HighOrderContactPotential potential(params, normalize_weights);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    Eigen::SparseMatrix<double> H = potential.hessian(collisions, mesh, V, psd_method);
+    Eigen::MatrixXd Hd(H);
+    // Symmetrize numerically to remove tiny asymmetry from triplet ordering.
+    Hd = 0.5 * (Hd + Hd.transpose()).eval();
+
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd, Eigen::EigenvaluesOnly);
+    REQUIRE(es.info() == Eigen::Success);
+    const double lambda_min = es.eigenvalues().minCoeff();
+    const double lambda_max = es.eigenvalues().maxCoeff();
+    const double tol = std::max(1e-10, 1e-10 * std::abs(lambda_max));
+
+    INFO("normalize_weights=" << normalize_weights
+        << " method=" << static_cast<int>(psd_method)
+        << " lambda_min=" << lambda_min << " lambda_max=" << lambda_max);
+    REQUIRE(lambda_min >= -tol);
+}
+
+// Same check for the 3D face-quadrature variant: high-order quadrature points
+// inside each face must also yield a PSD assembly under combined projection.
+TEST_CASE("Face Quadrature Hessian PSD", "[high_order_potential], [high_order_potential_3d]")
+{
+    auto [V, E, F, mesh] = load_wrapped_sphere();
+
+    const double dhat = 0.15;
+    const int quad_order = GENERATE(0, 3, 6);
+    HighOrderContactParameters params(dhat, 1., quad_order);
+
+    const bool normalize_weights = GENERATE(true, false);
+    const PSDProjectionMethod psd_method =
+        GENERATE(PSDProjectionMethod::CLAMP, PSDProjectionMethod::ABS);
+
+    HighOrderContactPotential potential(params, normalize_weights);
+
+    HighOrderCollisions collisions;
+    collisions.build(mesh, V, params);
+
+    Eigen::SparseMatrix<double> H = potential.hessian(collisions, mesh, V, psd_method);
+    Eigen::MatrixXd Hd(H);
+    Hd = 0.5 * (Hd + Hd.transpose()).eval();
+
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd, Eigen::EigenvaluesOnly);
+    REQUIRE(es.info() == Eigen::Success);
+    const double lambda_min = es.eigenvalues().minCoeff();
+    const double lambda_max = es.eigenvalues().maxCoeff();
+    const double tol = std::max(1e-10, 1e-10 * std::abs(lambda_max));
+
+    INFO("normalize_weights=" << normalize_weights
+        << " quad_order=" << quad_order
+        << " method=" << static_cast<int>(psd_method)
+        << " lambda_min=" << lambda_min << " lambda_max=" << lambda_max);
+    REQUIRE(lambda_min >= -tol);
+}

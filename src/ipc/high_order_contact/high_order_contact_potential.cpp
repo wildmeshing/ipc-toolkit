@@ -4,6 +4,9 @@
 #include <ipc/utils/maybe_parallel_for.hpp>
 #include <ipc/utils/profile_registry.hpp>
 
+#include <algorithm>
+#include <unordered_map>
+
 #include <tbb/blocked_range.h>
 #include <tbb/combinable.h>
 #include <tbb/enumerable_thread_specific.h>
@@ -519,6 +522,8 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                             * PointPotentialHelper::evaluate_potential_hessian_at_edge_qp(
                                 X_ext, dict, params, lambda, project_hessian_to_psd);
 
+                        ProfileRegistry::instance().add_value(
+                            "ho.local_hessian.size", local_hess.rows());
                         local_hessian_to_global_triplets(
                             local_hess, dict.vertex_ids(), dim,
                             *(hess_triplets.cache));
@@ -527,6 +532,20 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
             });
     }
     else if (mesh.dim() == 3) {
+        // When normalize_weights is on, the per-face hessian is assembled as
+        //   Term A (sum of per-stencil H(p_i))
+        // + Term B (negative weighted sum of H(mol_i))
+        // + Term C (sign-indefinite cross terms ~ sym(G⊗∇Z)).
+        // PSD-projecting Terms A and B individually is not enough — Term C is
+        // never PSD on its own. To still guarantee a PSD per-face contribution
+        // (and thus a PSD global hessian), defer all per-stencil projections
+        // and project the assembled per-face block once, over the union of
+        // involved DOFs. With normalize_weights = false the original
+        // local-projection path is preserved exactly.
+        const bool combined_psd_projection =
+            normalize_weights && project_hessian_to_psd != PSDProjectionMethod::NONE;
+        const PSDProjectionMethod inner_psd_method =
+            combined_psd_projection ? PSDProjectionMethod::NONE : project_hessian_to_psd;
         {
             using T = ADHessian<12>;
 
@@ -637,7 +656,10 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 }
 #pragma GCC diagnostic pop
 
-                                if (project_hessian_to_psd != PSDProjectionMethod::NONE) {
+                                if (project_hessian_to_psd != PSDProjectionMethod::NONE
+                                    && !combined_psd_projection) {
+                                    ProfileRegistry::instance().add_value(
+                                        "ho.psd_projection.size", local_hess.rows());
                                     local_hess = project_to_psd(local_hess, project_hessian_to_psd);
                                 }
 
@@ -677,7 +699,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 entry.grad_P = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
                                     X_qp, dict, params, qp.lambda);
                                 entry.local_hess = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions(
-                                    X_qp, dict, params, qp.lambda, project_hessian_to_psd);
+                                    X_qp, dict, params, qp.lambda, inner_psd_method);
                                 total_p += entry.P;
                                 const_cache.push_back(std::move(entry));
                             }
@@ -698,7 +720,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 entry.grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
                                     X, dict, params);
                                 entry.local_hess = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                                    X, dict, params, project_hessian_to_psd);
+                                    X, dict, params, inner_psd_method);
                                 total_p += entry.P;
                                 const_cache.push_back(std::move(entry));
                             }
@@ -713,67 +735,204 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         const double avg_P = total_p / total_w;
                         const double scale_C = -(w / (total_w * total_w));
 
-                        // Adds scale_C * sym(outer(g_vec, gradz_vec)) to triplets.
-                        auto add_sym_correction = [&](
-                            const std::vector<index_t>& g_dofs,
-                            const Eigen::Ref<const Eigen::VectorXd>& g_vec,
-                            const std::vector<index_t>& gradz_dofs,
-                            const Eigen::Ref<const Eigen::VectorXd>& gradz_vec) {
-                            for (int a = 0; a < static_cast<int>(g_dofs.size()); a++) {
-                                for (int b = 0; b < static_cast<int>(gradz_dofs.size()); b++) {
-                                    const double v = scale_C * g_vec[a] * gradz_vec[b];
-                                    hess_triplets.cache->add_value(0, g_dofs[a], gradz_dofs[b], v);
-                                    hess_triplets.cache->add_value(0, gradz_dofs[b], g_dofs[a], v);
+                        if (combined_psd_projection) {
+                            // Nothing contributes from this face: skip combined block.
+                            if (ee_cache.empty() && const_cache.empty()) {
+                                continue;
+                            }
+                            // Build the union of vertex IDs across every
+                            // contributing stencil so the entire face block can
+                            // be assembled into one dense matrix and projected
+                            // once. This is the only way Term C
+                            // (sym(G⊗∇Z), sign-indefinite) can be made PSD.
+                            std::vector<index_t> union_vids;
+                            union_vids.reserve(
+                                4 * ee_cache.size() + 3 * const_cache.size());
+                            for (const auto& e : ee_cache) {
+                                for (index_t vid : e.dict->vertex_ids()) {
+                                    union_vids.push_back(vid);
+                                }
+                                for (index_t vid : e.dict->primary_vertex_ids()) {
+                                    if (vid >= 0) union_vids.push_back(vid);
                                 }
                             }
-                        };
-
-                        // Term A: (w/total_w) * H(p_sum)
-                        for (const auto& e : ee_cache) {
-                            local_hessian_to_global_triplets(
-                                (w / total_w) * e.local_hess, e.dict->vertex_ids(), dim,
-                                *(hess_triplets.cache));
-                        }
-                        for (const auto& e : const_cache) {
-                            local_hessian_to_global_triplets(
-                                (w / total_w) * e.local_hess, *e.vertex_ids, dim,
-                                *(hess_triplets.cache));
-                        }
-
-                        // Term B: -(w*avg_P/Z) * Σ_i H(mol_i)
-                        for (const auto& e : ee_cache) {
-                            local_hessian_to_global_triplets(
-                                -(w * avg_P / total_w) * e.mol_hess,
-                                e.dict->primary_vertex_ids(), dim,
-                                *(hess_triplets.cache));
-                        }
-
-                        // Term C: -(w/Z²) * sym(G⊗∇Z)
-                        for (const auto& ei : ee_cache) {
-                            const auto& prim_dofs_i = ei.dict->primary_dofs();
-                            const Eigen::Vector<double, 12>& mol_grad_i = ei.mol_grad;
-                            for (const auto& ek : ee_cache) {
-                                add_sym_correction(
-                                    ek.dict->primary_dofs(),
-                                    (ek.P - avg_P) * ek.mol_grad,
-                                    prim_dofs_i, mol_grad_i);
-                                add_sym_correction(
-                                    ek.dict->dofs(),
-                                    ek.mol_val * ek.grad_P,
-                                    prim_dofs_i, mol_grad_i);
+                            for (const auto& e : const_cache) {
+                                for (index_t vid : *e.vertex_ids) {
+                                    union_vids.push_back(vid);
+                                }
                             }
-                            for (const auto& ej : const_cache) {
-                                add_sym_correction(*ej.dofs, ej.grad_P, prim_dofs_i, mol_grad_i);
+                            std::sort(union_vids.begin(), union_vids.end());
+                            union_vids.erase(
+                                std::unique(union_vids.begin(), union_vids.end()),
+                                union_vids.end());
+
+                            std::unordered_map<index_t, int> vid_to_local;
+                            vid_to_local.reserve(union_vids.size());
+                            for (int i = 0; i < static_cast<int>(union_vids.size()); i++) {
+                                vid_to_local[union_vids[i]] = i;
+                            }
+
+                            const int n_union_dofs = static_cast<int>(union_vids.size()) * dim;
+                            Eigen::MatrixXd H_face =
+                                Eigen::MatrixXd::Zero(n_union_dofs, n_union_dofs);
+
+                            // Scatter a (n*dim)x(n*dim) block keyed by vertex ids
+                            // into H_face using the union vid mapping.
+                            auto add_block = [&](
+                                const Eigen::MatrixXd& block,
+                                auto&& vids,
+                                double scale) {
+                                const int n = static_cast<int>(block.rows()) / dim;
+                                std::vector<int> lvi(n);
+                                for (int i = 0; i < n; i++) {
+                                    lvi[i] = vid_to_local.at(vids[i]);
+                                }
+                                for (int i = 0; i < n; i++) {
+                                    for (int j = 0; j < n; j++) {
+                                        H_face.block(lvi[i] * dim, lvi[j] * dim, dim, dim)
+                                            += scale * block.block(i * dim, j * dim, dim, dim);
+                                    }
+                                }
+                            };
+
+                            // Maps a global DOF index (= vid*dim + d) to its
+                            // local index inside H_face.
+                            auto global_dof_to_local = [&](index_t gd) {
+                                return vid_to_local.at(gd / dim) * dim + static_cast<int>(gd % dim);
+                            };
+
+                            // Adds scale_C * sym(outer(g_vec, gradz_vec)) to H_face.
+                            auto add_sym_correction_dense = [&](
+                                const std::vector<index_t>& g_dofs,
+                                const Eigen::Ref<const Eigen::VectorXd>& g_vec,
+                                const std::vector<index_t>& gradz_dofs,
+                                const Eigen::Ref<const Eigen::VectorXd>& gradz_vec) {
+                                for (int a = 0; a < static_cast<int>(g_dofs.size()); a++) {
+                                    const int la = global_dof_to_local(g_dofs[a]);
+                                    for (int b = 0; b < static_cast<int>(gradz_dofs.size()); b++) {
+                                        const int lb = global_dof_to_local(gradz_dofs[b]);
+                                        const double v = scale_C * g_vec[a] * gradz_vec[b];
+                                        H_face(la, lb) += v;
+                                        H_face(lb, la) += v;
+                                    }
+                                }
+                            };
+
+                            // Term A: (w/total_w) * H(p_sum)
+                            for (const auto& e : ee_cache) {
+                                add_block(e.local_hess, e.dict->vertex_ids(), w / total_w);
+                            }
+                            for (const auto& e : const_cache) {
+                                add_block(e.local_hess, *e.vertex_ids, w / total_w);
+                            }
+
+                            // Term B: -(w*avg_P/Z) * Σ_i H(mol_i)
+                            const double scale_B = -(w * avg_P / total_w);
+                            for (const auto& e : ee_cache) {
+                                add_block(e.mol_hess, e.dict->primary_vertex_ids(), scale_B);
+                            }
+
+                            // Term C: -(w/Z²) * sym(G⊗∇Z)
+                            for (const auto& ei : ee_cache) {
+                                const auto& prim_dofs_i = ei.dict->primary_dofs();
+                                const Eigen::Vector<double, 12>& mol_grad_i = ei.mol_grad;
+                                for (const auto& ek : ee_cache) {
+                                    add_sym_correction_dense(
+                                        ek.dict->primary_dofs(),
+                                        (ek.P - avg_P) * ek.mol_grad,
+                                        prim_dofs_i, mol_grad_i);
+                                    add_sym_correction_dense(
+                                        ek.dict->dofs(),
+                                        ek.mol_val * ek.grad_P,
+                                        prim_dofs_i, mol_grad_i);
+                                }
+                                for (const auto& ej : const_cache) {
+                                    add_sym_correction_dense(
+                                        *ej.dofs, ej.grad_P, prim_dofs_i, mol_grad_i);
+                                }
+                            }
+
+                            ProfileRegistry::instance().add_value(
+                                "ho.psd_projection.size", H_face.rows());
+                            H_face = project_to_psd(H_face, project_hessian_to_psd);
+
+                            ProfileRegistry::instance().add_value(
+                                "ho.local_hessian.size", H_face.rows());
+                            local_hessian_to_global_triplets(
+                                H_face, union_vids, dim, *(hess_triplets.cache));
+                        } else {
+                            // Adds scale_C * sym(outer(g_vec, gradz_vec)) to triplets.
+                            auto add_sym_correction = [&](
+                                const std::vector<index_t>& g_dofs,
+                                const Eigen::Ref<const Eigen::VectorXd>& g_vec,
+                                const std::vector<index_t>& gradz_dofs,
+                                const Eigen::Ref<const Eigen::VectorXd>& gradz_vec) {
+                                for (int a = 0; a < static_cast<int>(g_dofs.size()); a++) {
+                                    for (int b = 0; b < static_cast<int>(gradz_dofs.size()); b++) {
+                                        const double v = scale_C * g_vec[a] * gradz_vec[b];
+                                        hess_triplets.cache->add_value(0, g_dofs[a], gradz_dofs[b], v);
+                                        hess_triplets.cache->add_value(0, gradz_dofs[b], g_dofs[a], v);
+                                    }
+                                }
+                            };
+
+                            // Term A: (w/total_w) * H(p_sum)
+                            for (const auto& e : ee_cache) {
+                                ProfileRegistry::instance().add_value(
+                                    "ho.local_hessian.size", e.local_hess.rows());
+                                local_hessian_to_global_triplets(
+                                    (w / total_w) * e.local_hess, e.dict->vertex_ids(), dim,
+                                    *(hess_triplets.cache));
+                            }
+                            for (const auto& e : const_cache) {
+                                ProfileRegistry::instance().add_value(
+                                    "ho.local_hessian.size", e.local_hess.rows());
+                                local_hessian_to_global_triplets(
+                                    (w / total_w) * e.local_hess, *e.vertex_ids, dim,
+                                    *(hess_triplets.cache));
+                            }
+
+                            // Term B: -(w*avg_P/Z) * Σ_i H(mol_i)
+                            for (const auto& e : ee_cache) {
+                                ProfileRegistry::instance().add_value(
+                                    "ho.local_hessian.size", e.mol_hess.rows());
+                                local_hessian_to_global_triplets(
+                                    -(w * avg_P / total_w) * e.mol_hess,
+                                    e.dict->primary_vertex_ids(), dim,
+                                    *(hess_triplets.cache));
+                            }
+
+                            // Term C: -(w/Z²) * sym(G⊗∇Z)
+                            for (const auto& ei : ee_cache) {
+                                const auto& prim_dofs_i = ei.dict->primary_dofs();
+                                const Eigen::Vector<double, 12>& mol_grad_i = ei.mol_grad;
+                                for (const auto& ek : ee_cache) {
+                                    add_sym_correction(
+                                        ek.dict->primary_dofs(),
+                                        (ek.P - avg_P) * ek.mol_grad,
+                                        prim_dofs_i, mol_grad_i);
+                                    add_sym_correction(
+                                        ek.dict->dofs(),
+                                        ek.mol_val * ek.grad_P,
+                                        prim_dofs_i, mol_grad_i);
+                                }
+                                for (const auto& ej : const_cache) {
+                                    add_sym_correction(*ej.dofs, ej.grad_P, prim_dofs_i, mol_grad_i);
+                                }
                             }
                         }
                     } else {
                         // Unnormalized: H(w*p_sum) = w * H(p_sum)
                         for (const auto& e : ee_cache) {
+                            ProfileRegistry::instance().add_value(
+                                "ho.local_hessian.size", e.local_hess.rows());
                             local_hessian_to_global_triplets(
                                 w * e.local_hess, e.dict->vertex_ids(), dim,
                                 *(hess_triplets.cache));
                         }
                         for (const auto& e : const_cache) {
+                            ProfileRegistry::instance().add_value(
+                                "ho.local_hessian.size", e.local_hess.rows());
                             local_hessian_to_global_triplets(
                                 w * e.local_hess, *e.vertex_ids, dim,
                                 *(hess_triplets.cache));
@@ -885,6 +1044,10 @@ Eigen::MatrixXd HighOrderContactPotential::hessian(
     const PSDProjectionMethod project_hessian_to_psd) const
 {
     Eigen::MatrixXd hess = collision.weight * collision.hessian(positions, params);
+    if (project_hessian_to_psd != PSDProjectionMethod::NONE) {
+        ProfileRegistry::instance().add_value(
+            "ho.psd_projection.size", hess.rows());
+    }
     return project_to_psd(hess, project_hessian_to_psd);
 }
 
