@@ -86,6 +86,24 @@ namespace ipc
             const std::array<double, 3>& lambda,
             PSDProjectionMethod project_to_psd);
 
+        // ---- 2D vertex helpers (OGC mode) ----
+
+        double evaluate_potential_at_vertex_2d(
+            const Eigen::MatrixXd& V,
+            const HighOrderCollisionDict<PointType::VERTEX, 2>& collisions,
+            const HighOrderContactParameters& params);
+
+        Eigen::VectorXd evaluate_potential_gradient_at_vertex_2d(
+            const Eigen::MatrixXd& V,
+            const HighOrderCollisionDict<PointType::VERTEX, 2>& collisions,
+            const HighOrderContactParameters& params);
+
+        Eigen::MatrixXd evaluate_potential_hessian_at_vertex_2d(
+            const Eigen::MatrixXd& V,
+            const HighOrderCollisionDict<PointType::VERTEX, 2>& collisions,
+            const HighOrderContactParameters& params,
+            PSDProjectionMethod project_to_psd);
+
         // ---- 2D edge quadrature point helpers ----
 
         /// @brief Evaluate P(q) = sum of barrier values for all pairs in the dict.
@@ -167,6 +185,35 @@ namespace ipc
             index_t ei,
             const std::array<double, 2>& lambda,
             double dhat,
+            size_t& num_collision_pairs) const;
+
+        /// @brief [OGC mode, 2D] Build collision dict for real vertex vid.
+        /// Adds pairs only if vid is in the feasible region of the other primitive,
+        /// always with weight +1. Uses vv_set and ve_set.
+        std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX, 2>>
+        build_collisions_at_vertex_ogc_2d(
+            const Eigen::MatrixXd& V,
+            index_t vid,
+            size_t& num_collision_pairs) const;
+
+        /// @brief [OGC mode, 3D] Build collision dict for real vertex vid.
+        /// Adds pairs only if vid is in the feasible region of the other primitive,
+        /// always with weight +1. Uses vf_set, ve_set, vv_set.
+        std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>
+        build_collisions_at_vertex_ogc_3d(
+            const Eigen::MatrixXd& V,
+            index_t vid,
+            size_t& num_collision_pairs) const;
+
+        /// @brief [OGC mode, 3D] Build EE closest-point collision dict for the QA
+        /// interior point on edge e0 (given the EE distance type).
+        /// Only checks v_set and e_set (no faces), always weight +1.
+        std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>
+        build_collisions_at_ee_cp_ogc(
+            const Eigen::MatrixXd& V,
+            index_t e0,
+            index_t e1,
+            EdgeEdgeDistanceType dtype,
             size_t& num_collision_pairs) const;
 
         const CollisionMesh& mesh;

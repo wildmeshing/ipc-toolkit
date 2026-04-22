@@ -198,38 +198,59 @@ void HighOrderCollisions::build(
         if (use_adaptive_dhat) {
             log_and_throw_error("Adaptive dhat not implemented for 2D quadrature path!");
         }
-        // Ensure candidate sets are populated (ev_set/ee_set lookups below require them).
+        // Ensure candidate sets are populated (ev_set/ee_set/vv_set lookups require them).
         const_cast<Candidates&>(candidates).convert_candidates_to_sets();
 
         auto storage = create_thread_storage<HighOrderCollisionsBuilder<2>>(
             HighOrderCollisionsBuilder<2>());
 
-        // Loop over all edges; each edge builds per-QP collision dicts.
-        maybe_parallel_for(
-            static_cast<int>(mesh.num_edges()),
-            [&](int start, int end, int thread_id) {
-                HighOrderCollisionsBuilder<2>& local_storage =
-                    get_local_thread_storage(storage, thread_id);
-                local_storage.build_edge_collisions(
-                    mesh, vertices, candidates, params, edge_dhat,
-                    static_cast<size_t>(start), static_cast<size_t>(end));
-            });
-
-        HighOrderCollisionsBuilder<2>::merge(storage, *this);
+        if (params.ogc_collisions) {
+            // OGC mode: build per-vertex collision dicts.
+            maybe_parallel_for(
+                static_cast<int>(mesh.num_vertices()),
+                [&](int start, int end, int thread_id) {
+                    HighOrderCollisionsBuilder<2>& local_storage =
+                        get_local_thread_storage(storage, thread_id);
+                    local_storage.build_vertex_collisions_ogc(
+                        mesh, vertices, candidates, params,
+                        static_cast<size_t>(start), static_cast<size_t>(end));
+                });
+            HighOrderCollisionsBuilder<2>::merge_ogc(storage, *this);
+        } else {
+            // Standard mode: loop over all edges with per-QP collision dicts.
+            maybe_parallel_for(
+                static_cast<int>(mesh.num_edges()),
+                [&](int start, int end, int thread_id) {
+                    HighOrderCollisionsBuilder<2>& local_storage =
+                        get_local_thread_storage(storage, thread_id);
+                    local_storage.build_edge_collisions(
+                        mesh, vertices, candidates, params, edge_dhat,
+                        static_cast<size_t>(start), static_cast<size_t>(end));
+                });
+            HighOrderCollisionsBuilder<2>::merge(storage, *this);
+        }
     }
     else {
-        /*auto is_active = [offset_sqr = dhat * dhat](double distance_sqr) {
-            return distance_sqr < offset_sqr;
-        };*/
-
-/* prepare collision sets to compute each P(q) */
-        // compute masks
+        // Compute vertex mask: which vertices to process.
         std::vector<bool> vertex_mask(mesh.num_vertices(), false);
-        for (const auto& candidate : candidates.fv_candidates) {
-            vertex_mask[candidate.vertex_id] = true;
+
+        if (params.ogc_collisions) {
+            // OGC mode: process all vertices appearing in any candidate pair.
+            for (const auto& c : candidates.fv_candidates) vertex_mask[c.vertex_id] = true;
+            for (const auto& c : candidates.ev_candidates) vertex_mask[c.vertex_id] = true;
+            for (const auto& c : candidates.vv_candidates) {
+                vertex_mask[c.vertex0_id] = true;
+                vertex_mask[c.vertex1_id] = true;
+            }
+        } else {
+            // Standard mode: only process vertices in face-vertex candidates.
+            for (const auto& candidate : candidates.fv_candidates) {
+                vertex_mask[candidate.vertex_id] = true;
+            }
         }
+
         std::vector<index_t> vertices_to_process;
-        if (params.quad_order == 0) {
+        if (params.ogc_collisions || params.quad_order == 0) {
             vertices_to_process.reserve(mesh.num_vertices());
             for (int i = 0; i < mesh.num_vertices(); ++i) {
                 if (vertex_mask[i]) {
@@ -239,7 +260,7 @@ void HighOrderCollisions::build(
         }
 
         std::vector<index_t> faces_to_process;
-        if (params.quad_order > 0) {
+        if (!params.ogc_collisions && params.quad_order > 0) {
             faces_to_process.resize(mesh.num_faces());
             std::iota(faces_to_process.begin(), faces_to_process.end(), 0);
         }
@@ -248,36 +269,58 @@ void HighOrderCollisions::build(
         auto storage = create_thread_storage<QuadratureCollisionsBuilder>(
             QuadratureCollisionsBuilder(mesh, candidates, params));
 
-        if (params.quad_order == 0) {
+        if (params.ogc_collisions) {
+            // OGC mode: vertex collisions with feasibility checks.
             maybe_parallel_for(
                 vertices_to_process.size(),
                 [&](int start, int end, int thread_id) {
                     QuadratureCollisionsBuilder& local_storage =
                         get_local_thread_storage(storage, thread_id);
-                    local_storage.build_vertex_collisions(
+                    local_storage.build_vertex_collisions_ogc(
                         vertices, vertices_to_process, start, end);
                 });
-        }
 
-        if (params.quad_order > 0) {
+            // OGC mode: EE collisions with feasibility checks (no face QPs).
             maybe_parallel_for(
-                faces_to_process.size(),
+                candidates.ee_candidates.size(),
                 [&](int start, int end, int thread_id) {
                     QuadratureCollisionsBuilder& local_storage =
                         get_local_thread_storage(storage, thread_id);
-                    local_storage.build_face_collisions(
-                        vertices, faces_to_process, start, end);
+                    local_storage.build_edge_edge_collisions_ogc(
+                        vertices, candidates.ee_candidates, start, end);
+                });
+        } else {
+            if (params.quad_order == 0) {
+                maybe_parallel_for(
+                    vertices_to_process.size(),
+                    [&](int start, int end, int thread_id) {
+                        QuadratureCollisionsBuilder& local_storage =
+                            get_local_thread_storage(storage, thread_id);
+                        local_storage.build_vertex_collisions(
+                            vertices, vertices_to_process, start, end);
+                    });
+            }
+
+            if (params.quad_order > 0) {
+                maybe_parallel_for(
+                    faces_to_process.size(),
+                    [&](int start, int end, int thread_id) {
+                        QuadratureCollisionsBuilder& local_storage =
+                            get_local_thread_storage(storage, thread_id);
+                        local_storage.build_face_collisions(
+                            vertices, faces_to_process, start, end);
+                    });
+            }
+
+            maybe_parallel_for(
+                candidates.ee_candidates.size(),
+                [&](int start, int end, int thread_id) {
+                    QuadratureCollisionsBuilder& local_storage =
+                        get_local_thread_storage(storage, thread_id);
+                    local_storage.build_edge_edge_collisions(
+                        vertices, candidates.ee_candidates, start, end);
                 });
         }
-
-        maybe_parallel_for(
-            candidates.ee_candidates.size(),
-            [&](int start, int end, int thread_id) {
-                QuadratureCollisionsBuilder& local_storage =
-                    get_local_thread_storage(storage, thread_id);
-                local_storage.build_edge_edge_collisions(
-                    vertices, candidates.ee_candidates, start, end);
-            });
 
         QuadratureCollisionsBuilder::merge(storage, *this);
     }
@@ -370,15 +413,19 @@ size_t HighOrderCollisions::size() const
             size += dict_ptr->size();
         }
     }
+    for (const auto& cc : vertex_collisions_2d) {
+        size += cc.second->size();
+    }
     return size;
 }
-bool HighOrderCollisions::empty() const { return vertex_collisions.empty() && edge_edge_collisions.empty() && face_collisions.empty() && edge_collisions_2d.empty(); }
+bool HighOrderCollisions::empty() const { return vertex_collisions.empty() && edge_edge_collisions.empty() && face_collisions.empty() && edge_collisions_2d.empty() && vertex_collisions_2d.empty(); }
 void HighOrderCollisions::clear()
 {
     vertex_collisions.clear();
     edge_edge_collisions.clear();
     face_collisions.clear();
     edge_collisions_2d.clear();
+    vertex_collisions_2d.clear();
 }
 
 std::string HighOrderCollisions::to_string(
