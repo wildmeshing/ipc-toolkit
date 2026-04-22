@@ -82,7 +82,7 @@ double HighOrderContactPotential::operator()(
                 for (int k = start; k < end; ++k) {
                     const index_t ei       = active_edges[k];
                     const auto&   qp_dicts = collisions.edge_collisions_2d.at(ei);
-                    const double  L        = mesh.edge_length(ei);
+                    const double  L        = mesh.edge_area(ei);
                     const double  w_edge   = L;
                     const index_t e0 = mesh.edges()(ei, 0);
                     const index_t e1 = mesh.edges()(ei, 1);
@@ -293,7 +293,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                 for (int k = start; k < end; ++k) {
                     const index_t ei       = active_edges[k];
                     const auto&   qp_dicts = collisions.edge_collisions_2d.at(ei);
-                    const double  L        = mesh.edge_length(ei);
+                    const double  L        = mesh.edge_area(ei);
                     const double  w_edge   = L;
                     const index_t e0 = mesh.edges()(ei, 0);
                     const index_t e1 = mesh.edges()(ei, 1);
@@ -545,7 +545,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                 for (int k = start; k < end; ++k) {
                     const index_t ei       = active_edges[k];
                     const auto&   qp_dicts = collisions.edge_collisions_2d.at(ei);
-                    const double  L        = mesh.edge_length(ei);
+                    const double  L        = mesh.edge_area(ei);
                     const double  w_edge   = L;
                     const index_t e0 = mesh.edges()(ei, 0);
                     const index_t e1 = mesh.edges()(ei, 1);
