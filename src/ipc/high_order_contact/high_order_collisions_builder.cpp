@@ -79,6 +79,48 @@ void HighOrderCollisionsBuilder<2>::merge(
     logger().trace("2D edge QP collision pairs: {}.", total_pairs);
 }
 
+void HighOrderCollisionsBuilder<2>::build_vertex_collisions_ogc(
+    const CollisionMesh& mesh,
+    const Eigen::MatrixXd& V,
+    const Candidates& candidates,
+    const HighOrderContactParameters& params,
+    size_t start,
+    size_t end)
+{
+    const PointPotential pp(mesh, candidates, params);
+
+    for (size_t vi = start; vi < end; ++vi) {
+        const index_t vid = static_cast<index_t>(vi);
+
+        if (candidates.vv_set(vid).empty() && candidates.ve_set(vid).empty()) continue;
+
+        if (params.integration_type == IntegrationType::NO_OBST && mesh.is_obstacle_vertex(vid)) continue;
+
+        size_t n = 0;
+        auto dict = pp.build_collisions_at_vertex_ogc_2d(V, vid, n);
+        if (dict && dict->size() > 0) {
+            vertex_collisions_2d.emplace_back(vid, std::move(dict));
+        }
+    }
+}
+
+void HighOrderCollisionsBuilder<2>::merge_ogc(
+    ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
+    HighOrderCollisions& merged_collisions)
+{
+    size_t total_pairs = 0;
+
+    for (auto& builder : local_storage) {
+        for (auto& [vi, dict] : builder.vertex_collisions_2d) {
+            total_pairs += dict->size();
+            merged_collisions.vertex_collisions_2d.insert(
+                std::make_pair(vi, std::move(dict)));
+        }
+    }
+
+    logger().trace("2D OGC vertex collision pairs: {}.", total_pairs);
+}
+
 // ============================================================================
 
 std::shared_ptr<HighOrderCollision> HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision(
@@ -412,6 +454,129 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions(
             && (!ej_is_obs || params.integration_type == IntegrationType::BRUTE_FORCE || obstacle_edge_has_non_obstacle_candidates(ej))) {
             size_t n = 0;
             auto dict = point_potential->build_collisions_at_edge_edge_closest_point(vertices, ej, ei, dtype, n);
+            if (dict && dict->size() > 0) {
+                edge_edge_collisions.push_back(std::move(dict));
+            }
+            num_collision_pairs += n;
+        }
+    }
+}
+
+void QuadratureCollisionsBuilder::build_vertex_collisions_ogc(
+    const Eigen::MatrixXd& vertices,
+    const std::vector<index_t>& vertex_indices,
+    const size_t start_i,
+    const size_t end_i)
+{
+    const CollisionMesh& mesh = point_potential->mesh;
+    const HighOrderContactParameters& params = point_potential->params;
+    for (size_t i = start_i; i < end_i; i++) {
+        const index_t vi = vertex_indices[i];
+        if (params.integration_type == IntegrationType::NO_OBST && mesh.is_obstacle_vertex(vi)) continue;
+        if (params.integration_type != IntegrationType::BRUTE_FORCE && mesh.is_obstacle_vertex(vi)) {
+            const auto v_set = point_potential->candidates.vv_set(vi);
+            const auto e_set = point_potential->candidates.ve_set(vi);
+            const auto f_set = point_potential->candidates.vf_set(vi);
+            const bool has_non_obstacle =
+                std::any_of(v_set.begin(), v_set.end(), [&](index_t v){ return !mesh.is_obstacle_vertex(v); }) ||
+                std::any_of(e_set.begin(), e_set.end(), [&](index_t e){ return !mesh.is_obstacle_edge(e); }) ||
+                std::any_of(f_set.begin(), f_set.end(), [&](index_t f){ return !mesh.is_obstacle_face(f); });
+            if (!has_non_obstacle) continue;
+        }
+        size_t n = 0;
+        auto dict = point_potential->build_collisions_at_vertex_ogc_3d(vertices, vi, n);
+        if (dict && dict->size() > 0) {
+            vertex_collisions.push_back(std::move(dict));
+        }
+        num_collision_pairs += n;
+    }
+}
+
+void QuadratureCollisionsBuilder::build_edge_edge_collisions_ogc(
+    const Eigen::MatrixXd& vertices,
+    const std::vector<EdgeEdgeCandidate>& ee_candidates,
+    const size_t start_i,
+    const size_t end_i)
+{
+    const HighOrderContactParameters& params = point_potential->params;
+    const CollisionMesh& mesh = point_potential->mesh;
+
+    auto obstacle_edge_has_non_obstacle_candidates = [&](index_t e) -> bool {
+        const auto v_set = point_potential->candidates.ev_set(e);
+        const auto e_set = point_potential->candidates.ee_set(e);
+        const auto f_set = point_potential->candidates.ef_set(e);
+        return std::any_of(v_set.begin(), v_set.end(), [&](index_t v){ return !mesh.is_obstacle_vertex(v); })
+            || std::any_of(e_set.begin(), e_set.end(), [&](index_t e2){ return !mesh.is_obstacle_edge(e2); })
+            || std::any_of(f_set.begin(), f_set.end(), [&](index_t f){ return !mesh.is_obstacle_face(f); });
+    };
+
+    for (size_t i = start_i; i < end_i; i++) {
+        const auto& candidate = ee_candidates[i];
+        const index_t ei = candidate.edge0_id;
+        const index_t ej = candidate.edge1_id;
+
+        const index_t ea = mesh.edges()(ei, 0);
+        const index_t eb = mesh.edges()(ei, 1);
+        const index_t ec = mesh.edges()(ej, 0);
+        const index_t ed = mesh.edges()(ej, 1);
+
+        if (ea == ec || ea == ed || eb == ec || eb == ed) continue;
+
+        if (params.integration_type != IntegrationType::BRUTE_FORCE
+            && mesh.is_obstacle_edge(ei) && mesh.is_obstacle_edge(ej)) continue;
+
+        if (is_parallel_edge_edge(
+            vertices.row(ea), vertices.row(eb),
+            vertices.row(ec), vertices.row(ed))) continue;
+
+        const auto dtype = edge_edge_distance_type(
+            vertices.row(ea), vertices.row(eb),
+            vertices.row(ec), vertices.row(ed));
+
+        const double dist_sq = edge_edge_distance(
+            vertices.row(ea), vertices.row(eb),
+            vertices.row(ec), vertices.row(ed), dtype);
+
+        if (dist_sq >= params.dbar * params.dbar) continue;
+
+        const bool ei_is_obs = mesh.is_obstacle_edge(ei);
+        const bool ej_is_obs = mesh.is_obstacle_edge(ej);
+
+        // Process QA (on ei) if QA is interior to ei
+        const bool ea_interior = (dtype == EdgeEdgeDistanceType::EA_EB
+            || dtype == EdgeEdgeDistanceType::EA_EB0
+            || dtype == EdgeEdgeDistanceType::EA_EB1);
+
+        if (ea_interior
+            && (params.integration_type != IntegrationType::NO_OBST || !ei_is_obs)
+            && (!ei_is_obs || params.integration_type == IntegrationType::BRUTE_FORCE
+                || obstacle_edge_has_non_obstacle_candidates(ei))) {
+            size_t n = 0;
+            auto dict = point_potential->build_collisions_at_ee_cp_ogc(vertices, ei, ej, dtype, n);
+            if (dict && dict->size() > 0) {
+                edge_edge_collisions.push_back(std::move(dict));
+            }
+            num_collision_pairs += n;
+        }
+
+        // Process QB (on ej) if QB is interior to ej
+        const bool eb_interior = (dtype == EdgeEdgeDistanceType::EA_EB
+            || dtype == EdgeEdgeDistanceType::EA0_EB
+            || dtype == EdgeEdgeDistanceType::EA1_EB);
+
+        // Map dtype to ej-as-source perspective: swap ea/eb roles
+        EdgeEdgeDistanceType dtype_swapped;
+        if (dtype == EdgeEdgeDistanceType::EA_EB)       dtype_swapped = EdgeEdgeDistanceType::EA_EB;
+        else if (dtype == EdgeEdgeDistanceType::EA0_EB) dtype_swapped = EdgeEdgeDistanceType::EA_EB0;
+        else if (dtype == EdgeEdgeDistanceType::EA1_EB) dtype_swapped = EdgeEdgeDistanceType::EA_EB1;
+        else dtype_swapped = dtype; // unused for non-interior QB
+
+        if (eb_interior
+            && (params.integration_type != IntegrationType::NO_OBST || !ej_is_obs)
+            && (!ej_is_obs || params.integration_type == IntegrationType::BRUTE_FORCE
+                || obstacle_edge_has_non_obstacle_candidates(ej))) {
+            size_t n = 0;
+            auto dict = point_potential->build_collisions_at_ee_cp_ogc(vertices, ej, ei, dtype_swapped, n);
             if (dict && dict->size() > 0) {
                 edge_edge_collisions.push_back(std::move(dict));
             }

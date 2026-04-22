@@ -105,6 +105,26 @@ double HighOrderContactPotential::operator()(
         for (const double v : potential_storage) {
             result += v;
         }
+
+        // OGC mode: per-vertex collision dicts (weight 1 per vertex).
+        if (!collisions.vertex_collisions_2d.empty()) {
+            std::vector<index_t> active_verts;
+            active_verts.reserve(collisions.vertex_collisions_2d.size());
+            for (const auto& [vi, _] : collisions.vertex_collisions_2d)
+                active_verts.push_back(vi);
+
+            auto v_storage = create_thread_storage(0.0);
+            maybe_parallel_for(
+                static_cast<int>(active_verts.size()),
+                [&](int start, int end, int thread_id) {
+                    double& total = get_local_thread_storage(v_storage, thread_id);
+                    for (int k = start; k < end; ++k) {
+                        const auto& dict = *collisions.vertex_collisions_2d.at(active_verts[k]);
+                        total += PointPotentialHelper::evaluate_potential_at_vertex_2d(X, dict, params);
+                    }
+                });
+            for (const double v : v_storage) result += v;
+        }
     }
     else if (mesh.dim() == 3) {
         {
@@ -296,6 +316,27 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                     }
                 }
             });
+
+        // OGC mode: per-vertex collision dicts (weight 1 per vertex).
+        if (!collisions.vertex_collisions_2d.empty()) {
+            std::vector<index_t> active_verts;
+            active_verts.reserve(collisions.vertex_collisions_2d.size());
+            for (const auto& [vi, _] : collisions.vertex_collisions_2d)
+                active_verts.push_back(vi);
+
+            maybe_parallel_for(
+                static_cast<int>(active_verts.size()),
+                [&](int start, int end, int thread_id) {
+                    Eigen::VectorXd& global_grad = get_local_thread_storage(storage, thread_id);
+                    for (int k = start; k < end; ++k) {
+                        const auto& dict = *collisions.vertex_collisions_2d.at(active_verts[k]);
+                        const Eigen::VectorXd local_grad =
+                            PointPotentialHelper::evaluate_potential_gradient_at_vertex_2d(X, dict, params);
+                        local_gradient_to_global_gradient(
+                            local_grad, dict.vertex_ids(), dim, global_grad);
+                    }
+                });
+        }
     }
     else if (mesh.dim() == 3) {
         {
@@ -530,6 +571,28 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                     }
                 }
             });
+
+        // OGC mode: per-vertex collision dicts (weight 1 per vertex).
+        if (!collisions.vertex_collisions_2d.empty()) {
+            std::vector<index_t> active_verts;
+            active_verts.reserve(collisions.vertex_collisions_2d.size());
+            for (const auto& [vi, _] : collisions.vertex_collisions_2d)
+                active_verts.push_back(vi);
+
+            maybe_parallel_for(
+                static_cast<int>(active_verts.size()),
+                [&](int start, int end, int thread_id) {
+                    auto& hess_triplets = get_local_thread_storage(storage, thread_id);
+                    for (int k = start; k < end; ++k) {
+                        const auto& dict = *collisions.vertex_collisions_2d.at(active_verts[k]);
+                        const Eigen::MatrixXd local_hess =
+                            PointPotentialHelper::evaluate_potential_hessian_at_vertex_2d(
+                                X, dict, params, project_hessian_to_psd);
+                        local_hessian_to_global_triplets(
+                            local_hess, dict.vertex_ids(), dim, *(hess_triplets.cache));
+                    }
+                });
+        }
     }
     else if (mesh.dim() == 3) {
         // When normalize_weights is on, the per-face hessian is assembled as

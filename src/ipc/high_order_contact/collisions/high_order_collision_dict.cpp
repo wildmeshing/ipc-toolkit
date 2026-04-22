@@ -174,4 +174,5 @@ namespace ipc
     template class HighOrderCollisionDict<PointType::EDGE>;
     template class HighOrderCollisionDict<PointType::FACE>;
     template class HighOrderCollisionDict<PointType::EDGE, 2>;
+    template class HighOrderCollisionDict<PointType::VERTEX, 2>;
 } // namespace ipc

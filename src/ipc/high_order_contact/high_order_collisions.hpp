@@ -143,6 +143,8 @@ public:
     /// @brief collision sets for 2D quadrature
     // edge_collisions_2d[ei][qi] provides the contact set for Gauss-Lobatto QP qi on edge ei
     unordered_map<index_t, std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>>> edge_collisions_2d;
+    // vertex_collisions_2d[vi] provides the contact set for vertex vi (OGC mode only)
+    unordered_map<index_t, std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX, 2>>> vertex_collisions_2d;
 
     /// @brief Total number of collision pairs counted across all quadrature build functions
     size_t num_quadrature_collision_pairs = 0;

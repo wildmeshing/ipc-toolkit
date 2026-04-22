@@ -49,6 +49,10 @@ struct HighOrderContactParameters {
     const double dhat;
     const double dbar;
 
+    /// When true, use OGC feasibility-region collision building instead of the
+    /// standard quadrature-based alternating-sign formulation.
+    bool ogc_collisions = false;
+
     /// Barrier function used in 3D collision evaluation.
     std::shared_ptr<Barrier> barrier = std::make_shared<NormalizedClampedLogBarrier>();
     const int quad_order;
