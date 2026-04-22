@@ -26,12 +26,14 @@ struct HighOrderContactParameters {
         const double _dbar_factor = 1.0,
         const int _quad_order = 1,
         bool _ogc_collisions = false,
+        bool _area_weights = true,
         const IntegrationType _integration_type = IntegrationType::NORMAL
     ) :
         dhat(_dhat),
         dbar(dhat * _dbar_factor),
         quad_order(_quad_order),
         ogc_collisions(_ogc_collisions),
+        area_weights(_area_weights),
         integration_type(_integration_type)
     {
         if (quad_order > 14) {
@@ -55,6 +57,7 @@ struct HighOrderContactParameters {
     std::shared_ptr<Barrier> barrier = std::make_shared<NormalizedClampedLogBarrier>();
     const int quad_order;
     bool ogc_collisions;
+    bool area_weights;
     const IntegrationType integration_type;
 
     double get_dhat(bool safety_mode=false) const { return safety_mode ? dbar : dhat; }

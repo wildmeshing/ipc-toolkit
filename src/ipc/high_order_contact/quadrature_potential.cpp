@@ -10,7 +10,6 @@
 #include "ipc/distance/distance_type.hpp"
 #include "ipc/high_order_contact/high_order_collisions_builder.hpp"
 #include "ipc/ogc/feasible_region.hpp"
-#include "ipc/smooth_contact/distance/mollifier.hpp"
 #include "ipc/utils/profile_registry.hpp"
 
 namespace ipc {

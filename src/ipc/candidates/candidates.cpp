@@ -18,6 +18,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <iostream>
 
 namespace ipc {
 
@@ -698,10 +699,20 @@ void Candidates::convert_candidates_to_sets()
 
 std::set<index_t> Candidates::vv_set(index_t id) const
 {
+    assert(mesh_.num_vertices());
+    std::set<index_t> out;
     if (auto iter = m_vv_set.find(id); iter != m_vv_set.end()) {
-        return iter->second;
+        out = iter->second;
     }
-    return {};
+
+    if (mesh_.dim() == 2) {
+        for (const index_t ej : ve_set(id)) {
+            out.insert(mesh_.edges()(ej, 0));
+            out.insert(mesh_.edges()(ej, 1));
+        }
+    }
+    out.erase(id);
+    return out;
 }
 std::set<index_t> Candidates::ve_set(index_t id) const
 {

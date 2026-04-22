@@ -80,10 +80,10 @@ double HighOrderContactPotential::operator()(
             [&](int start, int end, int thread_id) {
                 double& total = get_local_thread_storage(potential_storage, thread_id);
                 for (int k = start; k < end; ++k) {
-                    const index_t ei       = active_edges[k];
-                    const auto&   qp_dicts = collisions.edge_collisions_2d.at(ei);
-                    const double  L        = mesh.edge_area(ei);
-                    const double  w_edge   = L;
+                    const index_t ei = active_edges[k];
+                    const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
+                    const double L = mesh.edge_area(ei);
+                    const double w_edge = params.area_weights ? L : 1.;
                     const index_t e0 = mesh.edges()(ei, 0);
                     const index_t e1 = mesh.edges()(ei, 1);
 
@@ -119,8 +119,10 @@ double HighOrderContactPotential::operator()(
                 [&](int start, int end, int thread_id) {
                     double& total = get_local_thread_storage(v_storage, thread_id);
                     for (int k = start; k < end; ++k) {
-                        const auto& dict = *collisions.vertex_collisions_2d.at(active_verts[k]);
-                        total += PointPotentialHelper::evaluate_potential_at_vertex_2d(X, dict, params);
+                        const index_t vi = active_verts[k];
+                        const auto& dict = *collisions.vertex_collisions_2d.at(vi);
+                        const double w_vertex = params.area_weights ? (mesh.vertex_area(vi) * 0.5) : 1.0;
+                        total += w_vertex * PointPotentialHelper::evaluate_potential_at_vertex_2d(X, dict, params);
                     }
                 });
             for (const double v : v_storage) result += v;
@@ -138,7 +140,7 @@ double HighOrderContactPotential::operator()(
                 size_t& local_fq_points = get_local_thread_storage(fq_point_storage, thread_id);
                 for (index_t f = start; f < end; f++) {
                     const double area = mesh.face_areas()(f);
-                    const double w = area / 9.;
+                    const double w = params.area_weights ? (area / 9.) : 1.;
 
                     double total_w = 0;
                     double total_p = 0;
@@ -291,10 +293,10 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                     get_local_thread_storage(storage, thread_id);
 
                 for (int k = start; k < end; ++k) {
-                    const index_t ei       = active_edges[k];
-                    const auto&   qp_dicts = collisions.edge_collisions_2d.at(ei);
-                    const double  L        = mesh.edge_area(ei);
-                    const double  w_edge   = L;
+                    const index_t ei = active_edges[k];
+                    const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
+                    const double L = mesh.edge_area(ei);
+                    const double w_edge = params.area_weights ? L : 1.;
                     const index_t e0 = mesh.edges()(ei, 0);
                     const index_t e1 = mesh.edges()(ei, 1);
 
@@ -329,8 +331,10 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                 [&](int start, int end, int thread_id) {
                     Eigen::VectorXd& global_grad = get_local_thread_storage(storage, thread_id);
                     for (int k = start; k < end; ++k) {
-                        const auto& dict = *collisions.vertex_collisions_2d.at(active_verts[k]);
-                        const Eigen::VectorXd local_grad =
+                        const index_t vi = active_verts[k];
+                        const auto& dict = *collisions.vertex_collisions_2d.at(vi);
+                        const double w_vertex = params.area_weights ? (mesh.vertex_area(vi) * 0.5) : 1.0;
+                        const Eigen::VectorXd local_grad = w_vertex *
                             PointPotentialHelper::evaluate_potential_gradient_at_vertex_2d(X, dict, params);
                         local_gradient_to_global_gradient(
                             local_grad, dict.vertex_ids(), dim, global_grad);
@@ -346,7 +350,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                 Eigen::VectorXd& grad = get_local_thread_storage(storage, thread_id);
                 for (index_t f = start; f < end; f++) {
                     const double area = mesh.face_areas()(f);
-                    const double w = area / 9.;
+                    const double w = params.area_weights ? (area / 9.) : 1.;
                     // Pass 1: collect all quadrature contributions for this face
                     struct EEGradEntry {
                         const HighOrderCollisionDict<PointType::EDGE>* dict;
@@ -543,10 +547,10 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                 auto& hess_triplets = get_local_thread_storage(storage, thread_id);
 
                 for (int k = start; k < end; ++k) {
-                    const index_t ei       = active_edges[k];
-                    const auto&   qp_dicts = collisions.edge_collisions_2d.at(ei);
-                    const double  L        = mesh.edge_area(ei);
-                    const double  w_edge   = L;
+                    const index_t ei = active_edges[k];
+                    const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
+                    const double L = mesh.edge_area(ei);
+                    const double w_edge = params.area_weights ? L : 1.;
                     const index_t e0 = mesh.edges()(ei, 0);
                     const index_t e1 = mesh.edges()(ei, 1);
 
@@ -584,8 +588,10 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                 [&](int start, int end, int thread_id) {
                     auto& hess_triplets = get_local_thread_storage(storage, thread_id);
                     for (int k = start; k < end; ++k) {
-                        const auto& dict = *collisions.vertex_collisions_2d.at(active_verts[k]);
-                        const Eigen::MatrixXd local_hess =
+                        const index_t vi = active_verts[k];
+                        const auto& dict = *collisions.vertex_collisions_2d.at(vi);
+                        const double w_vertex = params.area_weights ? (mesh.vertex_area(vi) * 0.5) : 1.0;
+                        const Eigen::MatrixXd local_hess = w_vertex *
                             PointPotentialHelper::evaluate_potential_hessian_at_vertex_2d(
                                 X, dict, params, project_hessian_to_psd);
                         local_hessian_to_global_triplets(
@@ -616,7 +622,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                 auto& hess_triplets = get_local_thread_storage(storage, thread_id);
                 for (index_t f = start; f < end; f++) {
                     const double area = mesh.face_areas()(f);
-                    const double w = area / 9.;
+                    const double w = params.area_weights ? (area / 9.) : 1.;
 
                     // Pass 1: collect all quadrature contributions for this face
                     struct EEHessEntry {
