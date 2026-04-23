@@ -50,7 +50,7 @@ private:
 
         Rule res;
         res.reserve(n);
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < nodes.size(); ++i) {
             res.push_back({nodes[i]/2+.5, weights[i]/2});
         }
         return res;
@@ -629,7 +629,7 @@ inline void lobatto_set(int n, std::vector<double> & xtab, std::vector<double> &
 }
 
 
-inline void lobatto_compute (int order, std::vector<double> & x, std::vector<double> & w)
+inline void lobatto_compute (int n1, std::vector<double> & x, std::vector<double> & w)
 
 /******************************************************************************/
 /*
@@ -705,12 +705,12 @@ inline void lobatto_compute (int order, std::vector<double> & x, std::vector<dou
   int j;
   double test, error;
   double tolerance;
-  const int n = (order + 3) / 2;
+  const int n = n1+1;
 
   if ( n < 2 )
   {
     std::ostringstream oss;
-    oss << "Lobatto called with n="<<n<<", but n>=2 is required.\n";
+    oss << "Requested Gauss Lobatto rule with "<<n<<" points, but n>=2 is required.\n";
     throw std::runtime_error(oss.str());
   }
 
