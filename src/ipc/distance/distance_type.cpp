@@ -104,7 +104,7 @@ int cross_dot_cross_2(
 }
 
 
-PointEdgeDistanceType point_edge_distance_type(
+static PointEdgeDistanceType point_edge_distance_type_predicate(
     Eigen::ConstRef<VectorMax3d> p,
     Eigen::ConstRef<VectorMax3d> e0,
     Eigen::ConstRef<VectorMax3d> e1)
@@ -123,8 +123,45 @@ PointEdgeDistanceType point_edge_distance_type(
     }
 }
 
+// Standard analytic implementation.
+static PointEdgeDistanceType point_edge_distance_type_standard(
+    Eigen::ConstRef<VectorMax3d> p,
+    Eigen::ConstRef<VectorMax3d> e0,
+    Eigen::ConstRef<VectorMax3d> e1)
+{
+    assert(p.size() == 2 || p.size() == 3);
+    assert(e0.size() == 2 || e0.size() == 3);
+    assert(e1.size() == 2 || e1.size() == 3);
 
-PointTriangleDistanceType point_triangle_distance_type(
+    const VectorMax3d e = e1 - e0;
+    const double e_length_sqr = e.squaredNorm();
+    if (e_length_sqr == 0) {
+        logger().warn("Degenerate edge in point_edge_distance_type!");
+        return PointEdgeDistanceType::P_E0; // WARNING: use arbitrary end-point
+    }
+
+    const double ratio = e.dot(p - e0) / e_length_sqr;
+    if (ratio < 0) {
+        return PointEdgeDistanceType::P_E0; // PP (p-e0)
+    } else if (ratio > 1) {
+        return PointEdgeDistanceType::P_E1; // PP (p-e1)
+    } else {
+        return PointEdgeDistanceType::P_E; // PE
+    }
+}
+
+PointEdgeDistanceType point_edge_distance_type(
+    Eigen::ConstRef<VectorMax3d> p,
+    Eigen::ConstRef<VectorMax3d> e0,
+    Eigen::ConstRef<VectorMax3d> e1)
+{
+    return DistanceTypeConfig::instance().use_standard()
+        ? point_edge_distance_type_standard(p, e0, e1)
+        : point_edge_distance_type_predicate(p, e0, e1);
+}
+
+
+static PointTriangleDistanceType point_triangle_distance_type_predicate(
     Eigen::ConstRef<Eigen::Vector3d> p,
     Eigen::ConstRef<Eigen::Vector3d> t0,
     Eigen::ConstRef<Eigen::Vector3d> t1,
@@ -155,6 +192,60 @@ PointTriangleDistanceType point_triangle_distance_type(
         return PointTriangleDistanceType::P_E2;
 
     return PointTriangleDistanceType::P_T;
+}
+
+// Standard analytic implementation.
+static PointTriangleDistanceType point_triangle_distance_type_standard(
+    Eigen::ConstRef<Eigen::Vector3d> p,
+    Eigen::ConstRef<Eigen::Vector3d> t0,
+    Eigen::ConstRef<Eigen::Vector3d> t1,
+    Eigen::ConstRef<Eigen::Vector3d> t2)
+{
+    const Eigen::Vector3d normal = (t1 - t0).cross(t2 - t0);
+
+    Eigen::Matrix<double, 2, 3> basis, param;
+
+    basis.row(0) = t1 - t0;
+    basis.row(1) = basis.row(0).cross(normal);
+    param.col(0) = (basis * basis.transpose()).ldlt().solve(basis * (p - t0));
+    if (param(0, 0) > 0.0 && param(0, 0) < 1.0 && param(1, 0) >= 0.0) {
+        return PointTriangleDistanceType::P_E0; // edge 0 is the closest
+    }
+
+    basis.row(0) = t2 - t1;
+    basis.row(1) = basis.row(0).cross(normal);
+    param.col(1) = (basis * basis.transpose()).ldlt().solve(basis * (p - t1));
+    if (param(0, 1) > 0.0 && param(0, 1) < 1.0 && param(1, 1) >= 0.0) {
+        return PointTriangleDistanceType::P_E1; // edge 1 is the closest
+    }
+
+    basis.row(0) = t0 - t2;
+    basis.row(1) = basis.row(0).cross(normal);
+    param.col(2) = (basis * basis.transpose()).ldlt().solve(basis * (p - t2));
+    if (param(0, 2) > 0.0 && param(0, 2) < 1.0 && param(1, 2) >= 0.0) {
+        return PointTriangleDistanceType::P_E2; // edge 2 is the closest
+    }
+
+    if (param(0, 0) <= 0.0 && param(0, 2) >= 1.0) {
+        return PointTriangleDistanceType::P_T0;
+    } else if (param(0, 1) <= 0.0 && param(0, 0) >= 1.0) {
+        return PointTriangleDistanceType::P_T1;
+    } else if (param(0, 2) <= 0.0 && param(0, 1) >= 1.0) {
+        return PointTriangleDistanceType::P_T2;
+    } else {
+        return PointTriangleDistanceType::P_T;
+    }
+}
+
+PointTriangleDistanceType point_triangle_distance_type(
+    Eigen::ConstRef<Eigen::Vector3d> p,
+    Eigen::ConstRef<Eigen::Vector3d> t0,
+    Eigen::ConstRef<Eigen::Vector3d> t1,
+    Eigen::ConstRef<Eigen::Vector3d> t2)
+{
+    return DistanceTypeConfig::instance().use_standard()
+        ? point_triangle_distance_type_standard(p, t0, t1, t2)
+        : point_triangle_distance_type_predicate(p, t0, t1, t2);
 }
 
 
@@ -230,9 +321,9 @@ static EdgeEdgeDistanceType edge_edge_distance_type_predicate(
     return EdgeEdgeDistanceType::EA_EB;
 }
 
-// Legacy analytic implementation (pre-2025-12).
+// Standard analytic implementation.
 // A more robust implementation of http://geomalgorithms.com/a07-_distance.html
-static EdgeEdgeDistanceType edge_edge_distance_type_legacy(
+static EdgeEdgeDistanceType edge_edge_distance_type_standard(
     Eigen::ConstRef<Eigen::Vector3d> ea0,
     Eigen::ConstRef<Eigen::Vector3d> ea1,
     Eigen::ConstRef<Eigen::Vector3d> eb0,
@@ -320,8 +411,8 @@ EdgeEdgeDistanceType edge_edge_distance_type(
     Eigen::ConstRef<Eigen::Vector3d> eb0,
     Eigen::ConstRef<Eigen::Vector3d> eb1)
 {
-    return EdgeEdgeDistanceTypeConfig::instance().use_legacy()
-        ? edge_edge_distance_type_legacy(ea0, ea1, eb0, eb1)
+    return DistanceTypeConfig::instance().use_standard()
+        ? edge_edge_distance_type_standard(ea0, ea1, eb0, eb1)
         : edge_edge_distance_type_predicate(ea0, ea1, eb0, eb1);
 }
 
