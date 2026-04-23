@@ -5,6 +5,26 @@
 namespace ipc {
 constexpr double PARALLEL_THRESHOLD {1e-16}; //TODO set to zero eventually
 
+/// @brief Runtime switch between the legacy analytic edge_edge_distance_type
+/// (pre-2025-12) and the predicate-based implementation. Defaults to predicate.
+class EdgeEdgeDistanceTypeConfig {
+public:
+    static EdgeEdgeDistanceTypeConfig& instance() {
+        static EdgeEdgeDistanceTypeConfig cfg;
+        return cfg;
+    }
+
+    bool use_legacy() const { return use_legacy_; }
+    void set_use_legacy(bool v) { use_legacy_ = v; }
+
+    EdgeEdgeDistanceTypeConfig(const EdgeEdgeDistanceTypeConfig&) = delete;
+    EdgeEdgeDistanceTypeConfig& operator=(const EdgeEdgeDistanceTypeConfig&) = delete;
+
+private:
+    EdgeEdgeDistanceTypeConfig() = default;
+    bool use_legacy_ = false;
+};
+
 /// @brief Closest pair between a point and point.
 enum class PointPointDistanceType : uint8_t {
     P_P = 0, ///< The points are closest to each other.

@@ -195,7 +195,7 @@ bool is_parallel_edge_edge(
 }
 
 
-EdgeEdgeDistanceType edge_edge_distance_type(
+static EdgeEdgeDistanceType edge_edge_distance_type_predicate(
     Eigen::ConstRef<Eigen::Vector3d> ea0,
     Eigen::ConstRef<Eigen::Vector3d> ea1,
     Eigen::ConstRef<Eigen::Vector3d> eb0,
@@ -229,12 +229,128 @@ EdgeEdgeDistanceType edge_edge_distance_type(
 
     return EdgeEdgeDistanceType::EA_EB;
 }
+
+// Legacy analytic implementation (pre-2025-12).
+// A more robust implementation of http://geomalgorithms.com/a07-_distance.html
+static EdgeEdgeDistanceType edge_edge_distance_type_legacy(
+    Eigen::ConstRef<Eigen::Vector3d> ea0,
+    Eigen::ConstRef<Eigen::Vector3d> ea1,
+    Eigen::ConstRef<Eigen::Vector3d> eb0,
+    Eigen::ConstRef<Eigen::Vector3d> eb1)
+{
+    constexpr double LEGACY_PARALLEL_THRESHOLD = 1.0e-20;
+
+    const Eigen::Vector3d u = ea1 - ea0;
+    const Eigen::Vector3d v = eb1 - eb0;
+    const Eigen::Vector3d w = ea0 - eb0;
+
+    const double a = u.squaredNorm();
+    const double b = u.dot(v);
+    const double c = v.squaredNorm();
+    const double d = u.dot(w);
+    const double e = v.dot(w);
+    const double D = a * c - b * b;
+
+    if (a == 0.0 && c == 0.0) {
+        return EdgeEdgeDistanceType::EA0_EB0;
+    } else if (a == 0.0) {
+        return EdgeEdgeDistanceType::EA0_EB;
+    } else if (c == 0.0) {
+        return EdgeEdgeDistanceType::EA_EB0;
+    }
+
+    const double parallel_tolerance = LEGACY_PARALLEL_THRESHOLD * std::max(1.0, a * c);
+    if (u.cross(v).squaredNorm() < parallel_tolerance) {
+        return edge_edge_parallel_distance_type(ea0, ea1, eb0, eb1);
+    }
+
+    EdgeEdgeDistanceType default_case = EdgeEdgeDistanceType::EA_EB;
+
+    const double sN = (b * e - c * d);
+    double tN, tD;
+    if (sN <= 0.0) {
+        tN = e;
+        tD = c;
+        default_case = EdgeEdgeDistanceType::EA0_EB;
+    } else if (sN >= D) {
+        tN = e + b;
+        tD = c;
+        default_case = EdgeEdgeDistanceType::EA1_EB;
+    } else {
+        tN = (a * e - b * d);
+        tD = D;
+        if (tN > 0.0 && tN < tD
+            && u.cross(v).squaredNorm() < parallel_tolerance) {
+            if (sN < D / 2) {
+                tN = e;
+                tD = c;
+                default_case = EdgeEdgeDistanceType::EA0_EB;
+            } else {
+                tN = e + b;
+                tD = c;
+                default_case = EdgeEdgeDistanceType::EA1_EB;
+            }
+        }
+    }
+
+    if (tN <= 0.0) {
+        if (-d <= 0.0) {
+            return EdgeEdgeDistanceType::EA0_EB0;
+        } else if (-d >= a) {
+            return EdgeEdgeDistanceType::EA1_EB0;
+        } else {
+            return EdgeEdgeDistanceType::EA_EB0;
+        }
+    } else if (tN >= tD) {
+        if ((-d + b) <= 0.0) {
+            return EdgeEdgeDistanceType::EA0_EB1;
+        } else if ((-d + b) >= a) {
+            return EdgeEdgeDistanceType::EA1_EB1;
+        } else {
+            return EdgeEdgeDistanceType::EA_EB1;
+        }
+    }
+
+    return default_case;
+}
+
+EdgeEdgeDistanceType edge_edge_distance_type(
+    Eigen::ConstRef<Eigen::Vector3d> ea0,
+    Eigen::ConstRef<Eigen::Vector3d> ea1,
+    Eigen::ConstRef<Eigen::Vector3d> eb0,
+    Eigen::ConstRef<Eigen::Vector3d> eb1)
+{
+    return EdgeEdgeDistanceTypeConfig::instance().use_legacy()
+        ? edge_edge_distance_type_legacy(ea0, ea1, eb0, eb1)
+        : edge_edge_distance_type_predicate(ea0, ea1, eb0, eb1);
+}
+
 EdgeEdgeDistanceType edge_edge_parallel_distance_type(
     Eigen::ConstRef<Eigen::Vector3d> ea0,
     Eigen::ConstRef<Eigen::Vector3d> ea1,
     Eigen::ConstRef<Eigen::Vector3d> eb0,
     Eigen::ConstRef<Eigen::Vector3d> eb1)
-{ return edge_edge_distance_type(ea0, ea1, eb0, eb1); }
+{
+    const Eigen::Vector3d ea = ea1 - ea0;
+    const double alpha = (eb0 - ea0).dot(ea) / ea.squaredNorm();
+    const double beta = (eb1 - ea0).dot(ea) / ea.squaredNorm();
+
+    uint8_t eac; // 0: EA0, 1: EA1, 2: EA
+    uint8_t ebc; // 0: EB0, 1: EB1, 2: EB
+    if (alpha < 0) {
+        eac = (0 <= beta && beta <= 1) ? 2 : 0;
+        ebc = (beta <= alpha) ? 0 : (beta <= 1 ? 1 : 2);
+    } else if (alpha > 1) {
+        eac = (0 <= beta && beta <= 1) ? 2 : 1;
+        ebc = (beta >= alpha) ? 0 : (0 <= beta ? 1 : 2);
+    } else {
+        eac = 2;
+        ebc = 0;
+    }
+
+    assert(eac != 2 || ebc != 2);
+    return EdgeEdgeDistanceType(ebc < 2 ? (eac << 1 | ebc) : (6 + eac));
+}
 
 #else
 
