@@ -17,12 +17,9 @@ namespace ipc {
 using ExReal = GEO::expansion_nt; // exact scalar type
 using ExVec3 = GEO::vec3E; // exact vector type
 
-inline void init_pck() { // TODO init once in main
-    static bool initialized = false;
-    if (!initialized) {
-        GEO::PCK::initialize();
-        initialized = true;
-    }
+inline void init_pck() {
+    struct PckInit { PckInit() { GEO::PCK::initialize(); } };
+    static PckInit _;
 }
 
 inline ExVec3 make_exact(Eigen::ConstRef<VectorMax3d> v) {
