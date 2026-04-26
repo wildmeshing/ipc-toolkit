@@ -121,7 +121,7 @@ double HighOrderContactPotential::operator()(
                     for (int k = start; k < end; ++k) {
                         const index_t vi = active_verts[k];
                         const auto& dict = *collisions.vertex_collisions_2d.at(vi);
-                        const double w_vertex = params.area_weights ? (mesh.vertex_area(vi) * 0.5) : 1.0;
+                        const double w_vertex = params.area_weights ? (mesh.vertex_area(vi)) : 1.0;
                         total += w_vertex * PointPotentialHelper::evaluate_potential_at_vertex_2d(X, dict, params);
                     }
                 });
@@ -333,7 +333,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                     for (int k = start; k < end; ++k) {
                         const index_t vi = active_verts[k];
                         const auto& dict = *collisions.vertex_collisions_2d.at(vi);
-                        const double w_vertex = params.area_weights ? (mesh.vertex_area(vi) * 0.5) : 1.0;
+                        const double w_vertex = params.area_weights ? (mesh.vertex_area(vi)) : 1.0;
                         const Eigen::VectorXd local_grad = w_vertex *
                             PointPotentialHelper::evaluate_potential_gradient_at_vertex_2d(X, dict, params);
                         local_gradient_to_global_gradient(
@@ -590,7 +590,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                     for (int k = start; k < end; ++k) {
                         const index_t vi = active_verts[k];
                         const auto& dict = *collisions.vertex_collisions_2d.at(vi);
-                        const double w_vertex = params.area_weights ? (mesh.vertex_area(vi) * 0.5) : 1.0;
+                        const double w_vertex = params.area_weights ? (mesh.vertex_area(vi)) : 1.0;
                         const Eigen::MatrixXd local_hess = w_vertex *
                             PointPotentialHelper::evaluate_potential_hessian_at_vertex_2d(
                                 X, dict, params, project_hessian_to_psd);
