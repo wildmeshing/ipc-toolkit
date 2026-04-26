@@ -5,6 +5,28 @@
 namespace ipc {
 constexpr double PARALLEL_THRESHOLD {1e-16}; //TODO set to zero eventually
 
+/// @brief Runtime switch between the standard analytic distance-type routines
+/// and the predicate-based implementations. Controls
+/// point_edge_distance_type, point_triangle_distance_type, and
+/// edge_edge_distance_type. Defaults to predicate.
+class DistanceTypeConfig {
+public:
+    static DistanceTypeConfig& instance() {
+        static DistanceTypeConfig cfg;
+        return cfg;
+    }
+
+    bool use_standard() const { return use_standard_; }
+    void set_use_standard(bool v) { use_standard_ = v; }
+
+    DistanceTypeConfig(const DistanceTypeConfig&) = delete;
+    DistanceTypeConfig& operator=(const DistanceTypeConfig&) = delete;
+
+private:
+    DistanceTypeConfig() = default;
+    bool use_standard_ = false;
+};
+
 /// @brief Closest pair between a point and point.
 enum class PointPointDistanceType : uint8_t {
     P_P = 0, ///< The points are closest to each other.
