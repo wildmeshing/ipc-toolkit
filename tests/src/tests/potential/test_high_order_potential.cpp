@@ -236,6 +236,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
 
     HighOrderCollisions collisions;
     collisions.build(mesh, V, params, adaptive.get());
+    REQUIRE(!collisions.empty());
 
     // full finite difference is too expensive, verify directional derivative only
     Eigen::VectorXd test_dir(V.size(), 1);
@@ -526,6 +527,85 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
 
         REQUIRE((h - fh).norm() < 1e-6 * std::max({h.norm(), fh.norm(), 1e-8}));
     }
+}
+
+// Test FV-3D mollification: two aligned cubes with vertices approaching face edges
+// This configuration makes the mollification issue critical: vertices of one cube
+// approach the faces of another cube, with closest points near triangle edges
+TEST_CASE("High order potential 3D finite differences (FV mollification)", "[high_order_potential], [high_order_potential_3d]")
+{
+    const auto method = make_default_broad_phase();
+
+    // Load cube mesh
+    std::string cube_path = (tests::DATA_DIR / "cube.obj").string();
+    Eigen::MatrixXd V_single;
+    Eigen::MatrixXi F_single;
+    if (!igl::read_triangle_mesh(cube_path, V_single, F_single)) {
+        SKIP("Could not load cube.obj");
+    }
+
+    // Create two cubes: one fixed, one translated slightly
+    Eigen::MatrixXd V(V_single.rows() * 2, 3);
+    V.topRows(V_single.rows()) = V_single;
+    // Second cube: translate along x-axis to create face-vertex collisions
+    // with aligned vertices approaching the faces of the first cube
+    V.bottomRows(V_single.rows()) = V_single.rowwise() + Eigen::RowVector3d(1.001, 0, 0);
+
+    Eigen::MatrixXi F(F_single.rows() * 2, 3);
+    F.topRows(F_single.rows()) = F_single;
+    F.bottomRows(F_single.rows()) = F_single.array() + static_cast<int>(V_single.rows());
+
+    Eigen::MatrixXi E;
+    igl::edges(F, E);
+
+    CollisionMesh mesh(V, E, F);
+
+    const double dhat = .5;
+    HighOrderContactParameters params(dhat, 1., 0);
+
+    const bool use_adaptive = GENERATE(true, false);
+    CAPTURE(use_adaptive);
+
+    auto adaptive = use_adaptive
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
+
+    Candidates candidates;
+    candidates.build(mesh, V, dhat / 2, method.get(), true);
+    candidates.convert_candidates_to_sets();
+
+    HighOrderCollisions collisions;
+    collisions.build(candidates, mesh, V, params, adaptive.get());
+    std::cerr << "HighOrderCollisions after build: " << collisions.size() << "\n";
+
+    REQUIRE(!collisions.empty());
+    REQUIRE(!has_intersections(mesh, V));
+
+    HighOrderContactPotential potential(params);
+    double energy = potential(collisions, mesh, V);
+    CAPTURE(energy);
+    CHECK(energy > 0);
+    CHECK(std::isfinite(energy));
+
+    // Test gradient accuracy: without mollification of (u,v),
+    // this will fail when closest point is near face edges where adaptive dhat varies
+    Eigen::VectorXd grad = potential.gradient(collisions, mesh, V);
+        Eigen::VectorXd fgrad;
+        fd::finite_gradient(
+            fd::flatten(V),
+            [&](const Eigen::VectorXd& x) {
+                return potential(collisions, mesh, fd::unflatten(x, V.cols()));
+            },
+            fgrad, fd::AccuracyOrder::SECOND, 1e-8);
+
+        CAPTURE(grad.norm());
+        CAPTURE(fgrad.norm());
+        const double error = (grad - fgrad).norm();
+        const double threshold = 1e-3 * std::max({grad.norm(), fgrad.norm(), 1e-8});
+        CAPTURE(error);
+        CAPTURE(threshold);
+        // Without mollification: FD will mismatch analytical gradient near face edges
+        // With mollification: both should agree
+        CHECK(error < threshold);
 }
 
 
