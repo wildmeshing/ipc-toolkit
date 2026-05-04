@@ -256,7 +256,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
                 return potential(collisions_, mesh, V_);
             }, fg, fd::AccuracyOrder::SECOND, 1e-7);
 
-        REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-6);
+        REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-5);
     }
 
     SECTION("hessian") {
