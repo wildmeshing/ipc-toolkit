@@ -7,6 +7,7 @@
 
 #include <ipc/potentials/barrier_potential.hpp>
 #include <ipc/high_order_contact/high_order_contact_potential.hpp>
+#include <ipc/high_order_contact/adaptive_support.hpp>
 #include <ipc/distance/line_line.hpp>
 
 #include <finitediff.hpp>
@@ -1068,6 +1069,165 @@ TEST_CASE("Convergent Quadrature Adaptive Dhat Consistency", "[high_order_potent
 
     CHECK((hess_no_adaptive - hess_adaptive).norm() < 1e-9);
 }*/
+
+// ---------------------------------------------------------------------------
+// Adaptive support tests
+// ---------------------------------------------------------------------------
+
+// With a large dhat, many pairs are in contact without adaptive support.
+// After computing the adaptive support (which iteratively shrinks per-vertex
+// dhat until every primitive is beyond its own dhat), the potential must be
+// exactly zero.
+TEST_CASE("Adaptive Support Reduces Potential to Zero (3D)", "[adaptive_support], [high_order_potential_3d]")
+{
+    auto [V, E, F, mesh] = load_wrapped_sphere();
+
+    // dhat = 0.3 is intentionally large: many vertex pairs are within range,
+    // so the potential without adaptive support is clearly non-zero.
+    const double dhat = 10;
+    HighOrderContactParameters params(dhat, 1.0, 0);
+    HighOrderContactPotential potential(params);
+
+    // Baseline: without adaptive, potential must be non-zero.
+    {
+        HighOrderCollisions collisions;
+        collisions.build(mesh, V, params);
+        const double energy = potential(collisions, mesh, V);
+        REQUIRE(energy > 0);
+    }
+
+    // With adaptive support the per-primitive dhat values are reduced until
+    // no collision pair contributes, so the evaluated potential is exactly 0.
+    auto adaptive = HighOrderCollisions::compute_adaptive_dhat(mesh, V, params);
+    REQUIRE(adaptive != nullptr);
+
+    // All vertex dhat values must be in (0, params.dhat] after reduction.
+    bool any_reduced = false;
+    for (int i = 0; i < mesh.num_vertices(); i++) {
+        CHECK(adaptive->vertex(i) > 0.0);
+        CHECK(adaptive->vertex(i) <= dhat);
+        if (adaptive->vertex(i) < dhat)
+            any_reduced = true;
+    }
+    CHECK(any_reduced);
+
+    {
+        HighOrderCollisions collisions;
+        collisions.build(mesh, V, params, adaptive.get());
+        const double energy = potential(collisions, mesh, V);
+        CHECK(energy == 0.0);
+    }
+}
+
+TEST_CASE("Adaptive Support Reduces Potential to Zero (2D)", "[adaptive_support], [high_order_potential_2d]")
+{
+    const auto method = make_default_broad_phase();
+    Eigen::MatrixXd V;
+    Eigen::MatrixXi E;
+
+    SECTION("Corners")
+    {
+        const double P0x = GENERATE(.01, -.01, 0.0);
+        const double P1y = GENERATE(.49, .5, .51);
+        CAPTURE(P0x, P1y);
+        V.resize(8, 2);
+        E.resize(8, 2);
+        V <<
+            -1., 1.,
+            -1., 0.,
+            0., 0.,
+            P0x, .5,
+            0., 1.,
+            1., 0.,
+            1., 1.,
+            .02, P1y;
+        E <<
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 4,
+            4, 0,
+            5, 6,
+            6, 7,
+            7, 5;
+    }
+
+    SECTION("squares") {
+        V.resize(8, 2);
+        E.resize(8, 2);
+        E <<
+            0, 1,
+            1, 2,
+            2, 3,
+            3, 0,
+            4, 5,
+            5, 6,
+            6, 7,
+            7, 4;
+        SECTION("horizontal_squares") {
+            INFO("horizontal_squares");
+            V <<
+                -1., 1.,
+                -1., 0.,
+                -.1, 0.,
+                -.1, 1.,
+                .1, 1.,
+                .1, 0.,
+                1., 0.,
+                1., 1.;
+        }
+        SECTION("vertical_squares") {
+            INFO("vertical_squares");
+            V <<
+                0., -1.,
+                1., -1.,
+                1., -.1,
+                0., -.1,
+                0., .1,
+                1., .1,
+                1., 1.,
+                0., 1.;
+        }
+    }
+
+    CollisionMesh mesh = make_2d_collision_mesh(V, E);
+    REQUIRE(!has_intersections(mesh, V));
+
+    const double dhat = 10.;
+    const int quad_order = 14;
+    HighOrderContactParameters params(dhat, 1.0, quad_order);
+    HighOrderContactPotential potential(params);
+
+    // Baseline: without adaptive, potential must be non-zero.
+    {
+        HighOrderCollisions collisions;
+        collisions.build(mesh, V, params, nullptr, method.get());
+        const double energy = potential(collisions, mesh, V);
+        REQUIRE(energy != 0);
+    }
+
+    // With adaptive support: per-primitive dhat values fall below 0.2
+    // so the barrier is exactly zero for every pair.
+    auto adaptive = HighOrderCollisions::compute_adaptive_dhat(mesh, V, params);
+    REQUIRE(adaptive != nullptr);
+
+    // Primitive vertices (those on the far edge) must have reduced dhat.
+    bool any_reduced = false;
+    for (int i = 0; i < mesh.num_vertices(); i++) {
+        CHECK(adaptive->vertex(i) > 0.0);
+        CHECK(adaptive->vertex(i) <= dhat);
+        if (adaptive->vertex(i) < dhat)
+            any_reduced = true;
+    }
+    REQUIRE(any_reduced);
+
+    {
+        HighOrderCollisions collisions;
+        collisions.build(mesh, V, params, adaptive.get(), method.get());
+        const double energy = potential(collisions, mesh, V);
+        CHECK(energy == 0.0);
+    }
+}
 
 // Same check for the 3D face-quadrature variant: high-order quadrature points
 // inside each face must also yield a PSD assembly under combined projection.

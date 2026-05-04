@@ -28,6 +28,10 @@ public:
     /// u, v are barycentric coords; third coord is 1-u-v.
     double face(index_t face_id, double u, double v) const;
 
+    /// Multiplicative reduction factor applied to primitive vertex dhat values
+    /// each time they are found in a non-zero collision pair.
+    double zeta = 0.8;
+
 private:
     Eigen::VectorXd m_values;
     const CollisionMesh* m_mesh;
