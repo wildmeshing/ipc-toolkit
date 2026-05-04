@@ -77,24 +77,21 @@ T eval_ev3d_energy_ad(
         positions.template head<3>(),
         positions.template segment<3>(3));
 
-    T u;
+    // Always compute unclamped projection so eps depends smoothly on positions
+    // across dtype boundaries (avoids C1 discontinuity from clamped-u=const).
+    const Vec3T t_edge = e1 - e0;
+    const T u_raw = (p - e0).dot(t_edge) / t_edge.squaredNorm();
+
     Vec3T closest;
     switch (dtype) {
-    case ipc::PointEdgeDistanceType::P_E0:
-        u = T(0.0); closest = e0; break;
-    case ipc::PointEdgeDistanceType::P_E1:
-        u = T(1.0); closest = e1; break;
-    default: { // P_E interior
-        const Vec3T t = e1 - e0;
-        u = (p - e0).dot(t) / t.squaredNorm();
-        closest = e0 + u * t;
-        break;
-    }
+    case ipc::PointEdgeDistanceType::P_E0: closest = e0; break;
+    case ipc::PointEdgeDistanceType::P_E1: closest = e1; break;
+    default: closest = e0 + u_raw * t_edge; break;
     }
 
     const T dist = sqrt((p - closest).squaredNorm());
-    const T eps  = (1.0 - u) * adaptive.edge(edge_id, 0.0)
-                 + u          * adaptive.edge(edge_id, 1.0);
+    const T eps  = (1.0 - u_raw) * adaptive.edge(edge_id, 0.0)
+                 + u_raw          * adaptive.edge(edge_id, 1.0);
 
     params.record_dist(scalar_val(dist));
     return eval_barrier_ad(*params.barrier, dist, eps);
@@ -126,52 +123,47 @@ T eval_fv3d_energy_ad(
         positions.template segment<3>(3),
         positions.template segment<3>(6));
 
-    T u, v;
+    // Unclamped barycentric (u_raw, v_raw) of the projection of p onto the
+    // triangle's plane — used for a smooth eps. Closest point uses dtype clamping.
+    const Vec3T e0t = f1 - f0, e1t = f2 - f0, dp = p - f0;
+    const T A00 = e0t.dot(e0t), A01 = e0t.dot(e1t), A11 = e1t.dot(e1t);
+    const T b0  = dp.dot(e0t),  b1  = dp.dot(e1t);
+    const T det = A00*A11 - A01*A01;
+    const T u_raw = (b0*A11 - b1*A01) / det;
+    const T v_raw = (b1*A00 - b0*A01) / det;
+
     Vec3T closest;
     switch (dtype) {
-    case ipc::PointTriangleDistanceType::P_T0:
-        u = T(0.0); v = T(0.0); closest = f0; break;
-    case ipc::PointTriangleDistanceType::P_T1:
-        u = T(1.0); v = T(0.0); closest = f1; break;
-    case ipc::PointTriangleDistanceType::P_T2:
-        u = T(0.0); v = T(1.0); closest = f2; break;
+    case ipc::PointTriangleDistanceType::P_T0: closest = f0; break;
+    case ipc::PointTriangleDistanceType::P_T1: closest = f1; break;
+    case ipc::PointTriangleDistanceType::P_T2: closest = f2; break;
     case ipc::PointTriangleDistanceType::P_E0: { // edge f0-f1
         const Vec3T t = f1 - f0;
-        u = (p - f0).dot(t) / t.squaredNorm();
-        v = T(0.0);
-        closest = f0 + u * t;
+        const T u_e = (p - f0).dot(t) / t.squaredNorm();
+        closest = f0 + u_e * t;
         break;
     }
     case ipc::PointTriangleDistanceType::P_E1: { // edge f1-f2
         const Vec3T t = f2 - f1;
         const T s = (p - f1).dot(t) / t.squaredNorm();
-        u = 1.0 - s; v = s;
         closest = f1 + s * t;
         break;
     }
     case ipc::PointTriangleDistanceType::P_E2: { // edge f2-f0
         const Vec3T t = f0 - f2;
         const T s = (p - f2).dot(t) / t.squaredNorm();
-        u = T(0.0); v = 1.0 - s;
         closest = f2 + s * t;
         break;
     }
-    default: { // P_T interior
-        const Vec3T e0t = f1 - f0, e1t = f2 - f0, dp = p - f0;
-        const T A00 = e0t.dot(e0t), A01 = e0t.dot(e1t), A11 = e1t.dot(e1t);
-        const T b0  = dp.dot(e0t),  b1  = dp.dot(e1t);
-        const T det = A00*A11 - A01*A01;
-        u = (b0*A11 - b1*A01) / det;
-        v = (b1*A00 - b0*A01) / det;
-        closest = f0 + u * e0t + v * e1t;
+    default: // P_T interior
+        closest = f0 + u_raw * e0t + v_raw * e1t;
         break;
-    }
     }
 
     const T dist = sqrt((p - closest).squaredNorm());
-    const T eps  = (1.0 - u - v) * adaptive.face(face_id, 0.0, 0.0)
-                 + u              * adaptive.face(face_id, 1.0, 0.0)
-                 + v              * adaptive.face(face_id, 0.0, 1.0);
+    const T eps  = (1.0 - u_raw - v_raw) * adaptive.face(face_id, 0.0, 0.0)
+                 + u_raw                  * adaptive.face(face_id, 1.0, 0.0)
+                 + v_raw                  * adaptive.face(face_id, 0.0, 1.0);
 
     params.record_dist(scalar_val(dist));
     return eval_barrier_ad(*params.barrier, dist, eps);
@@ -201,24 +193,19 @@ T eval_ve2d_energy_ad(
         positions.template segment<2>(2),
         positions.template segment<2>(4));
 
-    T u;
+    const Vec2T t_edge = e1 - e0;
+    const T u_raw = (q - e0).dot(t_edge) / t_edge.squaredNorm();
+
     Vec2T closest;
     switch (dtype) {
-    case ipc::PointEdgeDistanceType::P_E0:
-        u = T(0.0); closest = e0; break;
-    case ipc::PointEdgeDistanceType::P_E1:
-        u = T(1.0); closest = e1; break;
-    default: { // P_E interior
-        const Vec2T t = e1 - e0;
-        u = (q - e0).dot(t) / t.squaredNorm();
-        closest = e0 + u * t;
-        break;
-    }
+    case ipc::PointEdgeDistanceType::P_E0: closest = e0; break;
+    case ipc::PointEdgeDistanceType::P_E1: closest = e1; break;
+    default: closest = e0 + u_raw * t_edge; break;
     }
 
     const T dist = sqrt((q - closest).squaredNorm());
-    const T eps  = (1.0 - u) * adaptive.edge(edge_id, 0.0)
-                 + u          * adaptive.edge(edge_id, 1.0);
+    const T eps  = (1.0 - u_raw) * adaptive.edge(edge_id, 0.0)
+                 + u_raw          * adaptive.edge(edge_id, 1.0);
 
     params.record_dist(scalar_val(dist));
     return eval_barrier_ad(*params.barrier, dist, eps);
