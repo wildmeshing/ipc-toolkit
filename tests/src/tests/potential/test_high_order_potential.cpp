@@ -888,6 +888,68 @@ TEST_CASE("Convergent Quadrature Hessian PSD", "[high_order_potential], [high_or
     REQUIRE(lambda_min >= -tol);
 }
 
+TEST_CASE("NearFarBarrier decomposition", "[high_order_potential][barrier]")
+{
+    const double dhat = 0.1;
+    const double alpha = GENERATE(0.01, 0.25, 0.5, 0.75, 0.99);
+
+    enum class BarrierType {
+        ClampedLog,
+        ClampedLogSq,
+        Cubic,
+        TwoStage,
+        InversePower1,
+        InversePower2
+    };
+
+    const BarrierType type = GENERATE(
+        BarrierType::ClampedLog,
+        BarrierType::ClampedLogSq,
+        BarrierType::Cubic,
+        BarrierType::TwoStage,
+        BarrierType::InversePower1,
+        BarrierType::InversePower2);
+
+    auto run_test = [&](const auto& base) {
+        NearFarBarrier nf(&base, alpha);
+
+        constexpr int N = 200;
+        for (int i = 0; i < N; ++i) {
+            const double d = dhat * (i + 1.0) / N;
+
+            const double b = base(d, dhat);
+            CHECK(nf.near(d, dhat) + nf.far(d, dhat) == Catch::Approx(b));
+
+            const double db = base.first_derivative(d, dhat);
+            CHECK(nf.first_derivative_near(d, dhat) + nf.first_derivative_far(d, dhat) == Catch::Approx(db));
+
+            const double ddb = base.second_derivative(d, dhat);
+            CHECK(nf.second_derivative_near(d, dhat) + nf.second_derivative_far(d, dhat) == Catch::Approx(ddb));
+        }
+    };
+
+    switch (type) {
+    case BarrierType::ClampedLog:
+        run_test(ClampedLogBarrier());
+        break;
+    case BarrierType::ClampedLogSq:
+        run_test(ClampedLogSqBarrier());
+        break;
+    case BarrierType::Cubic:
+        run_test(CubicBarrier());
+        break;
+    case BarrierType::TwoStage:
+        run_test(TwoStageBarrier());
+        break;
+    case BarrierType::InversePower1:
+        run_test(InversePowerBarrier(1.0));
+        break;
+    case BarrierType::InversePower2:
+        run_test(InversePowerBarrier(2.0));
+        break;
+    }
+}
+
 // Same check for the 3D face-quadrature variant: high-order quadrature points
 // inside each face must also yield a PSD assembly under combined projection.
 TEST_CASE("Face Quadrature Hessian PSD", "[high_order_potential], [high_order_potential_3d]")

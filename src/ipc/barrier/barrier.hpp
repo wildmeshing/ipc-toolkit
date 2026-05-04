@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cmath>
+#include <memory>
 
 namespace ipc {
 
@@ -446,6 +447,75 @@ private:
     ///   B(t) = 0                       for t ≥ 2
     static void h_and_derivs(
         double d, double dhat, double& h, double& dh, double& ddh);
+};
+
+/// @brief Near-Far barrier function.
+/// This barrier function takes another "base" barrier object as argument.
+/// All operations defined in Barrier defer the computation to its base barrier.
+class NearFarBarrier : public Barrier {
+public:
+    /// @brief Construct a NearFarBarrier.
+    /// @param base_barrier The base barrier function to use.
+    /// @param alpha A double parameter.
+    NearFarBarrier(const Barrier *const base_barrier, const double alpha)
+        : m_base_barrier(base_barrier)
+        , m_alpha(alpha)
+    {
+    }
+
+    /// @brief Evaluate the barrier function.
+    /// @param d Distance.
+    /// @param dhat Activation distance of the barrier.
+    /// @return The value of the barrier function at d.
+    double operator()(const double d, const double dhat) const override
+    {
+        return (*m_base_barrier)(d, dhat);
+    }
+
+    /// @brief Evaluate the first derivative of the barrier function wrt d.
+    /// @param d Distance.
+    /// @param dhat Activation distance of the barrier.
+    /// @return The value of the first derivative of the barrier function at d.
+    double first_derivative(const double d, const double dhat) const override
+    {
+        return m_base_barrier->first_derivative(d, dhat);
+    }
+
+    /// @brief Evaluate the second derivative of the barrier function wrt d.
+    /// @param d Distance.
+    /// @param dhat Activation distance of the barrier.
+    /// @return The value of the second derivative of the barrier function at d.
+    double second_derivative(const double d, const double dhat) const override
+    {
+        return m_base_barrier->second_derivative(d, dhat);
+    }
+
+    /// @brief Get the units of the barrier function.
+    /// @param dhat The activation distance of the barrier.
+    /// @return The units of the barrier function.
+    double units(const double dhat) const override { return m_base_barrier->units(dhat); }
+
+    /// @brief Evaluate the near function.
+    double near(const double d, const double dhat) const;
+
+    /// @brief Evaluate the far function.
+    double far(const double d, const double dhat) const;
+
+    /// @brief Evaluate the first derivative of the near function.
+    double first_derivative_near(const double d, const double dhat) const;
+
+    /// @brief Evaluate the first derivative of the far function.
+    double first_derivative_far(const double d, const double dhat) const;
+
+    /// @brief Evaluate the second derivative of the near function.
+    double second_derivative_near(const double d, const double dhat) const;
+
+    /// @brief Evaluate the second derivative of the far function.
+    double second_derivative_far(const double d, const double dhat) const;
+
+private:
+    const Barrier *const m_base_barrier;
+    const double m_alpha;
 };
 
 } // namespace ipc

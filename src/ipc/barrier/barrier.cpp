@@ -2,6 +2,7 @@
 // hessian functions, too. These barrier functions can be used to impose
 // inequality constraints on a function.
 #include "barrier.hpp"
+#include <ipc/math/math.hpp>
 
 #include <cmath>
 #include <limits>
@@ -213,6 +214,72 @@ InversePowerBarrier::second_derivative(const double d, const double dhat) const
     const double d2 = d * d;
     return (ddh * d2 - 2.0 * m_power * dh * d + m_power * (m_power + 1.0) * h)
         / std::pow(d, m_power + 2.0);
+}
+
+// ============================================================================
+
+double NearFarBarrier::near(const double d, const double dhat) const
+{
+    const double dhat_end = m_alpha * dhat;
+    const double dhat_start = dhat_end / 2.0;
+    return (*m_base_barrier)(d, dhat)
+        * (1.0 - Math<double>::smooth_heaviside(d, dhat_start, dhat_end));
+}
+
+double NearFarBarrier::far(const double d, const double dhat) const
+{
+    const double dhat_end = m_alpha * dhat;
+    const double dhat_start = dhat_end / 2.0;
+    return (*m_base_barrier)(d, dhat)
+        * Math<double>::smooth_heaviside(d, dhat_start, dhat_end);
+}
+
+double NearFarBarrier::first_derivative_near(const double d, const double dhat) const
+{
+    const double dhat_end = m_alpha * dhat;
+    const double dhat_start = dhat_end / 2.0;
+    const double b = (*m_base_barrier)(d, dhat);
+    const double bp = m_base_barrier->first_derivative(d, dhat);
+    const double w = Math<double>::smooth_heaviside(d, dhat_start, dhat_end);
+    const double wp = Math<double>::smooth_heaviside_grad(d, dhat_start, dhat_end);
+    return bp * (1.0 - w) - b * wp;
+}
+
+double NearFarBarrier::first_derivative_far(const double d, const double dhat) const
+{
+    const double dhat_end = m_alpha * dhat;
+    const double dhat_start = dhat_end / 2.0;
+    const double b = (*m_base_barrier)(d, dhat);
+    const double bp = m_base_barrier->first_derivative(d, dhat);
+    const double w = Math<double>::smooth_heaviside(d, dhat_start, dhat_end);
+    const double wp = Math<double>::smooth_heaviside_grad(d, dhat_start, dhat_end);
+    return bp * w + b * wp;
+}
+
+double NearFarBarrier::second_derivative_near(const double d, const double dhat) const
+{
+    const double dhat_end = m_alpha * dhat;
+    const double dhat_start = dhat_end / 2.0;
+    const double b = (*m_base_barrier)(d, dhat);
+    const double bp = m_base_barrier->first_derivative(d, dhat);
+    const double bpp = m_base_barrier->second_derivative(d, dhat);
+    const double w = Math<double>::smooth_heaviside(d, dhat_start, dhat_end);
+    const double wp = Math<double>::smooth_heaviside_grad(d, dhat_start, dhat_end);
+    const double wpp = Math<double>::smooth_heaviside_hess(d, dhat_start, dhat_end);
+    return bpp * (1.0 - w) - 2.0 * bp * wp - b * wpp;
+}
+
+double NearFarBarrier::second_derivative_far(const double d, const double dhat) const
+{
+    const double dhat_end = m_alpha * dhat;
+    const double dhat_start = dhat_end / 2.0;
+    const double b = (*m_base_barrier)(d, dhat);
+    const double bp = m_base_barrier->first_derivative(d, dhat);
+    const double bpp = m_base_barrier->second_derivative(d, dhat);
+    const double w = Math<double>::smooth_heaviside(d, dhat_start, dhat_end);
+    const double wp = Math<double>::smooth_heaviside_grad(d, dhat_start, dhat_end);
+    const double wpp = Math<double>::smooth_heaviside_hess(d, dhat_start, dhat_end);
+    return bpp * w + 2.0 * bp * wp + b * wpp;
 }
 
 } // namespace ipc
