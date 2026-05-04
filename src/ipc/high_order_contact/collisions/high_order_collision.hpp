@@ -3,6 +3,7 @@
 #include "high_order_primitives.hpp"
 #include "vertex_matrix_view.hpp"
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
+#include <ipc/barrier/barrier.hpp>
 #include <ipc/math/math.hpp>
 #include <ipc/utils/autodiff_types.hpp>
 
@@ -113,6 +114,33 @@ public:
     virtual index_t operator[](int idx) const = 0;
 
     virtual std::pair<index_t, index_t> get_hash() const = 0;
+
+    virtual std::pair<double, double> operator_nearfar(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+        const HighOrderContactParameters& params,
+        const NearFarBarrier* nf_barrier) const
+    {
+        return {0.0, 0.0};
+    }
+
+    virtual std::pair<VectorMax<double, ELEMENT_SIZE>, VectorMax<double, ELEMENT_SIZE>> gradient_nearfar(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+        const HighOrderContactParameters& params,
+        const NearFarBarrier* nf_barrier) const
+    {
+        VectorMax<double, ELEMENT_SIZE> zero = VectorMax<double, ELEMENT_SIZE>::Zero(positions.size());
+        return {zero, zero};
+    }
+
+    virtual std::pair<MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>, MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>> hessian_nearfar(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+        const HighOrderContactParameters& params,
+        const NearFarBarrier* nf_barrier) const
+    {
+        int n = positions.size();
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> zero = MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n, n);
+        return {zero, zero};
+    }
 
     double weight = 1;
 };

@@ -376,7 +376,7 @@ void TangentialCollisions::build(
                 return 0;
             }
             const double dist = std::sqrt(d2);
-            const double dhat_val = params.get_dhat();
+            const double dhat_val = params.dhat;
             return (dist > 0 && dist < dhat_val)
                 ? outer_w * normal_stiffness
                     * std::abs(
@@ -519,7 +519,7 @@ void TangentialCollisions::build(
                 return 0;
             }
             const double dist = sqrt(d2);
-            const double dhat_val = params.get_dhat();
+            const double dhat_val = params.dhat;
             return (dist > 0 && dist < dhat_val)
                 ? outer_w * normal_stiffness
                     * std::abs(params.barrier->first_derivative(dist, dhat_val))

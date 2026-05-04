@@ -134,6 +134,13 @@ double HighOrderContactPotential::operator()(
             auto count_storage = create_thread_storage<CountMap>(CountMap());
             auto fq_point_storage = create_thread_storage<size_t>(size_t(0));
 
+            // Disable near/far splitting for edge cases
+            const double dbar_factor = params.dbar_factor();
+            const bool use_nf = use_near_far && dbar_factor > 0 && dbar_factor < 1;
+            const bool skip_ee = (dbar_factor == 0); // Skip EE pairs when dbar_factor == 0
+
+            NearFarBarrier nf_barrier(params.barrier.get(), dbar_factor);
+
             auto loop_body = [&](int start, int end, int thread_id) {
                 double& total = get_local_thread_storage(potential_storage, thread_id);
                 CountMap& local_counts = get_local_thread_storage(count_storage, thread_id);
@@ -142,8 +149,8 @@ double HighOrderContactPotential::operator()(
                     const double area = mesh.face_areas()(f);
                     const double w = params.area_weights ? (area / 9.) : 1.;
 
-                    double total_w = 0;
-                    double total_p = 0;
+                    double total_w = 0, total_w_near = 0, total_w_far = 0;
+                    double total_p = 0, total_p_near = 0, total_p_far = 0;
 
                     for (index_t le = 0; le < 3; le++) {
                         const index_t edge_id = mesh.faces_to_edges()(f, le);
@@ -156,6 +163,11 @@ double HighOrderContactPotential::operator()(
 
                             // Skip adjacent edges
                             if (ea == ec || ea == ed || eb == ec || eb == ed) {
+                                continue;
+                            }
+
+                            // Skip EE pairs entirely when dbar_factor == 0
+                            if (skip_ee) {
                                 continue;
                             }
 
@@ -191,10 +203,17 @@ double HighOrderContactPotential::operator()(
                                     mtypes, dist_sqr);
                                 mollifier = pow_int(mollifier, mollifier_order_for_barrier(params.barrier));
 
-                                const double P_val = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                    VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
-                                total_w += mollifier;
-                                total_p += mollifier * P_val;
+                                if (use_nf) {
+                                    const double P_near = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions_near(
+                                        VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype, nf_barrier);
+                                    total_w_near += mollifier;
+                                    total_p_near += mollifier * P_near;
+                                } else {
+                                    const double P_val = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                        VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
+                                    total_w += mollifier;
+                                    total_p += mollifier * P_val;
+                                }
                                 local_counts[edge_id]++;
                             }
                         }
@@ -206,16 +225,28 @@ double HighOrderContactPotential::operator()(
                         auto iter = collisions.face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
-                            total_w += face_quadrature_weight_scale * qp.weight;
+                            if (use_nf) {
+                                total_w_near += face_quadrature_weight_scale * qp.weight;
+                                total_w_far += face_quadrature_weight_scale * qp.weight;
+                            } else {
+                                total_w += face_quadrature_weight_scale * qp.weight;
+                            }
                             if (iter != collisions.face_collisions.end()) {
                                 local_fq_points++;
                                 const Eigen::RowVector3d q_pos =
                                     qp.lambda[0] * X.row(mesh.faces()(f, 0))
                                     + qp.lambda[1] * X.row(mesh.faces()(f, 1))
                                     + qp.lambda[2] * X.row(mesh.faces()(f, 2));
-                                const double fq_val = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                                    VertexMatrixView<3>(X, q_pos), *iter->second[qi], params);
-                                total_p += face_quadrature_weight_scale * qp.weight * fq_val;
+                                if (use_nf) {
+                                    auto [fq_near, fq_far] = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions_nearfar(
+                                        VertexMatrixView<3>(X, q_pos), *iter->second[qi], params, nf_barrier);
+                                    total_p_near += face_quadrature_weight_scale * qp.weight * fq_near;
+                                    total_p_far += face_quadrature_weight_scale * qp.weight * fq_far;
+                                } else {
+                                    const double fq_val = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                                        VertexMatrixView<3>(X, q_pos), *iter->second[qi], params);
+                                    total_p += face_quadrature_weight_scale * qp.weight * fq_val;
+                                }
                             }
                         }
                     }
@@ -224,17 +255,38 @@ double HighOrderContactPotential::operator()(
                     if (face_quad_rule.empty()) {
                         for (index_t lv = 0; lv < 3; lv++) {
                             const index_t v = mesh.faces()(f, lv);
-                            total_w += 1.;
+                            if (use_nf) {
+                                total_w_near += 1.;
+                                total_w_far += 1.;
+                            } else {
+                                total_w += 1.;
+                            }
                             if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
-                                const double vt_val = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                    X, *(iter->second), params);
-                                total_p += vt_val;
+                                if (use_nf) {
+                                    auto [vt_near, vt_far] = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions_nearfar(
+                                        X, *(iter->second), params, nf_barrier);
+                                    total_p_near += vt_near;
+                                    total_p_far += vt_far;
+                                } else {
+                                    const double vt_val = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                                        X, *(iter->second), params);
+                                    total_p += vt_val;
+                                }
                             }
                         }
                     }
 
-                    assert(total_w > 0);
-                    total += normalize_weights ? w * (total_p / total_w) : w * total_p;
+                    if (use_nf) {
+                        assert(total_w_near >= total_w_far - 1e-14);
+                        if (total_w_near > 0 && total_w_far > 0) {
+                            total += w * (total_p_near / total_w_near + total_p_far / total_w_far);
+                        } else if (total_w_near > 0) {
+                            total += w * (total_p_near / total_w_near);
+                        }
+                    } else {
+                        assert(total_w > 0);
+                        total += w * (total_p / total_w);
+                    }
                 }
             };
 
@@ -346,6 +398,10 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
         {
             using T = ADGrad<12>;
 
+            const double dbar_factor = params.dbar_factor();
+            const bool use_nf_grad = use_near_far && dbar_factor > 0 && dbar_factor < 1;
+            const bool skip_ee_grad = (dbar_factor == 0);
+
             auto loop_body = [&](int start, int end, int thread_id) {
                 Eigen::VectorXd& grad = get_local_thread_storage(storage, thread_id);
                 for (index_t f = start; f < end; f++) {
@@ -359,14 +415,22 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         double P;
                         Eigen::VectorXd grad_P;
                     };
-                    struct ConstGradEntry {  // face center and vertex: constant weight, no mol correction
+                    struct ConstGradEntry {
                         const std::vector<index_t>* dofs;
-                        Eigen::VectorXd grad_P;
+                        Eigen::VectorXd grad_P_near, grad_P_far;  // near/far or single (for non-nf)
+                        double P_near, P_far;  // near/far or single (for non-nf)
                     };
                     std::vector<EEGradEntry> ee_cache;
                     std::vector<ConstGradEntry> const_cache;
                     double total_w = 0;
                     double total_p = 0;
+                    double total_w_near = 0, total_p_near = 0;
+                    double total_w_far = 0, total_p_far = 0;
+
+                    const NearFarBarrier* nf_barrier = nullptr;
+                    if (use_nf_grad) {
+                        nf_barrier = new NearFarBarrier(params.barrier.get(), params.dbar_factor());
+                    }
 
                     for (index_t le = 0; le < 3; le++) {
                         const index_t edge_id = mesh.faces_to_edges()(f, le);
@@ -379,6 +443,11 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
                             // Skip adjacent edges
                             if (ea == ec || ea == ed || eb == ec || eb == ed) {
+                                continue;
+                            }
+
+                            // Skip EE pairs entirely when dbar_factor == 0
+                            if (skip_ee_grad) {
                                 continue;
                             }
 
@@ -425,14 +494,31 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                 VertexMatrixView<3> X_extended(X, ee_closest_point);
                                 assert(X_extended.rows() == X.rows() + 1);
                                 assert(X_extended.m_A == X.data() && "VertexMatrixView has made a deepcopy!");
-                                const double P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                    X_extended, dict, params, dtype);
-                                const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
-                                    X_extended, dict, params, ee_closest_point_T);
+
+                                double P;
+                                if (use_nf_grad) {
+                                    P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions_near(
+                                        X_extended, dict, params, dtype, *nf_barrier);
+                                } else {
+                                    P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                        X_extended, dict, params, dtype);
+                                }
+                                Eigen::VectorXd grad_P;
+                                if (use_nf_grad) {
+                                    grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions_near<T>(
+                                        X_extended, dict, params, ee_closest_point_T, *nf_barrier);
+                                } else {
+                                    grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
+                                        X_extended, dict, params, ee_closest_point_T);
+                                }
 
                                 ee_cache.push_back({&dict, mollifier.val, mollifier.grad, P, grad_P});
                                 total_w += mollifier.val;
                                 total_p += mollifier.val * P;
+                                if (use_nf_grad) {
+                                    total_w_near += mollifier.val;
+                                    total_p_near += mollifier.val * P;
+                                }
                             }
                         }
                     }
@@ -443,7 +529,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         auto iter = collisions.face_collisions.find(f);
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
-                            total_w += face_quadrature_weight_scale * qp.weight;
+                            const double qp_weight_scale = face_quadrature_weight_scale * qp.weight;
+                            total_w += qp_weight_scale;
                             if (iter != collisions.face_collisions.end() && qi < iter->second.size()) {
                                 const auto& dict = *iter->second[qi];
                                 const Eigen::RowVector3d q_pos =
@@ -451,12 +538,37 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                     + qp.lambda[1] * X.row(mesh.faces()(f, 1))
                                     + qp.lambda[2] * X.row(mesh.faces()(f, 2));
                                 VertexMatrixView<3> X_qp(X, q_pos);
-                                const double P = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                                    X_qp, dict, params);
-                                const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
-                                    X_qp, dict, params, qp.lambda);
-                                const_cache.push_back(ConstGradEntry{&dict.dofs(), face_quadrature_weight_scale * qp.weight * grad_P});
-                                total_p += face_quadrature_weight_scale * qp.weight * P;
+
+                                if (use_nf_grad) {
+                                    auto [P_n, P_f] = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions_nearfar(
+                                        X_qp, dict, params, *nf_barrier);
+                                    auto [grad_n, grad_f] = PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions_nearfar(
+                                        X_qp, dict, params, qp.lambda, *nf_barrier);
+                                    const_cache.push_back(ConstGradEntry{
+                                        &dict.dofs(),
+                                        qp_weight_scale * grad_n,
+                                        qp_weight_scale * grad_f,
+                                        qp_weight_scale * P_n,
+                                        qp_weight_scale * P_f
+                                    });
+                                    total_p_near += qp_weight_scale * P_n;
+                                    total_p_far += qp_weight_scale * P_f;
+                                    total_w_near += qp_weight_scale;
+                                    total_w_far += qp_weight_scale;
+                                } else {
+                                    const double P = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                                        X_qp, dict, params);
+                                    const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
+                                        X_qp, dict, params, qp.lambda);
+                                    const_cache.push_back(ConstGradEntry{
+                                        &dict.dofs(),
+                                        qp_weight_scale * grad_P,
+                                        Eigen::VectorXd::Zero(0),
+                                        qp_weight_scale * P,
+                                        0
+                                    });
+                                    total_p += qp_weight_scale * P;
+                                }
                             }
                         }
                     }
@@ -466,34 +578,72 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             const index_t v = mesh.faces()(f, lv);
                             total_w += 1.;
                             if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
-                                const double P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                    X, (*iter->second), params);
-                                const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                                    X, (*iter->second), params);
-                                const_cache.push_back(ConstGradEntry{&(*iter->second).dofs(), grad_P});
-                                total_p += P;
+                                if (use_nf_grad) {
+                                    auto [P_n, P_f] = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions_nearfar(
+                                        X, (*iter->second), params, *nf_barrier);
+                                    auto [grad_n, grad_f] = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions_nearfar(
+                                        X, (*iter->second), params, *nf_barrier);
+                                    const_cache.push_back(ConstGradEntry{
+                                        &(*iter->second).dofs(),
+                                        grad_n,
+                                        grad_f,
+                                        P_n,
+                                        P_f
+                                    });
+                                    total_p_near += P_n;
+                                    total_p_far += P_f;
+                                    total_w_near += 1.0;
+                                    total_w_far += 1.0;
+                                } else {
+                                    const double P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                                        X, (*iter->second), params);
+                                    const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                                        X, (*iter->second), params);
+                                    const_cache.push_back(ConstGradEntry{
+                                        &(*iter->second).dofs(),
+                                        grad_P,
+                                        Eigen::VectorXd::Zero(0),
+                                        P,
+                                        0
+                                    });
+                                    total_p += P;
+                                }
                             }
                         }
                     }
 
                     // Pass 2: apply gradient
-                    assert(total_w > 0);
-                    if (normalize_weights) {
+                    if (use_nf_grad) {
+                        assert(total_w_near > 0 && total_w_far > 0);
+                        const double avg_P_near = total_p_near / total_w_near;
+                        for (const auto& e : ee_cache) {
+                            grad(e.dict->dofs()) += (w / total_w_near * e.mol_val) * e.grad_P;
+                            grad(e.dict->primary_dofs()) += (w / total_w_near * (e.P - avg_P_near)) * e.mol_grad;
+                        }
+                        for (const auto& e : const_cache) {
+                            const double avg_P_far = total_p_far / total_w_far;
+                            grad(*e.dofs) += (w / total_w_near) * e.grad_P_near + (w / total_w_far) * e.grad_P_far;
+                        }
+                        delete nf_barrier;
+                    } else if (use_near_far) {
+                        // Normalized but without NearFarBarrier splitting (dbar_factor not in (0,1))
+                        assert(total_w > 0);
                         const double avg_P = total_p / total_w;
                         for (const auto& e : ee_cache) {
                             grad(e.dict->dofs()) += (w / total_w * e.mol_val) * e.grad_P;
                             grad(e.dict->primary_dofs()) += (w / total_w * (e.P - avg_P)) * e.mol_grad;
                         }
                         for (const auto& e : const_cache) {
-                            grad(*e.dofs) += (w / total_w) * e.grad_P;
+                            grad(*e.dofs) += (w / total_w) * e.grad_P_near;
                         }
                     } else {
+                        // Unnormalized
                         for (const auto& e : ee_cache) {
                             grad(e.dict->dofs()) += w * e.mol_val * e.grad_P;
                             grad(e.dict->primary_dofs()) += w * e.P * e.mol_grad;
                         }
                         for (const auto& e : const_cache) {
-                            grad(*e.dofs) += w * e.grad_P;
+                            grad(*e.dofs) += w * e.grad_P_near;
                         }
                     }
                 }
@@ -601,7 +751,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
         }
     }
     else if (mesh.dim() == 3) {
-        // When normalize_weights is on, the per-face hessian is assembled as
+        // When use_near_far is on, the per-face hessian is assembled as
         //   Term A (sum of per-stencil H(p_i))
         // + Term B (negative weighted sum of H(mol_i))
         // + Term C (sign-indefinite cross terms ~ sym(G⊗∇Z)).
@@ -609,10 +759,13 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
         // never PSD on its own. To still guarantee a PSD per-face contribution
         // (and thus a PSD global hessian), defer all per-stencil projections
         // and project the assembled per-face block once, over the union of
-        // involved DOFs. With normalize_weights = false the original
+        // involved DOFs. With use_near_far = false the original
         // local-projection path is preserved exactly.
+        const double dbar_factor_hess = params.dbar_factor();
+        const bool use_nf_hess = use_near_far && dbar_factor_hess > 0 && dbar_factor_hess < 1;
+        const bool skip_ee_hess = (dbar_factor_hess == 0);
         const bool combined_psd_projection =
-            normalize_weights && project_hessian_to_psd != PSDProjectionMethod::NONE;
+            use_nf_hess && project_hessian_to_psd != PSDProjectionMethod::NONE;
         const PSDProjectionMethod inner_psd_method =
             combined_psd_projection ? PSDProjectionMethod::NONE : project_hessian_to_psd;
         {
@@ -630,21 +783,29 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         double mol_val;
                         Eigen::Vector<double, 12> mol_grad;        // on primary_dofs
                         Eigen::Matrix<double, 12, 12> mol_hess;    // H(mol) on primary_dofs
-                        double P;
+                        double P;  // only near component for use_nf_hess
                         Eigen::VectorXd grad_P;                    // indexed by dict->dofs()
                         Eigen::MatrixXd local_hess;                // H(mol*P), PSD-projected
                     };
                     struct ConstHessEntry {
                         const std::vector<index_t>* vertex_ids;
                         const std::vector<index_t>* dofs;
-                        double P;
-                        Eigen::VectorXd grad_P;                    // indexed by dofs
-                        Eigen::MatrixXd local_hess;                // H(P)
+                        double P_near, P_far;
+                        Eigen::VectorXd grad_P_near, grad_P_far;   // indexed by dofs
+                        Eigen::MatrixXd local_hess_near, local_hess_far;  // H(P_near), H(P_far)
                     };
                     std::vector<EEHessEntry> ee_cache;
                     std::vector<ConstHessEntry> const_cache;
                     double total_w = 0;
                     double total_p = 0;
+                    double total_w_near = 0, total_p_near = 0;
+                    double total_w_far = 0, total_p_far = 0;
+
+                    // Construct NearFarBarrier if needed
+                    std::unique_ptr<NearFarBarrier> nf_barrier_hess;
+                    if (use_nf_hess) {
+                        nf_barrier_hess = std::make_unique<NearFarBarrier>(params.barrier.get(), params.dbar_factor());
+                    }
 
                     for (index_t le = 0; le < 3; le++) {
                         const index_t edge_id = mesh.faces_to_edges()(f, le);
@@ -657,6 +818,11 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                             // Skip adjacent edges
                             if (ea == ec || ea == ed || eb == ec || eb == ed) {
+                                continue;
+                            }
+
+                            // Skip EE pairs entirely when dbar_factor == 0
+                            if (skip_ee_hess) {
                                 continue;
                             }
 
@@ -702,12 +868,26 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                                 VertexMatrixView<3> X_extended(X, ee_closest_point);
                                 assert(X_extended.m_A == X.data() && "VertexMatrixView has made a deepcopy!");
-                                const double P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                    X_extended, dict, params, dtype);
-                                const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
-                                    X_extended, dict, params, ee_closest_point_T);
-                                Eigen::MatrixXd local_hess = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
-                                    X_extended, dict, params, ee_closest_point_T) * mollifier.val;
+
+                                double P;
+                                Eigen::VectorXd grad_P;
+                                Eigen::MatrixXd base_hess;
+                                if (use_nf_hess) {
+                                    P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions_near(
+                                        X_extended, dict, params, dtype, *nf_barrier_hess);
+                                    grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions_near<T>(
+                                        X_extended, dict, params, ee_closest_point_T, *nf_barrier_hess);
+                                    base_hess = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions_near(
+                                        X_extended, dict, params, ee_closest_point_T, *nf_barrier_hess);
+                                } else {
+                                    P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
+                                        X_extended, dict, params, dtype);
+                                    grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
+                                        X_extended, dict, params, ee_closest_point_T);
+                                    base_hess = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
+                                        X_extended, dict, params, ee_closest_point_T);
+                                }
+                                Eigen::MatrixXd local_hess = base_hess * mollifier.val;
 
                                 for (index_t i = 0; i < 4; i++) {
                                     for (index_t j = 0; j < 4; j++) {
@@ -742,6 +922,10 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     std::move(local_hess)});
                                 total_w += mollifier.val;
                                 total_p += mollifier.val * P;
+                                if (use_nf_hess) {
+                                    total_w_near += mollifier.val;
+                                    total_p_near += mollifier.val * P;
+                                }
                             }
                         }
                     }
@@ -763,13 +947,36 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 ConstHessEntry entry;
                                 entry.vertex_ids = &dict.vertex_ids();
                                 entry.dofs = &dict.dofs();
-                                entry.P = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                                    X_qp, dict, params);
-                                entry.grad_P = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
-                                    X_qp, dict, params, qp.lambda);
-                                entry.local_hess = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions(
-                                    X_qp, dict, params, qp.lambda, inner_psd_method);
-                                total_p += entry.P;
+
+                                if (use_nf_hess) {
+                                    auto [P_n, P_f] = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions_nearfar(
+                                        X_qp, dict, params, *nf_barrier_hess);
+                                    auto [grad_n, grad_f] = PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions_nearfar(
+                                        X_qp, dict, params, qp.lambda, *nf_barrier_hess);
+                                    auto [hess_n, hess_f] = PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions_nearfar(
+                                        X_qp, dict, params, qp.lambda, inner_psd_method, *nf_barrier_hess);
+                                    entry.P_near = face_quadrature_weight_scale * qp.weight * P_n;
+                                    entry.P_far = face_quadrature_weight_scale * qp.weight * P_f;
+                                    entry.grad_P_near = face_quadrature_weight_scale * qp.weight * grad_n;
+                                    entry.grad_P_far = face_quadrature_weight_scale * qp.weight * grad_f;
+                                    entry.local_hess_near = face_quadrature_weight_scale * qp.weight * hess_n;
+                                    entry.local_hess_far = face_quadrature_weight_scale * qp.weight * hess_f;
+                                    total_p_near += entry.P_near;
+                                    total_p_far += entry.P_far;
+                                    total_w_near += face_quadrature_weight_scale * qp.weight;
+                                    total_w_far += face_quadrature_weight_scale * qp.weight;
+                                } else {
+                                    entry.P_near = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
+                                        X_qp, dict, params);
+                                    entry.grad_P_near = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
+                                        X_qp, dict, params, qp.lambda);
+                                    entry.local_hess_near = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions(
+                                        X_qp, dict, params, qp.lambda, inner_psd_method);
+                                    entry.P_far = 0;
+                                    entry.grad_P_far = Eigen::VectorXd::Zero(0);
+                                    entry.local_hess_far = Eigen::MatrixXd::Zero(0, 0);
+                                    total_p += entry.P_near;
+                                }
                                 const_cache.push_back(std::move(entry));
                             }
                         }
@@ -784,13 +991,36 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 ConstHessEntry entry;
                                 entry.vertex_ids = &dict.vertex_ids();
                                 entry.dofs = &dict.dofs();
-                                entry.P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                    X, dict, params);
-                                entry.grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                                    X, dict, params);
-                                entry.local_hess = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                                    X, dict, params, inner_psd_method);
-                                total_p += entry.P;
+
+                                if (use_nf_hess) {
+                                    auto [P_n, P_f] = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions_nearfar(
+                                        X, dict, params, *nf_barrier_hess);
+                                    auto [grad_n, grad_f] = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions_nearfar(
+                                        X, dict, params, *nf_barrier_hess);
+                                    auto [hess_n, hess_f] = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions_nearfar(
+                                        X, dict, params, inner_psd_method, *nf_barrier_hess);
+                                    entry.P_near = P_n;
+                                    entry.P_far = P_f;
+                                    entry.grad_P_near = grad_n;
+                                    entry.grad_P_far = grad_f;
+                                    entry.local_hess_near = hess_n;
+                                    entry.local_hess_far = hess_f;
+                                    total_p_near += entry.P_near;
+                                    total_p_far += entry.P_far;
+                                    total_w_near += 1.0;
+                                    total_w_far += 1.0;
+                                } else {
+                                    entry.P_near = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
+                                        X, dict, params);
+                                    entry.grad_P_near = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
+                                        X, dict, params);
+                                    entry.local_hess_near = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
+                                        X, dict, params, inner_psd_method);
+                                    entry.P_far = 0;
+                                    entry.grad_P_far = Eigen::VectorXd::Zero(0);
+                                    entry.local_hess_far = Eigen::MatrixXd::Zero(0, 0);
+                                    total_p += entry.P_near;
+                                }
                                 const_cache.push_back(std::move(entry));
                             }
                         }
@@ -798,11 +1028,13 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                     // Pass 2: apply hessian
                     assert(total_w > 0);
-                    if (normalize_weights) {
-                        // Exact quotient rule: H(w*p/Z) = (w/Z)*H(p) - (w*avg_P/Z)*H(Z) - (w/Z²)*sym(G⊗∇Z)
-                        // where Z = total_w, ∇Z = Σ_i mol_grad_i, G = ∇p - avg_P*∇Z
-                        const double avg_P = total_p / total_w;
-                        const double scale_C = -(w / (total_w * total_w));
+                    if (use_nf_hess) {
+                        assert(total_w_near > 0 && total_w_far > 0);
+                        // Apply quotient rule separately for near and far components
+                        const double avg_P_near = total_p_near / total_w_near;
+                        const double avg_P_far = total_p_far / total_w_far;
+                        const double scale_C_near = -(w / (total_w_near * total_w_near));
+                        const double scale_C_far = -(w / (total_w_far * total_w_far));
 
                         if (combined_psd_projection) {
                             // Nothing contributes from this face: skip combined block.
@@ -870,54 +1102,69 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 return vid_to_local.at(gd / dim) * dim + static_cast<int>(gd % dim);
                             };
 
-                            // Adds scale_C * sym(outer(g_vec, gradz_vec)) to H_face.
+                            // Adds scale * sym(outer(g_vec, gradz_vec)) to H_face.
                             auto add_sym_correction_dense = [&](
                                 const std::vector<index_t>& g_dofs,
                                 const Eigen::Ref<const Eigen::VectorXd>& g_vec,
                                 const std::vector<index_t>& gradz_dofs,
-                                const Eigen::Ref<const Eigen::VectorXd>& gradz_vec) {
+                                const Eigen::Ref<const Eigen::VectorXd>& gradz_vec,
+                                double scale) {
                                 for (int a = 0; a < static_cast<int>(g_dofs.size()); a++) {
                                     const int la = global_dof_to_local(g_dofs[a]);
                                     for (int b = 0; b < static_cast<int>(gradz_dofs.size()); b++) {
                                         const int lb = global_dof_to_local(gradz_dofs[b]);
-                                        const double v = scale_C * g_vec[a] * gradz_vec[b];
+                                        const double v = scale * g_vec[a] * gradz_vec[b];
                                         H_face(la, lb) += v;
                                         H_face(lb, la) += v;
                                     }
                                 }
                             };
 
-                            // Term A: (w/total_w) * H(p_sum)
+                            // Term A: (w/total_w_near) * H(p_near) + (w/total_w_far) * H(p_far)
                             for (const auto& e : ee_cache) {
-                                add_block(e.local_hess, e.dict->vertex_ids(), w / total_w);
+                                add_block(e.local_hess, e.dict->vertex_ids(), w / total_w_near);
                             }
                             for (const auto& e : const_cache) {
-                                add_block(e.local_hess, *e.vertex_ids, w / total_w);
+                                add_block(e.local_hess_near, *e.vertex_ids, w / total_w_near);
+                                add_block(e.local_hess_far, *e.vertex_ids, w / total_w_far);
                             }
 
-                            // Term B: -(w*avg_P/Z) * Σ_i H(mol_i)
-                            const double scale_B = -(w * avg_P / total_w);
+                            // Term B: -(w*avg_P_near/total_w_near²) * Σ_i H(mol_i)
+                            //         -(w*avg_P_far/total_w_far²) * Σ_i H(mol_i)  [only const contrib]
+                            const double scale_B_near = -(w * avg_P_near / (total_w_near * total_w_near));
+                            const double scale_B_far = -(w * avg_P_far / (total_w_far * total_w_far));
                             for (const auto& e : ee_cache) {
-                                add_block(e.mol_hess, e.dict->primary_vertex_ids(), scale_B);
+                                add_block(e.mol_hess, e.dict->primary_vertex_ids(), scale_B_near);
                             }
 
-                            // Term C: -(w/Z²) * sym(G⊗∇Z)
+                            // Term C: -(w/total_w_near²) * sym(G_near ⊗ ∇Z_near)
+                            //         -(w/total_w_far²) * sym(G_far ⊗ ∇Z_far)
                             for (const auto& ei : ee_cache) {
                                 const auto& prim_dofs_i = ei.dict->primary_dofs();
                                 const Eigen::Vector<double, 12>& mol_grad_i = ei.mol_grad;
+                                // EE-EE near interactions
                                 for (const auto& ek : ee_cache) {
                                     add_sym_correction_dense(
                                         ek.dict->primary_dofs(),
-                                        (ek.P - avg_P) * ek.mol_grad,
-                                        prim_dofs_i, mol_grad_i);
+                                        (ek.P - avg_P_near) * ek.mol_grad,
+                                        prim_dofs_i, mol_grad_i, scale_C_near);
                                     add_sym_correction_dense(
                                         ek.dict->dofs(),
                                         ek.mol_val * ek.grad_P,
-                                        prim_dofs_i, mol_grad_i);
+                                        prim_dofs_i, mol_grad_i, scale_C_near);
                                 }
+                                // EE-const near interactions
                                 for (const auto& ej : const_cache) {
                                     add_sym_correction_dense(
-                                        *ej.dofs, ej.grad_P, prim_dofs_i, mol_grad_i);
+                                        *ej.dofs, ej.grad_P_near, prim_dofs_i, mol_grad_i, scale_C_near);
+                                }
+                            }
+                            // Term C far: const-const far interactions (EE only contribute near)
+                            for (const auto& ei : const_cache) {
+                                const auto& dofs_i = ei.dofs;
+                                const Eigen::VectorXd& grad_i = ei.grad_P_far;
+                                for (const auto& ej : const_cache) {
+                                    add_sym_correction_dense(*ej.dofs, ej.grad_P_far, *dofs_i, grad_i, scale_C_far);
                                 }
                             }
 
@@ -930,64 +1177,139 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                             local_hessian_to_global_triplets(
                                 H_face, union_vids, dim, *(hess_triplets.cache));
                         } else {
-                            // Adds scale_C * sym(outer(g_vec, gradz_vec)) to triplets.
+                            // Adds scale * sym(outer(g_vec, gradz_vec)) to triplets.
                             auto add_sym_correction = [&](
                                 const std::vector<index_t>& g_dofs,
                                 const Eigen::Ref<const Eigen::VectorXd>& g_vec,
                                 const std::vector<index_t>& gradz_dofs,
-                                const Eigen::Ref<const Eigen::VectorXd>& gradz_vec) {
+                                const Eigen::Ref<const Eigen::VectorXd>& gradz_vec,
+                                double scale) {
                                 for (int a = 0; a < static_cast<int>(g_dofs.size()); a++) {
                                     for (int b = 0; b < static_cast<int>(gradz_dofs.size()); b++) {
-                                        const double v = scale_C * g_vec[a] * gradz_vec[b];
+                                        const double v = scale * g_vec[a] * gradz_vec[b];
                                         hess_triplets.cache->add_value(0, g_dofs[a], gradz_dofs[b], v);
                                         hess_triplets.cache->add_value(0, gradz_dofs[b], g_dofs[a], v);
                                     }
                                 }
                             };
 
-                            // Term A: (w/total_w) * H(p_sum)
+                            // Term A: (w/total_w_near) * H(p_near) + (w/total_w_far) * H(p_far)
                             for (const auto& e : ee_cache) {
                                 ProfileRegistry::instance().add_value(
                                     "ho.local_hessian.size", e.local_hess.rows());
                                 local_hessian_to_global_triplets(
-                                    (w / total_w) * e.local_hess, e.dict->vertex_ids(), dim,
+                                    (w / total_w_near) * e.local_hess, e.dict->vertex_ids(), dim,
                                     *(hess_triplets.cache));
                             }
                             for (const auto& e : const_cache) {
                                 ProfileRegistry::instance().add_value(
-                                    "ho.local_hessian.size", e.local_hess.rows());
+                                    "ho.local_hessian.size", e.local_hess_near.rows());
                                 local_hessian_to_global_triplets(
-                                    (w / total_w) * e.local_hess, *e.vertex_ids, dim,
+                                    (w / total_w_near) * e.local_hess_near, *e.vertex_ids, dim,
+                                    *(hess_triplets.cache));
+                                ProfileRegistry::instance().add_value(
+                                    "ho.local_hessian.size", e.local_hess_far.rows());
+                                local_hessian_to_global_triplets(
+                                    (w / total_w_far) * e.local_hess_far, *e.vertex_ids, dim,
                                     *(hess_triplets.cache));
                             }
 
-                            // Term B: -(w*avg_P/Z) * Σ_i H(mol_i)
+                            // Term B: -(w*avg_P_near/total_w_near²) * Σ_i H(mol_i)
+                            //         -(w*avg_P_far/total_w_far²) * Σ_i H(mol_i) [const only]
                             for (const auto& e : ee_cache) {
                                 ProfileRegistry::instance().add_value(
                                     "ho.local_hessian.size", e.mol_hess.rows());
                                 local_hessian_to_global_triplets(
-                                    -(w * avg_P / total_w) * e.mol_hess,
+                                    -(w * avg_P_near / (total_w_near * total_w_near)) * e.mol_hess,
                                     e.dict->primary_vertex_ids(), dim,
                                     *(hess_triplets.cache));
                             }
 
-                            // Term C: -(w/Z²) * sym(G⊗∇Z)
+                            // Term C: -(w/total_w_near²) * sym(G_near ⊗ ∇Z_near)
+                            //         -(w/total_w_far²) * sym(G_far ⊗ ∇Z_far)
                             for (const auto& ei : ee_cache) {
                                 const auto& prim_dofs_i = ei.dict->primary_dofs();
                                 const Eigen::Vector<double, 12>& mol_grad_i = ei.mol_grad;
+                                // EE-EE near interactions
                                 for (const auto& ek : ee_cache) {
                                     add_sym_correction(
                                         ek.dict->primary_dofs(),
-                                        (ek.P - avg_P) * ek.mol_grad,
-                                        prim_dofs_i, mol_grad_i);
+                                        (ek.P - avg_P_near) * ek.mol_grad,
+                                        prim_dofs_i, mol_grad_i, scale_C_near);
                                     add_sym_correction(
                                         ek.dict->dofs(),
                                         ek.mol_val * ek.grad_P,
-                                        prim_dofs_i, mol_grad_i);
+                                        prim_dofs_i, mol_grad_i, scale_C_near);
                                 }
+                                // EE-const near interactions
                                 for (const auto& ej : const_cache) {
-                                    add_sym_correction(*ej.dofs, ej.grad_P, prim_dofs_i, mol_grad_i);
+                                    add_sym_correction(*ej.dofs, ej.grad_P_near, prim_dofs_i, mol_grad_i, scale_C_near);
                                 }
+                            }
+                            // Term C far: const-const far interactions (EE only contribute near)
+                            for (const auto& ei : const_cache) {
+                                const auto& dofs_i = ei.dofs;
+                                const Eigen::VectorXd& grad_i = ei.grad_P_far;
+                                for (const auto& ej : const_cache) {
+                                    add_sym_correction(*ej.dofs, ej.grad_P_far, *dofs_i, grad_i, scale_C_far);
+                                }
+                            }
+                        }
+                    } else if (use_near_far) {
+                        // Normalized (use_near_far=true) but without NearFarBarrier splitting
+                        assert(total_w > 0);
+                        const double avg_P = total_p / total_w;
+                        const double scale_C = -(w / (total_w * total_w));
+
+                        auto add_sym_correction_norm = [&](
+                            const std::vector<index_t>& g_dofs,
+                            const Eigen::Ref<const Eigen::VectorXd>& g_vec,
+                            const std::vector<index_t>& gradz_dofs,
+                            const Eigen::Ref<const Eigen::VectorXd>& gradz_vec) {
+                            for (int a = 0; a < static_cast<int>(g_dofs.size()); a++) {
+                                for (int b = 0; b < static_cast<int>(gradz_dofs.size()); b++) {
+                                    const double v = scale_C * g_vec[a] * gradz_vec[b];
+                                    hess_triplets.cache->add_value(0, g_dofs[a], gradz_dofs[b], v);
+                                    hess_triplets.cache->add_value(0, gradz_dofs[b], g_dofs[a], v);
+                                }
+                            }
+                        };
+
+                        // Term A: (w/total_w) * H(p_sum)
+                        for (const auto& e : ee_cache) {
+                            local_hessian_to_global_triplets(
+                                (w / total_w) * e.local_hess, e.dict->vertex_ids(), dim,
+                                *(hess_triplets.cache));
+                        }
+                        for (const auto& e : const_cache) {
+                            local_hessian_to_global_triplets(
+                                (w / total_w) * e.local_hess_near, *e.vertex_ids, dim,
+                                *(hess_triplets.cache));
+                        }
+
+                        // Term B: -(w*avg_P/total_w) * Σ_i H(mol_i)
+                        for (const auto& e : ee_cache) {
+                            local_hessian_to_global_triplets(
+                                -(w * avg_P / total_w) * e.mol_hess,
+                                e.dict->primary_vertex_ids(), dim,
+                                *(hess_triplets.cache));
+                        }
+
+                        // Term C: -(w/total_w²) * sym(G ⊗ ∇Z)
+                        for (const auto& ei : ee_cache) {
+                            const auto& prim_dofs_i = ei.dict->primary_dofs();
+                            const Eigen::Vector<double, 12>& mol_grad_i = ei.mol_grad;
+                            for (const auto& ek : ee_cache) {
+                                add_sym_correction_norm(
+                                    ek.dict->primary_dofs(), (ek.P - avg_P) * ek.mol_grad,
+                                    prim_dofs_i, mol_grad_i);
+                                add_sym_correction_norm(
+                                    ek.dict->dofs(), ek.mol_val * ek.grad_P,
+                                    prim_dofs_i, mol_grad_i);
+                            }
+                            for (const auto& ej : const_cache) {
+                                add_sym_correction_norm(
+                                    *ej.dofs, ej.grad_P_near, prim_dofs_i, mol_grad_i);
                             }
                         }
                     } else {
@@ -1001,9 +1323,9 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         }
                         for (const auto& e : const_cache) {
                             ProfileRegistry::instance().add_value(
-                                "ho.local_hessian.size", e.local_hess.rows());
+                                "ho.local_hessian.size", e.local_hess_near.rows());
                             local_hessian_to_global_triplets(
-                                w * e.local_hess, *e.vertex_ids, dim,
+                                w * e.local_hess_near, *e.vertex_ids, dim,
                                 *(hess_triplets.cache));
                         }
                     }

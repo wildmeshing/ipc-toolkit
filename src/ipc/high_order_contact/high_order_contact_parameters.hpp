@@ -30,7 +30,8 @@ struct HighOrderContactParameters {
         const IntegrationType _integration_type = IntegrationType::NORMAL
     ) :
         dhat(_dhat),
-        dbar(dhat * _dbar_factor),
+        dbar(_dbar_factor * dhat),
+        _dbar_factor(_dbar_factor),
         quad_order(_quad_order),
         ogc_collisions(_ogc_collisions),
         area_weights(_area_weights),
@@ -52,6 +53,7 @@ struct HighOrderContactParameters {
 
     const double dhat;
     const double dbar;
+    const double _dbar_factor;
 
     /// Barrier function used in 3D collision evaluation.
     std::shared_ptr<Barrier> barrier = std::make_shared<NormalizedClampedLogBarrier>();
@@ -60,7 +62,7 @@ struct HighOrderContactParameters {
     bool area_weights;
     const IntegrationType integration_type;
 
-    double get_dhat(bool safety_mode=false) const { return safety_mode ? dbar : dhat; }
+    double dbar_factor() const { return _dbar_factor; }
 
     double adaptive_dhat_ratio() const { return m_adaptive_dhat_ratio; }
 

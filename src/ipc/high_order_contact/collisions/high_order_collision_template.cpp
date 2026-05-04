@@ -156,7 +156,7 @@ double HighOrderCollisionTemplate<Vertex3, Vertex3>::operator()(
     const HighOrderContactParameters& params) const
 {
     const double dist = (positions.template head<3>() - positions.template segment<3>(3)).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -170,7 +170,7 @@ double HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator()(
         positions.template segment<3>(6),
         positions.template head<3>(),
         positions.template segment<3>(3)));
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -185,7 +185,7 @@ double HighOrderCollisionTemplate<Face3P1, Vertex3>::operator()(
         positions.template head<3>(),
         positions.template segment<3>(3),
         positions.template segment<3>(6)));
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -198,7 +198,7 @@ auto HighOrderCollisionTemplate<Vertex3, Vertex3>::gradient(
 {
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.);
     Vector6d grad = deriv * point_point_distance_gradient(positions.template head<3>(), positions.template tail<3>());
@@ -220,7 +220,7 @@ auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::gradient(
         positions.template segment<3>(6),
         positions.template head<3>(),
         positions.template segment<3>(3), dtype));
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.);
     Vector9d grad = point_edge_distance_gradient(
@@ -249,7 +249,7 @@ auto HighOrderCollisionTemplate<Face3P1, Vertex3>::gradient(
         positions.template head<3>(),
         positions.template segment<3>(3),
         positions.template segment<3>(6), dtype));
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.);
     Vector12d grad = point_triangle_distance_gradient(
@@ -270,7 +270,7 @@ auto HighOrderCollisionTemplate<Vertex3, Vertex3>::hessian(
 {
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     double deriv1 = params.barrier->first_derivative(dist, eps);
     double deriv2 = params.barrier->second_derivative(dist, eps);
@@ -296,7 +296,7 @@ auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::hessian(
         positions.template segment<3>(6),
         positions.template head<3>(),
         positions.template segment<3>(3), dtype));
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     double deriv1 = params.barrier->first_derivative(dist, eps);
     double deriv2 = params.barrier->second_derivative(dist, eps);
@@ -332,7 +332,7 @@ auto HighOrderCollisionTemplate<Face3P1, Vertex3>::hessian(
         positions.template head<3>(),
         positions.template segment<3>(3),
         positions.template segment<3>(6), dtype));
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     double deriv1 = params.barrier->first_derivative(dist, eps);
     double deriv2 = params.barrier->second_derivative(dist, eps);
@@ -351,6 +351,259 @@ auto HighOrderCollisionTemplate<Face3P1, Vertex3>::hessian(
     Matrix12d hess = g * deriv2 * g.transpose() + h * deriv1;
     std::vector<int> reorder{3,4,5,6,7,8,9,10,11,0,1,2};
     return hess(reorder, reorder);
+}
+
+// ---- NearFarBarrier specializations (3D only) ----
+
+template <>
+std::pair<double, double> HighOrderCollisionTemplate<Vertex3, Vertex3>::operator_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const NearFarBarrier* nf_barrier) const
+{
+    const double dist = (positions.template head<3>() - positions.template segment<3>(3)).norm();
+    const double eps = params.dhat;
+    params.record_dist(dist);
+    return {nf_barrier->near(dist, eps), nf_barrier->far(dist, eps)};
+}
+
+template <>
+std::pair<double, double> HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const NearFarBarrier* nf_barrier) const
+{
+    const double dist = sqrt(point_edge_distance(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3)));
+    const double eps = params.dhat;
+    params.record_dist(dist);
+    return {nf_barrier->near(dist, eps), nf_barrier->far(dist, eps)};
+}
+
+template <>
+std::pair<double, double> HighOrderCollisionTemplate<Face3P1, Vertex3>::operator_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const NearFarBarrier* nf_barrier) const
+{
+    const double dist = sqrt(point_triangle_distance(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6)));
+    const double eps = params.dhat;
+    params.record_dist(dist);
+    return {nf_barrier->near(dist, eps), nf_barrier->far(dist, eps)};
+}
+
+template <>
+std::pair<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>, VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Vertex3, Vertex3>::gradient_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const NearFarBarrier* nf_barrier) const
+{
+    assert(positions.size() == 6);
+    const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
+    const double eps = params.dhat;
+    params.record_dist(dist);
+    const double deriv_near = nf_barrier->first_derivative_near(dist, eps) / (dist * 2.);
+    const double deriv_far = nf_barrier->first_derivative_far(dist, eps) / (dist * 2.);
+    Vector6d g = point_point_distance_gradient(positions.template head<3>(), positions.template tail<3>());
+    VectorMax<double, HighOrderCollision::ELEMENT_SIZE> g_near(6), g_far(6);
+    g_near.head(6) = deriv_near * g;
+    g_far.head(6) = deriv_far * g;
+    return {g_near, g_far};
+}
+
+template <>
+std::pair<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>, VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Edge3P1, Vertex3>::gradient_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const NearFarBarrier* nf_barrier) const
+{
+    assert(positions.size() == 9);
+    auto dtype = point_edge_distance_type(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3));
+    const double dist = sqrt(point_edge_distance(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype));
+    const double eps = params.dhat;
+    params.record_dist(dist);
+    const double deriv_near = nf_barrier->first_derivative_near(dist, eps) / (dist * 2.);
+    const double deriv_far = nf_barrier->first_derivative_far(dist, eps) / (dist * 2.);
+    Vector9d g = point_edge_distance_gradient(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype);
+    Vector9d g_near = deriv_near * g;
+    Vector9d g_far = deriv_far * g;
+    g_near = g_near({3,4,5,6,7,8,0,1,2}).eval();
+    g_far = g_far({3,4,5,6,7,8,0,1,2}).eval();
+    VectorMax<double, HighOrderCollision::ELEMENT_SIZE> result_near(9), result_far(9);
+    result_near.head(9) = g_near;
+    result_far.head(9) = g_far;
+    return {result_near, result_far};
+}
+
+template <>
+std::pair<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>, VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Face3P1, Vertex3>::gradient_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const NearFarBarrier* nf_barrier) const
+{
+    assert(positions.size() == 12);
+    auto dtype = point_triangle_distance_type(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6));
+    const double dist = sqrt(point_triangle_distance(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype));
+    const double eps = params.dhat;
+    params.record_dist(dist);
+    const double deriv_near = nf_barrier->first_derivative_near(dist, eps) / (dist * 2.);
+    const double deriv_far = nf_barrier->first_derivative_far(dist, eps) / (dist * 2.);
+    Vector12d g = point_triangle_distance_gradient(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype);
+    Vector12d g_near = deriv_near * g;
+    Vector12d g_far = deriv_far * g;
+    g_near = g_near({3,4,5,6,7,8,9,10,11,0,1,2}).eval();
+    g_far = g_far({3,4,5,6,7,8,9,10,11,0,1,2}).eval();
+    VectorMax<double, HighOrderCollision::ELEMENT_SIZE> result_near(12), result_far(12);
+    result_near.head(12) = g_near;
+    result_far.head(12) = g_far;
+    return {result_near, result_far};
+}
+
+template <>
+std::pair<MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>, MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Vertex3, Vertex3>::hessian_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const NearFarBarrier* nf_barrier) const
+{
+    assert(positions.size() == 6);
+    const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
+    const double eps = params.dhat;
+    params.record_dist(dist);
+    double deriv1_near = nf_barrier->first_derivative_near(dist, eps);
+    double deriv2_near = nf_barrier->second_derivative_near(dist, eps);
+    double deriv1_far = nf_barrier->first_derivative_far(dist, eps);
+    double deriv2_far = nf_barrier->second_derivative_far(dist, eps);
+    deriv2_near = deriv2_near / (4 * dist * dist) - deriv1_near / (4 * dist * dist * dist);
+    deriv2_far = deriv2_far / (4 * dist * dist) - deriv1_far / (4 * dist * dist * dist);
+    deriv1_near /= (2 * dist);
+    deriv1_far /= (2 * dist);
+    const Vector6d g = point_point_distance_gradient(positions.template head<3>(), positions.template tail<3>());
+    const Matrix6d h = point_point_distance_hessian(positions.template head<3>(), positions.template tail<3>());
+    Matrix6d hess_near = g * deriv2_near * g.transpose() + h * deriv1_near;
+    Matrix6d hess_far = g * deriv2_far * g.transpose() + h * deriv1_far;
+    MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE> result_near(6, 6), result_far(6, 6);
+    result_near.block<6, 6>(0, 0) = hess_near;
+    result_far.block<6, 6>(0, 0) = hess_far;
+    return {result_near, result_far};
+}
+
+template <>
+std::pair<MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>, MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Edge3P1, Vertex3>::hessian_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const NearFarBarrier* nf_barrier) const
+{
+    assert(positions.size() == 9);
+    auto dtype = point_edge_distance_type(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3));
+    const double dist = sqrt(point_edge_distance(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype));
+    const double eps = params.dhat;
+    params.record_dist(dist);
+    double deriv1_near = nf_barrier->first_derivative_near(dist, eps);
+    double deriv2_near = nf_barrier->second_derivative_near(dist, eps);
+    double deriv1_far = nf_barrier->first_derivative_far(dist, eps);
+    double deriv2_far = nf_barrier->second_derivative_far(dist, eps);
+    deriv2_near = deriv2_near / (4 * dist * dist) - deriv1_near / (4 * dist * dist * dist);
+    deriv2_far = deriv2_far / (4 * dist * dist) - deriv1_far / (4 * dist * dist * dist);
+    deriv1_near /= (2 * dist);
+    deriv1_far /= (2 * dist);
+    const Vector9d g = point_edge_distance_gradient(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype);
+    const Matrix9d h = point_edge_distance_hessian(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3), dtype);
+    Matrix9d hess_near = g * deriv2_near * g.transpose() + h * deriv1_near;
+    Matrix9d hess_far = g * deriv2_far * g.transpose() + h * deriv1_far;
+    std::vector<int> reorder{3,4,5,6,7,8,0,1,2};
+    hess_near = hess_near(reorder, reorder).eval();
+    hess_far = hess_far(reorder, reorder).eval();
+    MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE> result_near(9, 9), result_far(9, 9);
+    result_near.block<9, 9>(0, 0) = hess_near;
+    result_far.block<9, 9>(0, 0) = hess_far;
+    return {result_near, result_far};
+}
+
+template <>
+std::pair<MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>, MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Face3P1, Vertex3>::hessian_nearfar(
+    Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+    const HighOrderContactParameters& params,
+    const NearFarBarrier* nf_barrier) const
+{
+    assert(positions.size() == 12);
+    auto dtype = point_triangle_distance_type(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6));
+    const double dist = sqrt(point_triangle_distance(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype));
+    const double eps = params.dhat;
+    params.record_dist(dist);
+    double deriv1_near = nf_barrier->first_derivative_near(dist, eps);
+    double deriv2_near = nf_barrier->second_derivative_near(dist, eps);
+    double deriv1_far = nf_barrier->first_derivative_far(dist, eps);
+    double deriv2_far = nf_barrier->second_derivative_far(dist, eps);
+    deriv2_near = deriv2_near / (4 * dist * dist) - deriv1_near / (4 * dist * dist * dist);
+    deriv2_far = deriv2_far / (4 * dist * dist) - deriv1_far / (4 * dist * dist * dist);
+    deriv1_near /= (2 * dist);
+    deriv1_far /= (2 * dist);
+    const Vector12d g = point_triangle_distance_gradient(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype);
+    const Matrix12d h = point_triangle_distance_hessian(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6), dtype);
+    Matrix12d hess_near = g * deriv2_near * g.transpose() + h * deriv1_near;
+    Matrix12d hess_far = g * deriv2_far * g.transpose() + h * deriv1_far;
+    std::vector<int> reorder{3,4,5,6,7,8,9,10,11,0,1,2};
+    hess_near = hess_near(reorder, reorder).eval();
+    hess_far = hess_far(reorder, reorder).eval();
+    MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE> result_near(12, 12), result_far(12, 12);
+    result_near.block<12, 12>(0, 0) = hess_near;
+    result_far.block<12, 12>(0, 0) = hess_far;
+    return {result_near, result_far};
 }
 
 // ---- 2D specializations ----
@@ -386,7 +639,7 @@ double HighOrderCollisionTemplate<Vertex2, Vertex2>::operator()(
     const HighOrderContactParameters& params) const
 {
     const double dist = (positions.template head<2>() - positions.template tail<2>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -400,7 +653,7 @@ double HighOrderCollisionTemplate<Vertex2, Edge2P1>::operator()(
         positions.template head<2>(),
         positions.template segment<2>(2),
         positions.template segment<2>(4)));
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -412,7 +665,7 @@ auto HighOrderCollisionTemplate<Vertex2, Vertex2>::gradient(
     -> VectorMax<double, ELEMENT_SIZE>
 {
     const double dist = (positions.template head<2>() - positions.template tail<2>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.0);
     const VectorMax6d g = point_point_distance_gradient(
@@ -430,7 +683,7 @@ auto HighOrderCollisionTemplate<Vertex2, Edge2P1>::gradient(
         positions.template head<2>(),
         positions.template segment<2>(2),
         positions.template segment<2>(4)));
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.0);
     const VectorMax9d g = point_edge_distance_gradient(
@@ -447,7 +700,7 @@ auto HighOrderCollisionTemplate<Vertex2, Vertex2>::hessian(
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     const double dist = (positions.template head<2>() - positions.template tail<2>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     double deriv1 = params.barrier->first_derivative(dist, eps);
     double deriv2 = params.barrier->second_derivative(dist, eps);
@@ -470,7 +723,7 @@ auto HighOrderCollisionTemplate<Vertex2, Edge2P1>::hessian(
         positions.template head<2>(),
         positions.template segment<2>(2),
         positions.template segment<2>(4)));
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = params.dhat;
     params.record_dist(dist);
     double deriv1 = params.barrier->first_derivative(dist, eps);
     double deriv2 = params.barrier->second_derivative(dist, eps);

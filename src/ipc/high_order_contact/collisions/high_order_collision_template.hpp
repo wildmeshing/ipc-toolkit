@@ -1,6 +1,7 @@
 #pragma once
 #include "high_order_collision.hpp"
 #include "high_order_primitives.hpp"
+#include <ipc/barrier/barrier.hpp>
 
 namespace ipc {
 
@@ -77,11 +78,36 @@ public:
 
     double compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
 
-    void flag_as_safety() { safety_mode = true; }
+    std::pair<double, double> operator_nearfar(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+        const HighOrderContactParameters& params,
+        const NearFarBarrier* nf_barrier) const override
+    {
+        return {0.0, 0.0};
+    }
+
+    std::pair<VectorMax<double, ELEMENT_SIZE>, VectorMax<double, ELEMENT_SIZE>> gradient_nearfar(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+        const HighOrderContactParameters& params,
+        const NearFarBarrier* nf_barrier) const override
+    {
+        VectorMax<double, ELEMENT_SIZE> zero = VectorMax<double, ELEMENT_SIZE>::Zero(positions.size());
+        return {zero, zero};
+    }
+
+    std::pair<MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>, MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>> hessian_nearfar(
+        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+        const HighOrderContactParameters&,
+        const NearFarBarrier*) const override
+    {
+        int n = positions.size();
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> zero = MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n, n);
+        return {zero, zero};
+    }
+
 private:
     PrimitiveA primitive_a;
     PrimitiveB primitive_b;
-    bool safety_mode = false;
 };
 
 // Keep old name as alias for backward compatibility within this codebase

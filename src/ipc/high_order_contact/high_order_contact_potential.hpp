@@ -14,8 +14,8 @@ class HighOrderContactPotential {
 public:
     HighOrderContactPotential(
         const HighOrderContactParameters& _params,
-        const bool _normalize_weights = true)
-        : params(_params), normalize_weights(_normalize_weights)
+        const bool _use_near_far = true)
+        : params(_params), use_near_far(_use_near_far)
     {
     }
 
@@ -91,13 +91,13 @@ public:
         return m_edge_evaluation_count;
     }
 
-    bool get_normalize_weights() const { return normalize_weights; }
+    bool get_use_near_far() const { return use_near_far; }
 
 protected:
     /// @brief GCP parameters for collision potential
     HighOrderContactParameters params;
     /// @brief Whether to normalize quadrature weights so they sum to 1
-    const bool normalize_weights;
+    const bool use_near_far;
 
     mutable CountMap m_edge_evaluation_count;
 };

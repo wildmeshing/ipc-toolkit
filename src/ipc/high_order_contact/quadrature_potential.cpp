@@ -180,7 +180,7 @@ namespace ipc {
         num_collision_pairs = 0;
 
         if (edge_edge_distance(V.row(e00), V.row(e01),
-                               V.row(e10), V.row(e11), dtype) < params.dbar * params.dbar) {
+                               V.row(e10), V.row(e11), dtype) < params.dhat * params.dhat) {
             double closest_uv = 0;
             if (dtype == EdgeEdgeDistanceType::EA_EB) {
                 closest_uv = line_line_closest_point_pairs_uv<double>(
@@ -220,13 +220,12 @@ namespace ipc {
 
             for (const auto& other_v : v_set) {
                 if (filter_obstacles_e && mesh.is_obstacle_vertex(other_v)) continue;
-                if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dbar * params.dbar) {
+                if ((V_(vid) - V_(other_v)).squaredNorm() >= params.dhat * params.dhat) {
                     continue;
                 }
                 auto pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                     vid, other_v, mesh);
                 ++num_collision_pairs;
-                pair->flag_as_safety();
                 insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
             }
 
@@ -240,7 +239,7 @@ namespace ipc {
                 const double dist_sqr = point_edge_distance(V_(vid), V_(mesh.edges()(other_e, 0)),
                                                        V_(mesh.edges()(other_e, 1)), dtype2);
 
-                if (dist_sqr >= params.dbar * params.dbar) {
+                if (dist_sqr >= params.dhat * params.dhat) {
                     continue;
                 }
 
@@ -252,8 +251,7 @@ namespace ipc {
                             vid, mesh.edges()(other_e, 0), mesh);
                         ++num_collision_pairs;
                         pair->weight = -1;
-                        pair->flag_as_safety();
-                        insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+                                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
                 case PointEdgeDistanceType::P_E1:
@@ -263,8 +261,7 @@ namespace ipc {
                             vid, mesh.edges()(other_e, 1), mesh);
                         ++num_collision_pairs;
                         pair->weight = -1;
-                        pair->flag_as_safety();
-                        insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+                                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
                 case PointEdgeDistanceType::P_E:
@@ -274,8 +271,7 @@ namespace ipc {
                             other_e, vid, mesh);
                         ++num_collision_pairs;
                         pair->weight = -1;
-                        pair->flag_as_safety();
-                        insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
+                                insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
                 default:
@@ -296,7 +292,7 @@ namespace ipc {
                                                            V_(mesh.faces()(other_f, 1)),
                                                            V_(mesh.faces()(other_f, 2)), dtype2);
 
-                if (dist_sqr >= params.dbar * params.dbar) {
+                if (dist_sqr >= params.dhat * params.dhat) {
                     continue;
                 }
 
@@ -307,7 +303,6 @@ namespace ipc {
                         auto pair =
                             std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                             vid, mesh.faces()(other_f, 0), mesh);
-                        pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
@@ -317,7 +312,6 @@ namespace ipc {
                         auto pair =
                             std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                             vid, mesh.faces()(other_f, 1), mesh);
-                        pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
@@ -327,7 +321,6 @@ namespace ipc {
                         auto pair =
                             std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(
                             vid, mesh.faces()(other_f, 2), mesh);
-                        pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
@@ -337,7 +330,6 @@ namespace ipc {
                         auto pair =
                             std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
                             mesh.faces_to_edges()(other_f, 0), vid, mesh);
-                        pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
@@ -347,7 +339,6 @@ namespace ipc {
                         auto pair =
                             std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
                             mesh.faces_to_edges()(other_f, 1), vid, mesh);
-                        pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
@@ -357,7 +348,6 @@ namespace ipc {
                         auto pair =
                             std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(
                             mesh.faces_to_edges()(other_f, 2), vid, mesh);
-                        pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
@@ -367,7 +357,6 @@ namespace ipc {
                         auto pair =
                             std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(
                             other_f, vid, mesh);
-                        pair->flag_as_safety();    
                         insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
                         break;
                     }
@@ -1345,5 +1334,441 @@ namespace ipc {
         dict->initialize(std::vector<index_t>{e0, e1}, std::vector{e00, e01, e10, e11}, pairs);
         dict->set_ee_dtype(dtype);
         return dict;
+    }
+
+    // ---- NearFarBarrier evaluation functions (3D) ----
+
+    std::pair<double, double> PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions_nearfar(
+        const Eigen::MatrixXd& V,
+        const HighOrderCollisionDict<PointType::VERTEX>& collisions,
+        const HighOrderContactParameters& params,
+        const NearFarBarrier& nf_barrier)
+    {
+        double near = 0, far = 0;
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [n, f] = cc.operator_nearfar(cc.dof(V), params, &nf_barrier);
+            near += cc.weight * n;
+            far += cc.weight * f;
+        }
+        return {near, far};
+    }
+
+    std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions_nearfar(
+        const Eigen::MatrixXd& V,
+        const HighOrderCollisionDict<PointType::VERTEX>& collisions,
+        const HighOrderContactParameters& params,
+        const NearFarBarrier& nf_barrier)
+    {
+        const int n_vertices = collisions.vertex_ids().size();
+        const int n_dofs = n_vertices * 3;
+        Eigen::VectorXd grad_near = Eigen::VectorXd::Zero(n_dofs);
+        Eigen::VectorXd grad_far = Eigen::VectorXd::Zero(n_dofs);
+
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V), params, &nf_barrier);
+
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id = cc.vertex_id(i);
+                const index_t local_id = collisions.vertex_ids_inverse(global_id);
+                const index_t offset = local_id * 3;
+                grad_near.template segment<3>(offset) += cc.weight * gn.template segment<3>(i * 3);
+                grad_far.template segment<3>(offset) += cc.weight * gf.template segment<3>(i * 3);
+            }
+        }
+
+        return {grad_near, grad_far};
+    }
+
+    std::pair<Eigen::MatrixXd, Eigen::MatrixXd> PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions_nearfar(
+        const Eigen::MatrixXd& V,
+        const HighOrderCollisionDict<PointType::VERTEX>& collisions,
+        const HighOrderContactParameters& params,
+        PSDProjectionMethod project_to_psd,
+        const NearFarBarrier& nf_barrier)
+    {
+        const int n_vertices = collisions.vertex_ids().size();
+        const int n_dofs = n_vertices * 3;
+
+        Eigen::MatrixXd H_near = Eigen::MatrixXd::Zero(n_dofs, n_dofs);
+        Eigen::MatrixXd H_far = Eigen::MatrixXd::Zero(n_dofs, n_dofs);
+
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [hn, hf] = cc.hessian_nearfar(cc.dof(V), params, &nf_barrier);
+
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id_i = cc.vertex_id(i);
+                const index_t local_i = collisions.vertex_ids_inverse(global_id_i);
+                const index_t offset_i = local_i * 3;
+
+                for (index_t j = 0; j < cc.num_vertices(); j++) {
+                    const index_t global_id_j = cc.vertex_id(j);
+                    const index_t local_j = collisions.vertex_ids_inverse(global_id_j);
+                    const index_t offset_j = local_j * 3;
+
+                    H_near.block<3, 3>(offset_i, offset_j) += cc.weight * hn.block<3, 3>(i * 3, j * 3);
+                    H_far.block<3, 3>(offset_i, offset_j) += cc.weight * hf.block<3, 3>(i * 3, j * 3);
+                }
+            }
+        }
+
+        if (project_to_psd != PSDProjectionMethod::NONE) {
+            H_near = ipc::project_to_psd(H_near, project_to_psd);
+            H_far = ipc::project_to_psd(H_far, project_to_psd);
+        }
+
+        return {H_near, H_far};
+    }
+
+    double PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions_near(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::EDGE>& collisions,
+        const HighOrderContactParameters& params,
+        EdgeEdgeDistanceType dtype,
+        const NearFarBarrier& nf_barrier)
+    {
+        double near = 0;
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            near += cc.weight * cc.operator_nearfar(cc.dof(V_extended), params, &nf_barrier).first;
+        }
+        return near;
+    }
+
+    template <>
+    std::enable_if_t<IsADGrad<ADGrad<12>>::value, Eigen::VectorXd>
+    PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions_near<ADGrad<12>>(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::EDGE>& collisions,
+        const HighOrderContactParameters& params,
+        Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> q,
+        const NearFarBarrier& nf_barrier)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            Eigen::VectorXd g = cc.weight * gn;
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id = cc.vertex_id(i);
+                if (global_id == n_real_vertices) {
+                    const Vector12d local_grad = (q(0) * g(3 * i + 0) + q(1) * g(3 * i + 1) + q(2) * g(3 * i + 2)).grad;
+                    // distribute grad wrt virtual vertex to real edge vertices
+                    for (index_t lv = 0; lv < 4; lv++) {
+                        grad.segment<3>(3 * collisions.primary_local_ids()[lv]) += local_grad.segment<3>(lv * 3);
+                    }
+                }
+                else {
+                    assert(global_id < n_real_vertices);
+                    grad.segment<3>(3 * collisions.vertex_ids_inverse(global_id)) += g.segment<3>(i * 3);
+                }
+            }
+        }
+
+        return grad;
+    }
+
+    template <>
+    std::enable_if_t<IsADHessian<ADHessian<12>>::value, Eigen::VectorXd>
+    PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions_near<ADHessian<12>>(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::EDGE>& collisions,
+        const HighOrderContactParameters& params,
+        Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
+        const NearFarBarrier& nf_barrier)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            Eigen::VectorXd g = cc.weight * gn;
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id = cc.vertex_id(i);
+                if (global_id == n_real_vertices) {
+                    const Vector12d local_grad = (q(0) * g(3 * i + 0) + q(1) * g(3 * i + 1) + q(2) * g(3 * i + 2)).grad;
+                    // distribute grad wrt virtual vertex to real edge vertices
+                    for (index_t lv = 0; lv < 4; lv++) {
+                        grad.segment<3>(3 * collisions.primary_local_ids()[lv]) += local_grad.segment<3>(lv * 3);
+                    }
+                }
+                else {
+                    assert(global_id < n_real_vertices);
+                    grad.segment<3>(3 * collisions.vertex_ids_inverse(global_id)) += g.segment<3>(i * 3);
+                }
+            }
+        }
+
+        return grad;
+    }
+
+    Eigen::MatrixXd PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions_near(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::EDGE>& collisions,
+        const HighOrderContactParameters& params,
+        Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
+        const NearFarBarrier& nf_barrier)
+    {
+        const index_t n_real_vertices = V_extended.rows() - 1;
+        Eigen::MatrixXd H = Eigen::MatrixXd::Zero(collisions.vertex_ids().size() * 3, collisions.vertex_ids().size() * 3);
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            const Eigen::VectorXd cc_dof = cc.dof(V_extended);
+            auto [gn, gf] = cc.gradient_nearfar(cc_dof, params, &nf_barrier);
+            auto [hn, hf] = cc.hessian_nearfar(cc_dof, params, &nf_barrier);
+            Eigen::VectorXd g = cc.weight * gn;
+            Eigen::MatrixXd h = cc.weight * hn;
+
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t gi = cc.vertex_id(i);
+                for (index_t j = 0; j < cc.num_vertices(); j++) {
+                    const index_t gj = cc.vertex_id(j);
+                    if (gi == n_real_vertices && gj == n_real_vertices) {
+                        assert(i == j);
+                        // distribute derivatives wrt virtual vertex to real edge vertices
+                        Matrix12d local_hess;
+                        {
+                            Eigen::Matrix<double, 3, 12> tmp_g;
+                            tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
+                            local_hess = tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j) * tmp_g;
+
+                            for (int d = 0; d < 3; d++) {
+                                local_hess += q(d).Hess * g(3 * i + d);
+                            }
+                        }
+
+                        for (index_t li = 0; li < 4; li++) {
+                            for (index_t lj = 0; lj < 4; lj++) {
+                                H.block<3, 3>(collisions.primary_local_ids()[li] * 3,
+                                    collisions.primary_local_ids()[lj] * 3) +=
+                                        local_hess.block<3, 3>(3 * li, 3 * lj);
+                            }
+                        }
+                    }
+                    else if (gi == n_real_vertices) {
+                        Eigen::Matrix<double, 12, 3> local_hess;
+                        {
+                            Eigen::Matrix<double, 3, 12> tmp_g;
+                            tmp_g << q(0).grad.transpose(), q(1).grad.transpose(), q(2).grad.transpose();
+                            local_hess = tmp_g.transpose() * h.block<3, 3>(3 * i, 3 * j);
+                        }
+                        for (index_t li = 0; li < 4; li++) {
+                            const index_t lli = collisions.primary_local_ids()[li];
+                            H.block<3, 3>(lli * 3, collisions.vertex_ids_inverse(gj) * 3) += local_hess.block<3, 3>(3 * li, 0);
+                            H.block<3, 3>(collisions.vertex_ids_inverse(gj) * 3, lli * 3) += local_hess.block<3, 3>(3 * li, 0).transpose();
+                        }
+                    }
+                    else if (gj == n_real_vertices) {
+                        // Already handled in (gi == n_real_vertices) case
+                    }
+                    else {
+                        assert(gi < n_real_vertices);
+                        assert(gj < n_real_vertices);
+                        H.block<3, 3>(3 * collisions.vertex_ids_inverse(gi), 3 * collisions.vertex_ids_inverse(gj)) += h.block<3, 3>(3 * i, 3 * j);
+                    }
+                }
+            }
+        }
+
+        return H;
+    }
+
+    std::pair<double, double> PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions_nearfar(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::FACE>& collisions,
+        const HighOrderContactParameters& params,
+        const NearFarBarrier& nf_barrier)
+    {
+        double near = 0, far = 0;
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [n, f] = cc.operator_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            near += cc.weight * n;
+            far += cc.weight * f;
+        }
+        return {near, far};
+    }
+
+    std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions_nearfar(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::FACE>& collisions,
+        const HighOrderContactParameters& params,
+        const NearFarBarrier& nf_barrier)
+    {
+        const int n_vertices = collisions.vertex_ids().size();
+        Eigen::VectorXd grad_near = Eigen::VectorXd::Zero(n_vertices * 3);
+        Eigen::VectorXd grad_far = Eigen::VectorXd::Zero(n_vertices * 3);
+
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
+
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id = cc.vertex_id(i);
+                if (global_id == V_extended.rows() - 1) {
+                    grad_near.template segment<3>(0) += cc.weight * (1.0 / 3.0) * gn.template segment<3>(i * 3);
+                    grad_far.template segment<3>(0) += cc.weight * (1.0 / 3.0) * gf.template segment<3>(i * 3);
+                } else {
+                    const index_t local_id = collisions.vertex_ids_inverse(global_id);
+                    grad_near.template segment<3>(local_id * 3) += cc.weight * gn.template segment<3>(i * 3);
+                    grad_far.template segment<3>(local_id * 3) += cc.weight * gf.template segment<3>(i * 3);
+                }
+            }
+        }
+
+        return {grad_near, grad_far};
+    }
+
+    std::pair<Eigen::MatrixXd, Eigen::MatrixXd> PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions_nearfar(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::FACE>& collisions,
+        const HighOrderContactParameters& params,
+        PSDProjectionMethod project_to_psd,
+        const NearFarBarrier& nf_barrier)
+    {
+        const int n_vertices = collisions.vertex_ids().size();
+        const int n_dofs = n_vertices * 3;
+
+        Eigen::MatrixXd H_near = Eigen::MatrixXd::Zero(n_dofs, n_dofs);
+        Eigen::MatrixXd H_far = Eigen::MatrixXd::Zero(n_dofs, n_dofs);
+
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [hn, hf] = cc.hessian_nearfar(cc.dof(V_extended), params, &nf_barrier);
+
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id_i = cc.vertex_id(i);
+                const bool i_virtual = (global_id_i == V_extended.rows() - 1);
+
+                for (index_t j = 0; j < cc.num_vertices(); j++) {
+                    const index_t global_id_j = cc.vertex_id(j);
+                    const bool j_virtual = (global_id_j == V_extended.rows() - 1);
+
+                    if (!i_virtual && !j_virtual) {
+                        const index_t local_i = collisions.vertex_ids_inverse(global_id_i);
+                        const index_t local_j = collisions.vertex_ids_inverse(global_id_j);
+                        H_near.block<3, 3>(local_i * 3, local_j * 3) += cc.weight * hn.block<3, 3>(i * 3, j * 3);
+                        H_far.block<3, 3>(local_i * 3, local_j * 3) += cc.weight * hf.block<3, 3>(i * 3, j * 3);
+                    } else if (i_virtual && j_virtual) {
+                        H_near.block<3, 3>(0, 0) += cc.weight * (1.0 / 9.0) * hn.block<3, 3>(i * 3, j * 3);
+                        H_far.block<3, 3>(0, 0) += cc.weight * (1.0 / 9.0) * hf.block<3, 3>(i * 3, j * 3);
+                    } else if (i_virtual) {
+                        const index_t local_j = collisions.vertex_ids_inverse(global_id_j);
+                        H_near.block<3, 3>(0, local_j * 3) += cc.weight * (1.0 / 3.0) * hn.block<3, 3>(i * 3, j * 3);
+                        H_far.block<3, 3>(0, local_j * 3) += cc.weight * (1.0 / 3.0) * hf.block<3, 3>(i * 3, j * 3);
+                    } else if (j_virtual) {
+                        const index_t local_i = collisions.vertex_ids_inverse(global_id_i);
+                        H_near.block<3, 3>(local_i * 3, 0) += cc.weight * (1.0 / 3.0) * hn.block<3, 3>(i * 3, j * 3);
+                        H_far.block<3, 3>(local_i * 3, 0) += cc.weight * (1.0 / 3.0) * hf.block<3, 3>(i * 3, j * 3);
+                    }
+                }
+            }
+        }
+
+        if (project_to_psd != PSDProjectionMethod::NONE) {
+            H_near = ipc::project_to_psd(H_near, project_to_psd);
+            H_far = ipc::project_to_psd(H_far, project_to_psd);
+        }
+
+        return {H_near, H_far};
+    }
+
+    std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions_nearfar(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::FACE>& collisions,
+        const HighOrderContactParameters& params,
+        const std::array<double, 3>& lambda,
+        const NearFarBarrier& nf_barrier)
+    {
+        const int n_vertices = collisions.vertex_ids().size();
+        Eigen::VectorXd grad_near = Eigen::VectorXd::Zero(n_vertices * 3);
+        Eigen::VectorXd grad_far = Eigen::VectorXd::Zero(n_vertices * 3);
+
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
+
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id = cc.vertex_id(i);
+                if (global_id == V_extended.rows() - 1) {
+                    for (index_t li = 0; li < 3; li++) {
+                        grad_near.template segment<3>(li * 3) += cc.weight * lambda[li] * gn.template segment<3>(i * 3);
+                        grad_far.template segment<3>(li * 3) += cc.weight * lambda[li] * gf.template segment<3>(i * 3);
+                    }
+                } else {
+                    const index_t local_id = collisions.vertex_ids_inverse(global_id);
+                    grad_near.template segment<3>(local_id * 3) += cc.weight * gn.template segment<3>(i * 3);
+                    grad_far.template segment<3>(local_id * 3) += cc.weight * gf.template segment<3>(i * 3);
+                }
+            }
+        }
+
+        return {grad_near, grad_far};
+    }
+
+    std::pair<Eigen::MatrixXd, Eigen::MatrixXd> PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions_nearfar(
+        VertexMatrixView<3> V_extended,
+        const HighOrderCollisionDict<PointType::FACE>& collisions,
+        const HighOrderContactParameters& params,
+        const std::array<double, 3>& lambda,
+        PSDProjectionMethod project_to_psd,
+        const NearFarBarrier& nf_barrier)
+    {
+        const int n_vertices = collisions.vertex_ids().size();
+        const int n_dofs = n_vertices * 3;
+
+        Eigen::MatrixXd H_near = Eigen::MatrixXd::Zero(n_dofs, n_dofs);
+        Eigen::MatrixXd H_far = Eigen::MatrixXd::Zero(n_dofs, n_dofs);
+
+        for (int ci = 0; ci < collisions.size(); ci++) {
+            const auto& cc = collisions[ci];
+            auto [hn, hf] = cc.hessian_nearfar(cc.dof(V_extended), params, &nf_barrier);
+
+            for (index_t i = 0; i < cc.num_vertices(); i++) {
+                const index_t global_id_i = cc.vertex_id(i);
+                const bool i_virtual = (global_id_i == V_extended.rows() - 1);
+
+                for (index_t j = 0; j < cc.num_vertices(); j++) {
+                    const index_t global_id_j = cc.vertex_id(j);
+                    const bool j_virtual = (global_id_j == V_extended.rows() - 1);
+
+                    if (!i_virtual && !j_virtual) {
+                        const index_t local_i = collisions.vertex_ids_inverse(global_id_i);
+                        const index_t local_j = collisions.vertex_ids_inverse(global_id_j);
+                        H_near.block<3, 3>(local_i * 3, local_j * 3) += cc.weight * hn.block<3, 3>(i * 3, j * 3);
+                        H_far.block<3, 3>(local_i * 3, local_j * 3) += cc.weight * hf.block<3, 3>(i * 3, j * 3);
+                    } else if (i_virtual && j_virtual) {
+                        for (index_t li = 0; li < 3; li++) {
+                            for (index_t lj = 0; lj < 3; lj++) {
+                                H_near.block<3, 3>(li * 3, lj * 3) += cc.weight * lambda[li] * lambda[lj] * hn.block<3, 3>(i * 3, j * 3);
+                                H_far.block<3, 3>(li * 3, lj * 3) += cc.weight * lambda[li] * lambda[lj] * hf.block<3, 3>(i * 3, j * 3);
+                            }
+                        }
+                    } else if (i_virtual) {
+                        const index_t local_j = collisions.vertex_ids_inverse(global_id_j);
+                        for (index_t li = 0; li < 3; li++) {
+                            H_near.block<3, 3>(li * 3, local_j * 3) += cc.weight * lambda[li] * hn.block<3, 3>(i * 3, j * 3);
+                            H_far.block<3, 3>(li * 3, local_j * 3) += cc.weight * lambda[li] * hf.block<3, 3>(i * 3, j * 3);
+                        }
+                    } else if (j_virtual) {
+                        const index_t local_i = collisions.vertex_ids_inverse(global_id_i);
+                        for (index_t lj = 0; lj < 3; lj++) {
+                            H_near.block<3, 3>(local_i * 3, lj * 3) += cc.weight * lambda[lj] * hn.block<3, 3>(i * 3, j * 3);
+                            H_far.block<3, 3>(local_i * 3, lj * 3) += cc.weight * lambda[lj] * hf.block<3, 3>(i * 3, j * 3);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (project_to_psd != PSDProjectionMethod::NONE) {
+            H_near = ipc::project_to_psd(H_near, project_to_psd);
+            H_far = ipc::project_to_psd(H_far, project_to_psd);
+        }
+
+        return {H_near, H_far};
     }
 }

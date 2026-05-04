@@ -26,11 +26,37 @@ namespace ipc
             const HighOrderContactParameters& params,
             PSDProjectionMethod project_to_psd);
 
+        std::pair<double, double> evaluate_potential_at_vertex_with_cached_collisions_nearfar(
+            const Eigen::MatrixXd& V,
+            const HighOrderCollisionDict<PointType::VERTEX>& collisions,
+            const HighOrderContactParameters& params,
+            const NearFarBarrier& nf_barrier);
+
+        std::pair<Eigen::VectorXd, Eigen::VectorXd> evaluate_potential_gradient_at_vertex_with_cached_collisions_nearfar(
+            const Eigen::MatrixXd& V,
+            const HighOrderCollisionDict<PointType::VERTEX>& collisions,
+            const HighOrderContactParameters& params,
+            const NearFarBarrier& nf_barrier);
+
+        std::pair<Eigen::MatrixXd, Eigen::MatrixXd> evaluate_potential_hessian_at_vertex_with_cached_collisions_nearfar(
+            const Eigen::MatrixXd& V,
+            const HighOrderCollisionDict<PointType::VERTEX>& collisions,
+            const HighOrderContactParameters& params,
+            PSDProjectionMethod project_to_psd,
+            const NearFarBarrier& nf_barrier);
+
         double evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
             EdgeEdgeDistanceType dtype);
+
+        double evaluate_potential_at_edge_edge_closest_point_with_cached_collisions_near(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::EDGE>& collisions,
+            const HighOrderContactParameters& params,
+            EdgeEdgeDistanceType dtype,
+            const NearFarBarrier& nf_barrier);
 
         /// @brief Compute the gradient of P(q) for a point q
         /// @return The gradient vector with respect to collisions.m_vertex_ids
@@ -45,16 +71,39 @@ namespace ipc
             const HighOrderContactParameters& params,
             Eigen::ConstRef<Eigen::Vector3<ADType>> q);
 
+        /// @brief Compute the near component gradient (NearFarBarrier)
+        template <typename ADType>
+        std::enable_if_t<IsADGrad<ADType>::value || IsADHessian<ADType>::value, Eigen::VectorXd>
+        evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions_near(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::EDGE>& collisions,
+            const HighOrderContactParameters& params,
+            Eigen::ConstRef<Eigen::Vector3<ADType>> q,
+            const NearFarBarrier& nf_barrier);
+
         Eigen::MatrixXd evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
             Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q);
 
+        Eigen::MatrixXd evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions_near(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::EDGE>& collisions,
+            const HighOrderContactParameters& params,
+            Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
+            const NearFarBarrier& nf_barrier);
+
         double evaluate_potential_at_face_center_with_cached_collisions(
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params);
+
+        std::pair<double, double> evaluate_potential_at_face_center_with_cached_collisions_nearfar(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::FACE>& collisions,
+            const HighOrderContactParameters& params,
+            const NearFarBarrier& nf_barrier);
 
         Eigen::VectorXd evaluate_potential_gradient_at_face_center_with_cached_collisions(
             VertexMatrixView<3> V_extended,
@@ -66,6 +115,19 @@ namespace ipc
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
             PSDProjectionMethod project_to_psd);
+
+        std::pair<Eigen::VectorXd, Eigen::VectorXd> evaluate_potential_gradient_at_face_center_with_cached_collisions_nearfar(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::FACE>& collisions,
+            const HighOrderContactParameters& params,
+            const NearFarBarrier& nf_barrier);
+
+        std::pair<Eigen::MatrixXd, Eigen::MatrixXd> evaluate_potential_hessian_at_face_center_with_cached_collisions_nearfar(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::FACE>& collisions,
+            const HighOrderContactParameters& params,
+            PSDProjectionMethod project_to_psd,
+            const NearFarBarrier& nf_barrier);
 
         /// @brief Gradient of the face-interior potential for an arbitrary
         ///   interior quadrature point q = λ0·v0 + λ1·v1 + λ2·v2.
@@ -85,6 +147,21 @@ namespace ipc
             const HighOrderContactParameters& params,
             const std::array<double, 3>& lambda,
             PSDProjectionMethod project_to_psd);
+
+        std::pair<Eigen::VectorXd, Eigen::VectorXd> evaluate_potential_gradient_at_face_interior_point_with_cached_collisions_nearfar(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::FACE>& collisions,
+            const HighOrderContactParameters& params,
+            const std::array<double, 3>& lambda,
+            const NearFarBarrier& nf_barrier);
+
+        std::pair<Eigen::MatrixXd, Eigen::MatrixXd> evaluate_potential_hessian_at_face_interior_point_with_cached_collisions_nearfar(
+            VertexMatrixView<3> V_extended,
+            const HighOrderCollisionDict<PointType::FACE>& collisions,
+            const HighOrderContactParameters& params,
+            const std::array<double, 3>& lambda,
+            PSDProjectionMethod project_to_psd,
+            const NearFarBarrier& nf_barrier);
 
         // ---- 2D vertex helpers (OGC mode) ----
 
