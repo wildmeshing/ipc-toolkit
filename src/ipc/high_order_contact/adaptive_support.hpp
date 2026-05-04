@@ -28,6 +28,9 @@ public:
     /// u, v are barycentric coords; third coord is 1-u-v.
     double face(index_t face_id, double u, double v) const;
 
+    /// Scale all per-vertex dhat values by a factor.
+    void scale(double factor) { m_values *= factor; }
+
     /// Multiplicative reduction factor applied to primitive vertex dhat values
     /// each time they are found in a non-zero collision pair.
     double zeta = 0.8;

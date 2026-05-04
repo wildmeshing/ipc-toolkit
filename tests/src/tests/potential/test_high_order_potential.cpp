@@ -923,6 +923,9 @@ TEST_CASE("Face Quadrature Gradient and Hessian", "[high_order_potential], [high
     // Compute once so every FD step uses identical dhat values.
     auto adaptive = use_adaptive
         ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
+    if (adaptive) {
+        adaptive->scale(1.2); // manually scale adaptive dhat so energy is not zero
+    }
 
     HighOrderCollisions collisions;
     collisions.build(mesh, V, params, adaptive.get());
