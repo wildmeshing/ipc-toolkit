@@ -1,9 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
+#include <array>
+#include <cmath>
+
 #include <ipc/high_order_contact/smooth_clamp.hpp>
 
 using ipc::smooth_clamp01;
+using ipc::smooth_clamp_simplex;
 using ipc::kSmoothClampEps;
 using Catch::Approx;
 
@@ -127,4 +131,128 @@ TEST_CASE("smooth_clamp01 derivative matches FD across the whole range", "[smoot
     check_segment(eps, 1.0 - eps);     // identity
     check_segment(1.0 - eps, 1.0);     // exiting blend
     check_segment(1.0, 1.2);           // saturated above: derivative 0
+}
+
+// ----- smooth_clamp_simplex -----
+
+TEST_CASE("smooth_clamp_simplex sums to 1", "[smooth_clamp]")
+{
+    // Probe a grid of (u, v) including outside-triangle points; output must
+    // always be a valid barycentric pair with u + v + w = 1.
+    const int N = 30;
+    for (int i = -10; i <= N + 10; i++) {
+        for (int j = -10; j <= N + 10; j++) {
+            const double u = double(i) / N;
+            const double v = double(j) / N;
+            double uo, vo;
+            smooth_clamp_simplex(u, v, uo, vo);
+            CHECK(uo >= -1e-15);
+            CHECK(vo >= -1e-15);
+            CHECK(uo + vo <= 1.0 + 1e-15);
+        }
+    }
+}
+
+TEST_CASE("smooth_clamp_simplex is identity on the interior hexagon", "[smooth_clamp]")
+{
+    // Inside { u,v,w in [eps, 1-eps] } each smooth_clamp01 is identity and
+    // sum is 1 exactly, so output equals input.
+    const double eps = kSmoothClampEps;
+    const int N = 50;
+    for (int i = 0; i <= N; i++) {
+        for (int j = 0; j <= N - i; j++) {
+            const double u = eps + (1.0 - 3 * eps) * i / N;
+            const double v = eps + (1.0 - 3 * eps) * j / N;
+            const double w = 1.0 - u - v;
+            if (u < eps || v < eps || w < eps
+                || u > 1.0 - eps || v > 1.0 - eps || w > 1.0 - eps)
+                continue;
+            double uo, vo;
+            smooth_clamp_simplex(u, v, uo, vo);
+            CHECK(uo == Approx(u).epsilon(1e-12));
+            CHECK(vo == Approx(v).epsilon(1e-12));
+        }
+    }
+}
+
+TEST_CASE("smooth_clamp_simplex maps simplex vertices to themselves", "[smooth_clamp]")
+{
+    double uo, vo;
+
+    smooth_clamp_simplex(0.0, 0.0, uo, vo);  // T0 (w = 1)
+    CHECK(uo == Approx(0.0));
+    CHECK(vo == Approx(0.0));
+
+    smooth_clamp_simplex(1.0, 0.0, uo, vo);  // T1
+    CHECK(uo == Approx(1.0));
+    CHECK(vo == Approx(0.0));
+
+    smooth_clamp_simplex(0.0, 1.0, uo, vo);  // T2
+    CHECK(uo == Approx(0.0));
+    CHECK(vo == Approx(1.0));
+}
+
+TEST_CASE("smooth_clamp_simplex saturates outside-triangle points to the boundary", "[smooth_clamp]")
+{
+    double uo, vo;
+
+    // Far past T1 along the +u axis: (2, 0) should land at T1 = (1, 0).
+    smooth_clamp_simplex(2.0, 0.0, uo, vo);
+    CHECK(uo == Approx(1.0));
+    CHECK(vo == Approx(0.0));
+
+    // Far past T2: (0, 2) -> (0, 1).
+    smooth_clamp_simplex(0.0, 2.0, uo, vo);
+    CHECK(uo == Approx(0.0));
+    CHECK(vo == Approx(1.0));
+
+    // Negative orthant past T0: (-1, -1) -> (0, 0).
+    smooth_clamp_simplex(-1.0, -1.0, uo, vo);
+    CHECK(uo == Approx(0.0));
+    CHECK(vo == Approx(0.0));
+}
+
+TEST_CASE("smooth_clamp_simplex is C1 (FD vs analytical)", "[smooth_clamp]")
+{
+    // Sample points and verify the central FD Jacobian matches an FD with a
+    // smaller step at the same point — i.e. the function is smooth (no jumps).
+    // Probe both inside and outside the simplex, but stay away from the knots
+    // at u = 0/eps/1-eps/1 and v = 0/eps/1-eps/1 and w = 0/eps/1-eps/1 by a
+    // margin > h.
+    const double eps = kSmoothClampEps;
+    const double h = 1e-6;
+
+    auto J_fd = [&](double u, double v, double hh) {
+        double upu, vpu, umu, vmu;
+        double upv, vpv, umv, vmv;
+        smooth_clamp_simplex(u + hh, v, upu, vpu);
+        smooth_clamp_simplex(u - hh, v, umu, vmu);
+        smooth_clamp_simplex(u, v + hh, upv, vpv);
+        smooth_clamp_simplex(u, v - hh, umv, vmv);
+        const double Juu = (upu - umu) / (2 * hh), Jvu = (vpu - vmu) / (2 * hh);
+        const double Juv = (upv - umv) / (2 * hh), Jvv = (vpv - vmv) / (2 * hh);
+        return std::array<double, 4>{{ Juu, Juv, Jvu, Jvv }};
+    };
+
+    auto away_from_knot = [&](double x) {
+        for (double k : { 0.0, eps, 1.0 - eps, 1.0 })
+            if (std::abs(x - k) < 5 * h) return false;
+        return true;
+    };
+
+    int probed = 0;
+    for (double u : { -0.05, 0.05, 0.2, 0.4, 0.7, 0.95, 1.05 }) {
+        for (double v : { -0.05, 0.05, 0.2, 0.4, 0.7, 0.95, 1.05 }) {
+            const double w = 1.0 - u - v;
+            if (!away_from_knot(u) || !away_from_knot(v) || !away_from_knot(w))
+                continue;
+            const auto j1 = J_fd(u, v, h);
+            const auto j2 = J_fd(u, v, h * 4);
+            for (int k = 0; k < 4; k++) {
+                CHECK(std::abs(j1[k] - j2[k]) < 1e-4);
+            }
+            probed++;
+        }
+    }
+    CHECK(probed > 0);
 }

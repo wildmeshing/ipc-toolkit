@@ -74,20 +74,14 @@ T eval_ev3d_energy_ad(
         p[i]  = T(positions[6 + i], 6 + i);
     }
 
-    const auto dtype = ipc::point_edge_distance_type(
-        positions.template segment<3>(6),
-        positions.template head<3>(),
-        positions.template segment<3>(3));
-
+    // HighOrderCollisionTemplate<Edge3P1, Vertex3> is constructed only when
+    // the closest point is in the interior of the edge (P_E in
+    // HighOrderCollisionsBuilder<3>::reduce_point_edge_collision); endpoint
+    // cases are reduced to Vertex3-Vertex3. So we always use the interior
+    // projection here.
     const Vec3T t_edge = e1 - e0;
     const T u_raw = (p - e0).dot(t_edge) / t_edge.squaredNorm();
-
-    Vec3T closest;
-    switch (dtype) {
-    case ipc::PointEdgeDistanceType::P_E0: closest = e0; break;
-    case ipc::PointEdgeDistanceType::P_E1: closest = e1; break;
-    default: closest = e0 + u_raw * t_edge; break;
-    }
+    const Vec3T closest = e0 + u_raw * t_edge;
 
     const T dist = sqrt((p - closest).squaredNorm());
     const T u_smooth = ipc::smooth_clamp01(u_raw);
@@ -118,53 +112,21 @@ T eval_fv3d_energy_ad(
         p[i]  = T(positions[9 + i],  9 + i);
     }
 
-    const auto dtype = ipc::point_triangle_distance_type(
-        positions.template segment<3>(9),
-        positions.template head<3>(),
-        positions.template segment<3>(3),
-        positions.template segment<3>(6));
+    // HighOrderCollisionTemplate<Face3P1, Vertex3> is constructed only when
+    // the closest point is in the interior of the triangle (P_T in
+    // HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision); edge
+    // and vertex cases reduce to Edge3P1-Vertex3 / Vertex3-Vertex3. So we
+    // always use the interior 2x2 solve here.
+    const Vec3T e0t = f1 - f0, e1t = f2 - f0, dp = p - f0;
+    const T A00 = e0t.dot(e0t), A01 = e0t.dot(e1t), A11 = e1t.dot(e1t);
+    const T b0  = dp.dot(e0t),  b1  = dp.dot(e1t);
+    const T det = A00*A11 - A01*A01;
+    const T u_raw = (b0*A11 - b1*A01) / det;
+    const T v_raw = (b1*A00 - b0*A01) / det;
+    const Vec3T closest = f0 + u_raw * e0t + v_raw * e1t;
 
     T u, v;
-    Vec3T closest;
-    switch (dtype) {
-    case ipc::PointTriangleDistanceType::P_T0:
-        u = T(0.0); v = T(0.0); closest = f0; break;
-    case ipc::PointTriangleDistanceType::P_T1:
-        u = T(1.0); v = T(0.0); closest = f1; break;
-    case ipc::PointTriangleDistanceType::P_T2:
-        u = T(0.0); v = T(1.0); closest = f2; break;
-    case ipc::PointTriangleDistanceType::P_E0: { // edge f0-f1
-        const Vec3T t = f1 - f0;
-        u = (p - f0).dot(t) / t.squaredNorm();
-        v = T(0.0);
-        closest = f0 + u * t;
-        break;
-    }
-    case ipc::PointTriangleDistanceType::P_E1: { // edge f1-f2
-        const Vec3T t = f2 - f1;
-        const T s = (p - f1).dot(t) / t.squaredNorm();
-        u = 1.0 - s; v = s;
-        closest = f1 + s * t;
-        break;
-    }
-    case ipc::PointTriangleDistanceType::P_E2: { // edge f2-f0
-        const Vec3T t = f0 - f2;
-        const T s = (p - f2).dot(t) / t.squaredNorm();
-        u = T(0.0); v = 1.0 - s;
-        closest = f2 + s * t;
-        break;
-    }
-    default: { // P_T interior
-        const Vec3T e0t = f1 - f0, e1t = f2 - f0, dp = p - f0;
-        const T A00 = e0t.dot(e0t), A01 = e0t.dot(e1t), A11 = e1t.dot(e1t);
-        const T b0  = dp.dot(e0t),  b1  = dp.dot(e1t);
-        const T det = A00*A11 - A01*A01;
-        u = (b0*A11 - b1*A01) / det;
-        v = (b1*A00 - b0*A01) / det;
-        closest = f0 + u * e0t + v * e1t;
-        break;
-    }
-    }
+    ipc::smooth_clamp_simplex(u_raw, v_raw, u, v);
 
     const T dist = sqrt((p - closest).squaredNorm());
     const T eps  = (1.0 - u - v) * adaptive.face(face_id, 0.0, 0.0)
@@ -194,20 +156,13 @@ T eval_ve2d_energy_ad(
         e1[i] = T(positions[4 + i], 4 + i);
     }
 
-    const auto dtype = ipc::point_edge_distance_type(
-        positions.template head<2>(),
-        positions.template segment<2>(2),
-        positions.template segment<2>(4));
-
+    // HighOrderCollisionTemplate<Vertex2, Edge2P1> is constructed only when
+    // the closest point is in the interior of the edge (the 2D edge-QP
+    // builder in quadrature_potential.cpp routes endpoint cases to
+    // Vertex2-Vertex2). So we always use the interior projection here.
     const Vec2T t_edge = e1 - e0;
     const T u_raw = (q - e0).dot(t_edge) / t_edge.squaredNorm();
-
-    Vec2T closest;
-    switch (dtype) {
-    case ipc::PointEdgeDistanceType::P_E0: closest = e0; break;
-    case ipc::PointEdgeDistanceType::P_E1: closest = e1; break;
-    default: closest = e0 + u_raw * t_edge; break;
-    }
+    const Vec2T closest = e0 + u_raw * t_edge;
 
     const T dist = sqrt((q - closest).squaredNorm());
     const T u_smooth = ipc::smooth_clamp01(u_raw);
@@ -387,6 +342,11 @@ double HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator()(
     const HighOrderContactParameters& params,
     const AdaptiveSupport* adaptive) const
 {
+    assert(point_edge_distance_type(
+               positions.template segment<3>(6),
+               positions.template head<3>(),
+               positions.template segment<3>(3))
+           == PointEdgeDistanceType::P_E);
     double eps;
     if (adaptive) {
         const double u = smooth_clamp01(point_edge_closest_point(
@@ -395,10 +355,13 @@ double HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator()(
             positions.template segment<3>(3)));
         eps = adaptive->edge(primitive_a.id(), u);
     } else eps = params.get_dhat(safety_mode);
+    // Edge3P1-Vertex3 is constructed only at interior P_E (see
+    // HighOrderCollisionsBuilder<3>::reduce_point_edge_collision).
     const double dist = sqrt(point_edge_distance(
         positions.template segment<3>(6),
         positions.template head<3>(),
-        positions.template segment<3>(3)));
+        positions.template segment<3>(3),
+        PointEdgeDistanceType::P_E));
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -409,48 +372,31 @@ double HighOrderCollisionTemplate<Face3P1, Vertex3>::operator()(
     const HighOrderContactParameters& params,
     const AdaptiveSupport* adaptive) const
 {
+    assert(point_triangle_distance_type(
+               positions.template segment<3>(9),
+               positions.template head<3>(),
+               positions.template segment<3>(3),
+               positions.template segment<3>(6))
+           == PointTriangleDistanceType::P_T);
     double eps;
     if (adaptive) {
-        const auto p  = positions.template segment<3>(9);
-        const auto f0 = positions.template head<3>();
-        const auto f1 = positions.template segment<3>(3);
-        const auto f2 = positions.template segment<3>(6);
-        const auto dtype = point_triangle_distance_type(p, f0, f1, f2);
-        double u = 0.0, v = 0.0;
-        switch (dtype) {
-        case PointTriangleDistanceType::P_T0: break;
-        case PointTriangleDistanceType::P_T1: u = 1.0; break;
-        case PointTriangleDistanceType::P_T2: v = 1.0; break;
-        case PointTriangleDistanceType::P_E0: { // edge f0-f1
-            const Eigen::Vector3d t = f1 - f0;
-            u = (p - f0).dot(t) / t.squaredNorm();
-            break;
-        }
-        case PointTriangleDistanceType::P_E1: { // edge f1-f2
-            const Eigen::Vector3d t = f2 - f1;
-            const double s = (p - f1).dot(t) / t.squaredNorm();
-            u = 1.0 - s; v = s;
-            break;
-        }
-        case PointTriangleDistanceType::P_E2: { // edge f2-f0
-            const Eigen::Vector3d t = f0 - f2;
-            const double s = (p - f2).dot(t) / t.squaredNorm();
-            v = 1.0 - s;
-            break;
-        }
-        default: { // P_T interior
-            const Eigen::Vector2d uv = point_triangle_closest_point(p, f0, f1, f2);
-            u = uv[0]; v = uv[1];
-            break;
-        }
-        }
+        const Eigen::Vector2d uv_raw = point_triangle_closest_point(
+            positions.template segment<3>(9),
+            positions.template head<3>(),
+            positions.template segment<3>(3),
+            positions.template segment<3>(6));
+        double u, v;
+        smooth_clamp_simplex(uv_raw[0], uv_raw[1], u, v);
         eps = adaptive->face(primitive_a.id(), u, v);
     } else eps = params.get_dhat(safety_mode);
+    // Face3P1-Vertex3 is constructed only at interior P_T (see
+    // HighOrderCollisionsBuilder<3>::reduce_point_triangle_collision).
     const double dist = sqrt(point_triangle_distance(
         positions.template segment<3>(9),
         positions.template head<3>(),
         positions.template segment<3>(3),
-        positions.template segment<3>(6)));
+        positions.template segment<3>(6),
+        PointTriangleDistanceType::P_T));
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -479,16 +425,19 @@ auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::gradient(
     -> VectorMax<double, ELEMENT_SIZE>
 {
     assert(positions.size() == 9);
+    assert(point_edge_distance_type(
+               positions.template segment<3>(6),
+               positions.template head<3>(),
+               positions.template segment<3>(3))
+           == PointEdgeDistanceType::P_E);
     if (adaptive) {
         ScalarBase::setVariableCount(9);
         using T = ADGrad<9>;
         const T energy = eval_ev3d_energy_ad<T>(positions, params, *adaptive, primitive_a.id());
         return energy.grad;
     }
-    auto dtype = point_edge_distance_type(
-        positions.template segment<3>(6),
-        positions.template head<3>(),
-        positions.template segment<3>(3));
+    // Edge3P1-Vertex3 is constructed only at interior P_E.
+    constexpr auto dtype = PointEdgeDistanceType::P_E;
     const double dist = sqrt(point_edge_distance(
         positions.template segment<3>(6),
         positions.template head<3>(),
@@ -513,17 +462,20 @@ auto HighOrderCollisionTemplate<Face3P1, Vertex3>::gradient(
     -> VectorMax<double, ELEMENT_SIZE>
 {
     assert(positions.size() == 12);
+    assert(point_triangle_distance_type(
+               positions.template segment<3>(9),
+               positions.template head<3>(),
+               positions.template segment<3>(3),
+               positions.template segment<3>(6))
+           == PointTriangleDistanceType::P_T);
     if (adaptive) {
         ScalarBase::setVariableCount(12);
         using T = ADGrad<12>;
         const T energy = eval_fv3d_energy_ad<T>(positions, params, *adaptive, primitive_a.id());
         return energy.grad;
     }
-    auto dtype = point_triangle_distance_type(
-        positions.template segment<3>(9),
-        positions.template head<3>(),
-        positions.template segment<3>(3),
-        positions.template segment<3>(6));
+    // Face3P1-Vertex3 is constructed only at interior P_T.
+    constexpr auto dtype = PointTriangleDistanceType::P_T;
     const double dist = sqrt(point_triangle_distance(
         positions.template segment<3>(9),
         positions.template head<3>(),
@@ -570,16 +522,19 @@ auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::hessian(
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     assert(positions.size() == 9);
+    assert(point_edge_distance_type(
+               positions.template segment<3>(6),
+               positions.template head<3>(),
+               positions.template segment<3>(3))
+           == PointEdgeDistanceType::P_E);
     if (adaptive) {
         ScalarBase::setVariableCount(9);
         using T = ADHessian<9>;
         const T energy = eval_ev3d_energy_ad<T>(positions, params, *adaptive, primitive_a.id());
         return energy.Hess;
     }
-    auto dtype = point_edge_distance_type(
-        positions.template segment<3>(6),
-        positions.template head<3>(),
-        positions.template segment<3>(3));
+    // Edge3P1-Vertex3 is constructed only at interior P_E.
+    constexpr auto dtype = PointEdgeDistanceType::P_E;
     const double dist = sqrt(point_edge_distance(
         positions.template segment<3>(6),
         positions.template head<3>(),
@@ -611,17 +566,20 @@ auto HighOrderCollisionTemplate<Face3P1, Vertex3>::hessian(
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     assert(positions.size() == 12);
+    assert(point_triangle_distance_type(
+               positions.template segment<3>(9),
+               positions.template head<3>(),
+               positions.template segment<3>(3),
+               positions.template segment<3>(6))
+           == PointTriangleDistanceType::P_T);
     if (adaptive) {
         ScalarBase::setVariableCount(12);
         using T = ADHessian<12>;
         const T energy = eval_fv3d_energy_ad<T>(positions, params, *adaptive, primitive_a.id());
         return energy.Hess;
     }
-    auto dtype = point_triangle_distance_type(
-        positions.template segment<3>(9),
-        positions.template head<3>(),
-        positions.template segment<3>(3),
-        positions.template segment<3>(6));
+    // Face3P1-Vertex3 is constructed only at interior P_T.
+    constexpr auto dtype = PointTriangleDistanceType::P_T;
     const double dist = sqrt(point_triangle_distance(
         positions.template segment<3>(9),
         positions.template head<3>(),
@@ -695,6 +653,11 @@ double HighOrderCollisionTemplate<Vertex2, Edge2P1>::operator()(
     const HighOrderContactParameters& params,
     const AdaptiveSupport* adaptive) const
 {
+    assert(point_edge_distance_type(
+               positions.template head<2>(),
+               positions.template segment<2>(2),
+               positions.template segment<2>(4))
+           == PointEdgeDistanceType::P_E);
     double eps;
     if (adaptive) {
         const double u = smooth_clamp01(point_edge_closest_point(
@@ -703,10 +666,13 @@ double HighOrderCollisionTemplate<Vertex2, Edge2P1>::operator()(
             positions.template segment<2>(4)));
         eps = adaptive->edge(primitive_b.id(), u);
     } else eps = params.get_dhat(safety_mode);
+    // Vertex2-Edge2P1 is constructed only at interior P_E (the 2D edge-QP
+    // builder routes endpoint cases to Vertex2-Vertex2).
     const double dist = std::sqrt(point_edge_distance(
         positions.template head<2>(),
         positions.template segment<2>(2),
-        positions.template segment<2>(4)));
+        positions.template segment<2>(4),
+        PointEdgeDistanceType::P_E));
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -734,23 +700,30 @@ auto HighOrderCollisionTemplate<Vertex2, Edge2P1>::gradient(
     const AdaptiveSupport* adaptive) const
     -> VectorMax<double, ELEMENT_SIZE>
 {
+    assert(point_edge_distance_type(
+               positions.template head<2>(),
+               positions.template segment<2>(2),
+               positions.template segment<2>(4))
+           == PointEdgeDistanceType::P_E);
     if (adaptive) {
         ScalarBase::setVariableCount(6);
         using T = ADGrad<6>;
         const T energy = eval_ve2d_energy_ad<T>(positions, params, *adaptive, primitive_b.id());
         return energy.grad;
     }
+    // Vertex2-Edge2P1 is constructed only at interior P_E.
+    constexpr auto dtype = PointEdgeDistanceType::P_E;
     const double dist = std::sqrt(point_edge_distance(
         positions.template head<2>(),
         positions.template segment<2>(2),
-        positions.template segment<2>(4)));
+        positions.template segment<2>(4), dtype));
     const double eps = params.get_dhat(safety_mode);
     params.record_dist(dist);
     const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.0);
     const VectorMax9d g = point_edge_distance_gradient(
         positions.template head<2>(),
         positions.template segment<2>(2),
-        positions.template segment<2>(4));
+        positions.template segment<2>(4), dtype);
     return deriv * g;
 }
 
@@ -782,16 +755,23 @@ auto HighOrderCollisionTemplate<Vertex2, Edge2P1>::hessian(
     const AdaptiveSupport* adaptive) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
+    assert(point_edge_distance_type(
+               positions.template head<2>(),
+               positions.template segment<2>(2),
+               positions.template segment<2>(4))
+           == PointEdgeDistanceType::P_E);
     if (adaptive) {
         ScalarBase::setVariableCount(6);
         using T = ADHessian<6>;
         const T energy = eval_ve2d_energy_ad<T>(positions, params, *adaptive, primitive_b.id());
         return energy.Hess;
     }
+    // Vertex2-Edge2P1 is constructed only at interior P_E.
+    constexpr auto dtype = PointEdgeDistanceType::P_E;
     const double dist = std::sqrt(point_edge_distance(
         positions.template head<2>(),
         positions.template segment<2>(2),
-        positions.template segment<2>(4)));
+        positions.template segment<2>(4), dtype));
     const double eps = params.get_dhat(safety_mode);
     params.record_dist(dist);
     double deriv1 = params.barrier->first_derivative(dist, eps);
@@ -801,11 +781,11 @@ auto HighOrderCollisionTemplate<Vertex2, Edge2P1>::hessian(
     const VectorMax9d g = point_edge_distance_gradient(
         positions.template head<2>(),
         positions.template segment<2>(2),
-        positions.template segment<2>(4));
+        positions.template segment<2>(4), dtype);
     const MatrixMax9d H = point_edge_distance_hessian(
         positions.template head<2>(),
         positions.template segment<2>(2),
-        positions.template segment<2>(4));
+        positions.template segment<2>(4), dtype);
     return g * deriv2 * g.transpose() + H * deriv1;
 }
 

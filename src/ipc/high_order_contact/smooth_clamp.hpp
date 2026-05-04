@@ -41,4 +41,28 @@ T smooth_clamp01(const T& x)
     return x;
 }
 
+/// C^1 smooth projection of a barycentric pair (u, v) (with implicit
+/// w = 1 - u - v) onto the 2-simplex { (a, b, c) : a, b, c >= 0, a+b+c = 1 }.
+/// Independently smooth-clamps each component to [0, 1] then renormalizes.
+///
+/// Properties:
+///   - Sum of returned components is 1 (out has u + v + w == 1).
+///   - Identity on the interior hexagon [eps, 1-eps]^3 (since smooth_clamp01
+///     is identity there and renormalization is by 1).
+///   - C1 globally: each smooth_clamp01 is C1 and the denominator
+///     u_s + v_s + w_s >= eps > 0 because the input satisfies u + v + w = 1
+///     so at least one component is >= 1/3 > eps.
+///   - Output (u, v) lies in the closed triangle.
+template <typename T>
+void smooth_clamp_simplex(const T& u, const T& v, T& u_out, T& v_out)
+{
+    const T w   = 1.0 - u - v;
+    const T u_s = smooth_clamp01(u);
+    const T v_s = smooth_clamp01(v);
+    const T w_s = smooth_clamp01(w);
+    const T inv_sum = 1.0 / (u_s + v_s + w_s);
+    u_out = u_s * inv_sum;
+    v_out = v_s * inv_sum;
+}
+
 } // namespace ipc
