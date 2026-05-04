@@ -7,6 +7,7 @@
 #include <ipc/smooth_contact/distance/point_edge.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 #include <ipc/utils/autodiff_types.hpp>
+#include <ipc/high_order_contact/smooth_clamp.hpp>
 #include <algorithm>
 
 namespace {
@@ -78,24 +79,20 @@ T eval_ev3d_energy_ad(
         positions.template head<3>(),
         positions.template segment<3>(3));
 
-    T u;
+    const Vec3T t_edge = e1 - e0;
+    const T u_raw = (p - e0).dot(t_edge) / t_edge.squaredNorm();
+
     Vec3T closest;
     switch (dtype) {
-    case ipc::PointEdgeDistanceType::P_E0:
-        u = T(0.0); closest = e0; break;
-    case ipc::PointEdgeDistanceType::P_E1:
-        u = T(1.0); closest = e1; break;
-    default: { // P_E interior
-        const Vec3T t = e1 - e0;
-        u = (p - e0).dot(t) / t.squaredNorm();
-        closest = e0 + u * t;
-        break;
-    }
+    case ipc::PointEdgeDistanceType::P_E0: closest = e0; break;
+    case ipc::PointEdgeDistanceType::P_E1: closest = e1; break;
+    default: closest = e0 + u_raw * t_edge; break;
     }
 
     const T dist = sqrt((p - closest).squaredNorm());
-    const T eps  = (1.0 - u) * adaptive.edge(edge_id, 0.0)
-                 + u          * adaptive.edge(edge_id, 1.0);
+    const T u_smooth = ipc::smooth_clamp01(u_raw);
+    const T eps  = (1.0 - u_smooth) * adaptive.edge(edge_id, 0.0)
+                 + u_smooth          * adaptive.edge(edge_id, 1.0);
 
     params.record_dist(scalar_val(dist));
     return eval_barrier_ad(*params.barrier, dist, eps);
@@ -202,24 +199,20 @@ T eval_ve2d_energy_ad(
         positions.template segment<2>(2),
         positions.template segment<2>(4));
 
-    T u;
+    const Vec2T t_edge = e1 - e0;
+    const T u_raw = (q - e0).dot(t_edge) / t_edge.squaredNorm();
+
     Vec2T closest;
     switch (dtype) {
-    case ipc::PointEdgeDistanceType::P_E0:
-        u = T(0.0); closest = e0; break;
-    case ipc::PointEdgeDistanceType::P_E1:
-        u = T(1.0); closest = e1; break;
-    default: { // P_E interior
-        const Vec2T t = e1 - e0;
-        u = (q - e0).dot(t) / t.squaredNorm();
-        closest = e0 + u * t;
-        break;
-    }
+    case ipc::PointEdgeDistanceType::P_E0: closest = e0; break;
+    case ipc::PointEdgeDistanceType::P_E1: closest = e1; break;
+    default: closest = e0 + u_raw * t_edge; break;
     }
 
     const T dist = sqrt((q - closest).squaredNorm());
-    const T eps  = (1.0 - u) * adaptive.edge(edge_id, 0.0)
-                 + u          * adaptive.edge(edge_id, 1.0);
+    const T u_smooth = ipc::smooth_clamp01(u_raw);
+    const T eps  = (1.0 - u_smooth) * adaptive.edge(edge_id, 0.0)
+                 + u_smooth          * adaptive.edge(edge_id, 1.0);
 
     params.record_dist(scalar_val(dist));
     return eval_barrier_ad(*params.barrier, dist, eps);
@@ -396,10 +389,10 @@ double HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator()(
 {
     double eps;
     if (adaptive) {
-        const double u = std::clamp(point_edge_closest_point(
+        const double u = smooth_clamp01(point_edge_closest_point(
             positions.template segment<3>(6),
             positions.template head<3>(),
-            positions.template segment<3>(3)), 0.0, 1.0);
+            positions.template segment<3>(3)));
         eps = adaptive->edge(primitive_a.id(), u);
     } else eps = params.get_dhat(safety_mode);
     const double dist = sqrt(point_edge_distance(
@@ -704,10 +697,10 @@ double HighOrderCollisionTemplate<Vertex2, Edge2P1>::operator()(
 {
     double eps;
     if (adaptive) {
-        const double u = std::clamp(point_edge_closest_point(
+        const double u = smooth_clamp01(point_edge_closest_point(
             positions.template head<2>(),
             positions.template segment<2>(2),
-            positions.template segment<2>(4)), 0.0, 1.0);
+            positions.template segment<2>(4)));
         eps = adaptive->edge(primitive_b.id(), u);
     } else eps = params.get_dhat(safety_mode);
     const double dist = std::sqrt(point_edge_distance(
