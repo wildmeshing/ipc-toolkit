@@ -7,6 +7,7 @@
 #include <ipc/smooth_contact/distance/point_edge.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 #include <ipc/utils/autodiff_types.hpp>
+#include <algorithm>
 
 namespace {
 
@@ -77,21 +78,24 @@ T eval_ev3d_energy_ad(
         positions.template head<3>(),
         positions.template segment<3>(3));
 
-    // Always compute unclamped projection so eps depends smoothly on positions
-    // across dtype boundaries (avoids C1 discontinuity from clamped-u=const).
-    const Vec3T t_edge = e1 - e0;
-    const T u_raw = (p - e0).dot(t_edge) / t_edge.squaredNorm();
-
+    T u;
     Vec3T closest;
     switch (dtype) {
-    case ipc::PointEdgeDistanceType::P_E0: closest = e0; break;
-    case ipc::PointEdgeDistanceType::P_E1: closest = e1; break;
-    default: closest = e0 + u_raw * t_edge; break;
+    case ipc::PointEdgeDistanceType::P_E0:
+        u = T(0.0); closest = e0; break;
+    case ipc::PointEdgeDistanceType::P_E1:
+        u = T(1.0); closest = e1; break;
+    default: { // P_E interior
+        const Vec3T t = e1 - e0;
+        u = (p - e0).dot(t) / t.squaredNorm();
+        closest = e0 + u * t;
+        break;
+    }
     }
 
     const T dist = sqrt((p - closest).squaredNorm());
-    const T eps  = (1.0 - u_raw) * adaptive.edge(edge_id, 0.0)
-                 + u_raw          * adaptive.edge(edge_id, 1.0);
+    const T eps  = (1.0 - u) * adaptive.edge(edge_id, 0.0)
+                 + u          * adaptive.edge(edge_id, 1.0);
 
     params.record_dist(scalar_val(dist));
     return eval_barrier_ad(*params.barrier, dist, eps);
@@ -123,47 +127,52 @@ T eval_fv3d_energy_ad(
         positions.template segment<3>(3),
         positions.template segment<3>(6));
 
-    // Unclamped barycentric (u_raw, v_raw) of the projection of p onto the
-    // triangle's plane — used for a smooth eps. Closest point uses dtype clamping.
-    const Vec3T e0t = f1 - f0, e1t = f2 - f0, dp = p - f0;
-    const T A00 = e0t.dot(e0t), A01 = e0t.dot(e1t), A11 = e1t.dot(e1t);
-    const T b0  = dp.dot(e0t),  b1  = dp.dot(e1t);
-    const T det = A00*A11 - A01*A01;
-    const T u_raw = (b0*A11 - b1*A01) / det;
-    const T v_raw = (b1*A00 - b0*A01) / det;
-
+    T u, v;
     Vec3T closest;
     switch (dtype) {
-    case ipc::PointTriangleDistanceType::P_T0: closest = f0; break;
-    case ipc::PointTriangleDistanceType::P_T1: closest = f1; break;
-    case ipc::PointTriangleDistanceType::P_T2: closest = f2; break;
+    case ipc::PointTriangleDistanceType::P_T0:
+        u = T(0.0); v = T(0.0); closest = f0; break;
+    case ipc::PointTriangleDistanceType::P_T1:
+        u = T(1.0); v = T(0.0); closest = f1; break;
+    case ipc::PointTriangleDistanceType::P_T2:
+        u = T(0.0); v = T(1.0); closest = f2; break;
     case ipc::PointTriangleDistanceType::P_E0: { // edge f0-f1
         const Vec3T t = f1 - f0;
-        const T u_e = (p - f0).dot(t) / t.squaredNorm();
-        closest = f0 + u_e * t;
+        u = (p - f0).dot(t) / t.squaredNorm();
+        v = T(0.0);
+        closest = f0 + u * t;
         break;
     }
     case ipc::PointTriangleDistanceType::P_E1: { // edge f1-f2
         const Vec3T t = f2 - f1;
         const T s = (p - f1).dot(t) / t.squaredNorm();
+        u = 1.0 - s; v = s;
         closest = f1 + s * t;
         break;
     }
     case ipc::PointTriangleDistanceType::P_E2: { // edge f2-f0
         const Vec3T t = f0 - f2;
         const T s = (p - f2).dot(t) / t.squaredNorm();
+        u = T(0.0); v = 1.0 - s;
         closest = f2 + s * t;
         break;
     }
-    default: // P_T interior
-        closest = f0 + u_raw * e0t + v_raw * e1t;
+    default: { // P_T interior
+        const Vec3T e0t = f1 - f0, e1t = f2 - f0, dp = p - f0;
+        const T A00 = e0t.dot(e0t), A01 = e0t.dot(e1t), A11 = e1t.dot(e1t);
+        const T b0  = dp.dot(e0t),  b1  = dp.dot(e1t);
+        const T det = A00*A11 - A01*A01;
+        u = (b0*A11 - b1*A01) / det;
+        v = (b1*A00 - b0*A01) / det;
+        closest = f0 + u * e0t + v * e1t;
         break;
+    }
     }
 
     const T dist = sqrt((p - closest).squaredNorm());
-    const T eps  = (1.0 - u_raw - v_raw) * adaptive.face(face_id, 0.0, 0.0)
-                 + u_raw                  * adaptive.face(face_id, 1.0, 0.0)
-                 + v_raw                  * adaptive.face(face_id, 0.0, 1.0);
+    const T eps  = (1.0 - u - v) * adaptive.face(face_id, 0.0, 0.0)
+                 + u              * adaptive.face(face_id, 1.0, 0.0)
+                 + v              * adaptive.face(face_id, 0.0, 1.0);
 
     params.record_dist(scalar_val(dist));
     return eval_barrier_ad(*params.barrier, dist, eps);
@@ -193,19 +202,24 @@ T eval_ve2d_energy_ad(
         positions.template segment<2>(2),
         positions.template segment<2>(4));
 
-    const Vec2T t_edge = e1 - e0;
-    const T u_raw = (q - e0).dot(t_edge) / t_edge.squaredNorm();
-
+    T u;
     Vec2T closest;
     switch (dtype) {
-    case ipc::PointEdgeDistanceType::P_E0: closest = e0; break;
-    case ipc::PointEdgeDistanceType::P_E1: closest = e1; break;
-    default: closest = e0 + u_raw * t_edge; break;
+    case ipc::PointEdgeDistanceType::P_E0:
+        u = T(0.0); closest = e0; break;
+    case ipc::PointEdgeDistanceType::P_E1:
+        u = T(1.0); closest = e1; break;
+    default: { // P_E interior
+        const Vec2T t = e1 - e0;
+        u = (q - e0).dot(t) / t.squaredNorm();
+        closest = e0 + u * t;
+        break;
+    }
     }
 
     const T dist = sqrt((q - closest).squaredNorm());
-    const T eps  = (1.0 - u_raw) * adaptive.edge(edge_id, 0.0)
-                 + u_raw          * adaptive.edge(edge_id, 1.0);
+    const T eps  = (1.0 - u) * adaptive.edge(edge_id, 0.0)
+                 + u          * adaptive.edge(edge_id, 1.0);
 
     params.record_dist(scalar_val(dist));
     return eval_barrier_ad(*params.barrier, dist, eps);
@@ -382,10 +396,10 @@ double HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator()(
 {
     double eps;
     if (adaptive) {
-        const double u = point_edge_closest_point(
+        const double u = std::clamp(point_edge_closest_point(
             positions.template segment<3>(6),
             positions.template head<3>(),
-            positions.template segment<3>(3));
+            positions.template segment<3>(3)), 0.0, 1.0);
         eps = adaptive->edge(primitive_a.id(), u);
     } else eps = params.get_dhat(safety_mode);
     const double dist = sqrt(point_edge_distance(
@@ -404,12 +418,40 @@ double HighOrderCollisionTemplate<Face3P1, Vertex3>::operator()(
 {
     double eps;
     if (adaptive) {
-        const Eigen::Vector2d uv = point_triangle_closest_point(
-            positions.template segment<3>(9),
-            positions.template head<3>(),
-            positions.template segment<3>(3),
-            positions.template segment<3>(6));
-        eps = adaptive->face(primitive_a.id(), uv[0], uv[1]);
+        const auto p  = positions.template segment<3>(9);
+        const auto f0 = positions.template head<3>();
+        const auto f1 = positions.template segment<3>(3);
+        const auto f2 = positions.template segment<3>(6);
+        const auto dtype = point_triangle_distance_type(p, f0, f1, f2);
+        double u = 0.0, v = 0.0;
+        switch (dtype) {
+        case PointTriangleDistanceType::P_T0: break;
+        case PointTriangleDistanceType::P_T1: u = 1.0; break;
+        case PointTriangleDistanceType::P_T2: v = 1.0; break;
+        case PointTriangleDistanceType::P_E0: { // edge f0-f1
+            const Eigen::Vector3d t = f1 - f0;
+            u = (p - f0).dot(t) / t.squaredNorm();
+            break;
+        }
+        case PointTriangleDistanceType::P_E1: { // edge f1-f2
+            const Eigen::Vector3d t = f2 - f1;
+            const double s = (p - f1).dot(t) / t.squaredNorm();
+            u = 1.0 - s; v = s;
+            break;
+        }
+        case PointTriangleDistanceType::P_E2: { // edge f2-f0
+            const Eigen::Vector3d t = f0 - f2;
+            const double s = (p - f2).dot(t) / t.squaredNorm();
+            v = 1.0 - s;
+            break;
+        }
+        default: { // P_T interior
+            const Eigen::Vector2d uv = point_triangle_closest_point(p, f0, f1, f2);
+            u = uv[0]; v = uv[1];
+            break;
+        }
+        }
+        eps = adaptive->face(primitive_a.id(), u, v);
     } else eps = params.get_dhat(safety_mode);
     const double dist = sqrt(point_triangle_distance(
         positions.template segment<3>(9),
@@ -662,10 +704,10 @@ double HighOrderCollisionTemplate<Vertex2, Edge2P1>::operator()(
 {
     double eps;
     if (adaptive) {
-        const double u = point_edge_closest_point(
+        const double u = std::clamp(point_edge_closest_point(
             positions.template head<2>(),
             positions.template segment<2>(2),
-            positions.template segment<2>(4));
+            positions.template segment<2>(4)), 0.0, 1.0);
         eps = adaptive->edge(primitive_b.id(), u);
     } else eps = params.get_dhat(safety_mode);
     const double dist = std::sqrt(point_edge_distance(
