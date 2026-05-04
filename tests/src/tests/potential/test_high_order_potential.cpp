@@ -880,7 +880,7 @@ TEST_CASE("Face Quadrature Gradient and Hessian", "[high_order_potential], [high
                 HighOrderCollisions c;
                 c.build(mesh, V_, params, adaptive.get());
                 return potential.gradient(c, mesh, V_);
-            }, fh, fd::AccuracyOrder::SECOND, 1e-12);
+            }, fh, fd::AccuracyOrder::SECOND, 1e-6);
 
         REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
     }
