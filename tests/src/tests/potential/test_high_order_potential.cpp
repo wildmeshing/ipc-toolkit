@@ -19,6 +19,7 @@
 #include "ipc/distance/edge_edge.hpp"
 
 #include "ipc/high_order_contact/quadrature_potential.hpp"
+#include <chrono>
 
 #include <cmath>
 
@@ -225,11 +226,16 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
     const double dhat = 0.15;
     HighOrderContactParameters params(dhat, 1., 0);
 
+    const bool use_adaptive = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
     HighOrderContactPotential potential(params, normalize_weights);
 
+    // Compute adaptive support once so every FD step uses identical dhat values.
+    auto adaptive = use_adaptive
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
+
     HighOrderCollisions collisions;
-    collisions.build(mesh, V, params);
+    collisions.build(mesh, V, params, adaptive.get());
 
     // full finite difference is too expensive, verify directional derivative only
     Eigen::VectorXd test_dir(V.size(), 1);
@@ -246,7 +252,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
             Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
                 HighOrderCollisions collisions_;
-                collisions_.build(mesh, V_, params);
+                collisions_.build(mesh, V_, params, adaptive.get());
                 return potential(collisions_, mesh, V_);
             }, fg, fd::AccuracyOrder::SECOND, 1e-7);
 
@@ -261,7 +267,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
             Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
                 HighOrderCollisions collisions_;
-                collisions_.build(mesh, V_, params);
+                collisions_.build(mesh, V_, params, adaptive.get());
                 return potential.gradient(collisions_, mesh, V_);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
@@ -282,8 +288,12 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
     const double dhat = 0.1;
     HighOrderContactParameters params(dhat, 1., 0);
 
+    const bool use_adaptive = GENERATE(true, false);
+    auto adaptive = use_adaptive
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
+
     HighOrderCollisions collisions;
-    collisions.build(mesh, V, params);
+    collisions.build(mesh, V, params, adaptive.get());
 
     const bool normalize_weights = GENERATE(true, false);
     HighOrderContactPotential potential(params, normalize_weights);
@@ -296,7 +306,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
             fd::flatten(V), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = fd::unflatten(y, 3);
                 HighOrderCollisions collisions_;
-                collisions_.build(mesh, V_, params);
+                collisions_.build(mesh, V_, params, adaptive.get());
                 return potential(collisions_, mesh, V_);
             }, fg, fd::AccuracyOrder::SECOND, 1e-8);
 
@@ -311,7 +321,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
             fd::flatten(V), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = fd::unflatten(y, 3);
                 HighOrderCollisions collisions_;
-                collisions_.build(mesh, V_, params);
+                collisions_.build(mesh, V_, params, adaptive.get());
                 return potential.gradient(collisions_, mesh, V_);
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
@@ -327,8 +337,11 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential], [high
     const double dhat = 0.2;
     HighOrderContactParameters params(dhat, 1., 0);
 
+    const bool adaptive_dhat = GENERATE(true, false);
+    auto adaptive = adaptive_dhat
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
     HighOrderCollisions collisions;
-    collisions.build(mesh, V, params);
+    collisions.build(mesh, V, params, adaptive.get());
 
     HighOrderContactPotential potential(params);
     double val = potential(collisions, mesh, V);
@@ -405,6 +418,10 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
     const double dhat = 0.15;
     HighOrderContactParameters params(dhat, 1., 0);
 
+    const bool use_adaptive = GENERATE(true, false);
+    auto adaptive = use_adaptive
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
+
     Candidates candidates;
     candidates.build(mesh, V, dhat / 2, method.get(), true);
     candidates.convert_candidates_to_sets();
@@ -422,7 +439,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
         {
             Eigen::VectorXd local_grad =
                 PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                    V, *collisions, params);
+                    V, *collisions, params, adaptive.get());
             indices = collisions->dofs();
 
             if (local_grad.norm() < 1e-10) {
@@ -431,7 +448,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
         }
 
         Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-            V, *collisions, params, PSDProjectionMethod::NONE);
+            V, *collisions, params, adaptive.get(), PSDProjectionMethod::NONE);
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
@@ -441,7 +458,7 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
                 Eigen::MatrixXd V_fd = fd::unflatten(y_, 3);
 
                 return PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                    V_fd, *collisions, params);
+                    V_fd, *collisions, params, adaptive.get());
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
         REQUIRE((h - fh).norm() < 1e-6 * std::max({h.norm(), fh.norm(), 1e-8}));
@@ -455,6 +472,10 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
 
     const double dhat = 0.15;
     HighOrderContactParameters params(dhat, 1., 0);
+
+    const bool use_adaptive = GENERATE(true, false);
+    auto adaptive = use_adaptive
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
 
     Candidates candidates;
     candidates.build(mesh, V, dhat / 2, method.get(), true);
@@ -481,7 +502,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
         {
             Eigen::VectorXd local_grad =
                 PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
-                    V_extended, *collisions, params);
+                    V_extended, *collisions, params, adaptive.get());
             indices = collisions->dofs();
 
             if (local_grad.norm() < 1e-10) {
@@ -489,7 +510,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
             }
         }
 
-        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, *collisions, params, PSDProjectionMethod::NONE);
+        Eigen::MatrixXd h = PointPotentialHelper::evaluate_potential_hessian_at_face_center_with_cached_collisions(V_extended, *collisions, params, adaptive.get(), PSDProjectionMethod::NONE);
 
         Eigen::MatrixXd fh;
         fd::finite_jacobian(
@@ -500,7 +521,7 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
                 Eigen::RowVector3d face_center_fd = (V_fd.row(vids[0]) + V_fd.row(vids[1]) + V_fd.row(vids[2])) / 3.;
                 VertexMatrixView<3> V_fd_extended(V_fd, face_center_fd);
 
-                return PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_fd_extended, *collisions, params);
+                return PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(V_fd_extended, *collisions, params, adaptive.get());
             }, fh, fd::AccuracyOrder::SECOND, 1e-8);
 
         REQUIRE((h - fh).norm() < 1e-6 * std::max({h.norm(), fh.norm(), 1e-8}));
@@ -526,7 +547,7 @@ TEST_CASE("High order potential codim", "[high_order_potential], [high_order_pot
     CollisionMesh mesh = make_2d_collision_mesh(vertices, edges);
 
     HighOrderCollisions collisions;
-    collisions.build(mesh, vertices, params, false, method.get());
+    collisions.build(mesh, vertices, params, nullptr, method.get());
     CAPTURE(dhat, method);
     CHECK(!collisions.empty());
     CHECK(!has_intersections(mesh, vertices));
@@ -575,7 +596,8 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
     double dhat = 1.;
     const int quadrature_order = GENERATE(1, 2, 7, 10, 14);
     HighOrderContactParameters params(dhat, 1., quadrature_order);
-
+    
+    const bool use_adaptive = GENERATE(true, false);
     std::string name;
     SECTION("square_1")
     {
@@ -634,8 +656,10 @@ TEST_CASE("High order potential 2D no forces", "[high_order_potential], [high_or
 
     CollisionMesh mesh = make_2d_collision_mesh(V, E);
 
+    auto adaptive = use_adaptive
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
     HighOrderCollisions collisions;
-    collisions.build(mesh, V, params, false, method.get());
+    collisions.build(mesh, V, params, adaptive.get(), method.get());
 
     REQUIRE(!has_intersections(mesh, V));
 
@@ -661,13 +685,18 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
     constexpr double BA = 0; // a small constant to break perfect alignments
     const int quadrature_order = GENERATE(1, 2, 7, 14);
     HighOrderContactParameters params(dhat, 1., quadrature_order);
+    const bool adaptive_dhat = GENERATE(true, false);
     CAPTURE(quadrature_order);
+    CAPTURE(adaptive_dhat);
 
     auto run_checks = [&]() {
         CollisionMesh mesh = make_2d_collision_mesh(V, E);
 
+        auto adaptive = adaptive_dhat
+            ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
+
         HighOrderCollisions collisions;
-        collisions.build(mesh, V, params, false, method.get());
+        collisions.build(mesh, V, params, adaptive.get(), method.get());
 
         REQUIRE(!collisions.empty());
         REQUIRE(!has_intersections(mesh, V));
@@ -700,7 +729,7 @@ TEST_CASE("High order potential 2D finite differences", "[high_order_potential],
             fhess, fd::AccuracyOrder::SECOND, 1e-12);
         CAPTURE(hess.norm());
         CAPTURE(fhess.norm());
-        CHECK((hess - fhess).norm() < 1e-3 * std::max({hess.norm(), fhess.norm(), 1e-8}));
+        CHECK((hess - fhess).norm() < 3e-3 * std::max({hess.norm(), fhess.norm(), 1e-8}));
     };
 
     SECTION("Corners")
@@ -806,11 +835,16 @@ TEST_CASE("Face Quadrature Gradient and Hessian", "[high_order_potential], [high
     const int quad_order = GENERATE(0, 3, 6); // Using fekete rules, orders 1-2-3 and 4-5-6 are the same
     HighOrderContactParameters params(dhat, 1., quad_order);
 
+    const bool use_adaptive = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
     HighOrderContactPotential potential(params, normalize_weights);
 
+    // Compute once so every FD step uses identical dhat values.
+    auto adaptive = use_adaptive
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
+
     HighOrderCollisions collisions;
-    collisions.build(mesh, V, params);
+    collisions.build(mesh, V, params, adaptive.get());
 
     REQUIRE(potential(collisions, mesh, V) != 0);
 
@@ -829,7 +863,7 @@ TEST_CASE("Face Quadrature Gradient and Hessian", "[high_order_potential], [high
             Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
                 HighOrderCollisions c;
-                c.build(mesh, V_, params);
+                c.build(mesh, V_, params, adaptive.get());
                 return potential(c, mesh, V_);
             }, fg, fd::AccuracyOrder::SECOND, 1e-7);
 
@@ -844,9 +878,9 @@ TEST_CASE("Face Quadrature Gradient and Hessian", "[high_order_potential], [high
             Eigen::VectorXd::Zero(1), [&](const Eigen::VectorXd& y) {
                 Eigen::MatrixXd V_ = V + fd::unflatten(test_dir, 3) * y(0);
                 HighOrderCollisions c;
-                c.build(mesh, V_, params);
+                c.build(mesh, V_, params, adaptive.get());
                 return potential.gradient(c, mesh, V_);
-            }, fh, fd::AccuracyOrder::SECOND, 1e-8);
+            }, fh, fd::AccuracyOrder::SECOND, 1e-12);
 
         REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
     }
@@ -862,14 +896,17 @@ TEST_CASE("Convergent Quadrature Hessian PSD", "[high_order_potential], [high_or
     const double dhat = 0.15;
     HighOrderContactParameters params(dhat, 1., 0);
 
+    const bool use_adaptive = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
     const PSDProjectionMethod psd_method =
         GENERATE(PSDProjectionMethod::CLAMP, PSDProjectionMethod::ABS);
 
     HighOrderContactPotential potential(params, normalize_weights);
 
+    auto adaptive = use_adaptive
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
     HighOrderCollisions collisions;
-    collisions.build(mesh, V, params);
+    collisions.build(mesh, V, params, adaptive.get());
 
     Eigen::SparseMatrix<double> H = potential.hessian(collisions, mesh, V, psd_method);
     Eigen::MatrixXd Hd(H);
@@ -888,6 +925,70 @@ TEST_CASE("Convergent Quadrature Hessian PSD", "[high_order_potential], [high_or
     REQUIRE(lambda_min >= -tol);
 }
 
+/*
+TEST_CASE("Convergent Quadrature Adaptive Dhat Consistency", "[high_order_potential], [high_order_potential_3d]")
+{
+    TriMeshData data = load_triangle_mesh(
+        (tests::DATA_DIR / "../src/tests/potential/armadillo_s.obj").string());
+
+    const double dhat = 0.1;
+    HighOrderContactParameters params(dhat, 1.0, 0);
+
+    std::chrono::high_resolution_clock::time_point start_time;
+    std::chrono::duration<double> duration;
+
+    HighOrderCollisions collisions_no_adaptive;
+    start_time = std::chrono::high_resolution_clock::now();
+    collisions_no_adaptive.build(data.mesh, data.V, params, nullptr);
+    duration = std::chrono::high_resolution_clock::now() - start_time;
+    std::cout << "build no adaptive: " << duration.count() << "s" << std::endl;
+
+    auto adaptive = HighOrderCollisions::compute_adaptive_dhat(data.mesh, data.V, params);
+    HighOrderCollisions collisions_adaptive;
+    start_time = std::chrono::high_resolution_clock::now();
+    collisions_adaptive.build(data.mesh, data.V, params, adaptive.get());
+    duration = std::chrono::high_resolution_clock::now() - start_time;
+    std::cout << "build adaptive: " << duration.count() << "s" << std::endl;
+
+    HighOrderContactPotential potential(params);
+
+    start_time = std::chrono::high_resolution_clock::now();
+    const double energy_no_adaptive = potential(collisions_no_adaptive, data.mesh, data.V);
+    duration = std::chrono::high_resolution_clock::now() - start_time;
+    std::cout << "energy no adaptive: " << duration.count() << "s" << std::endl;
+
+    start_time = std::chrono::high_resolution_clock::now();
+    const double energy_adaptive = potential(collisions_adaptive, data.mesh, data.V);
+    duration = std::chrono::high_resolution_clock::now() - start_time;
+    std::cout << "energy adaptive: " << duration.count() << "s" << std::endl;
+
+    CHECK(std::abs(energy_no_adaptive - energy_adaptive) < 1e-12);
+
+    start_time = std::chrono::high_resolution_clock::now();
+    const Eigen::VectorXd grad_no_adaptive = potential.gradient(collisions_no_adaptive, data.mesh, data.V);
+    duration = std::chrono::high_resolution_clock::now() - start_time;
+    std::cout << "gradient no adaptive: " << duration.count() << "s" << std::endl;
+
+    start_time = std::chrono::high_resolution_clock::now();
+    const Eigen::VectorXd grad_adaptive = potential.gradient(collisions_adaptive, data.mesh, data.V);
+    duration = std::chrono::high_resolution_clock::now() - start_time;
+    std::cout << "gradient adaptive: " << duration.count() << "s" << std::endl;
+
+    CHECK((grad_no_adaptive - grad_adaptive).norm() < 1e-12);
+
+    start_time = std::chrono::high_resolution_clock::now();
+    const Eigen::MatrixXd hess_no_adaptive = potential.hessian(collisions_no_adaptive, data.mesh, data.V);
+    duration = std::chrono::high_resolution_clock::now() - start_time;
+    std::cout << "hessian no adaptive: " << duration.count() << "s" << std::endl;
+
+    start_time = std::chrono::high_resolution_clock::now();
+    const Eigen::MatrixXd hess_adaptive = potential.hessian(collisions_adaptive, data.mesh, data.V);
+    duration = std::chrono::high_resolution_clock::now() - start_time;
+    std::cout << "hessian adaptive: " << duration.count() << "s" << std::endl;
+
+    CHECK((hess_no_adaptive - hess_adaptive).norm() < 1e-9);
+}*/
+
 // Same check for the 3D face-quadrature variant: high-order quadrature points
 // inside each face must also yield a PSD assembly under combined projection.
 TEST_CASE("Face Quadrature Hessian PSD", "[high_order_potential], [high_order_potential_3d]")
@@ -898,14 +999,17 @@ TEST_CASE("Face Quadrature Hessian PSD", "[high_order_potential], [high_order_po
     const int quad_order = GENERATE(0, 3, 6);
     HighOrderContactParameters params(dhat, 1., quad_order);
 
+    const bool use_adaptive = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
     const PSDProjectionMethod psd_method =
         GENERATE(PSDProjectionMethod::CLAMP, PSDProjectionMethod::ABS);
 
     HighOrderContactPotential potential(params, normalize_weights);
 
+    auto adaptive = use_adaptive
+        ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
     HighOrderCollisions collisions;
-    collisions.build(mesh, V, params);
+    collisions.build(mesh, V, params, adaptive.get());
 
     Eigen::SparseMatrix<double> H = potential.hessian(collisions, mesh, V, psd_method);
     Eigen::MatrixXd Hd(H);

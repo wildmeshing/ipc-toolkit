@@ -62,13 +62,6 @@ struct HighOrderContactParameters {
 
     double get_dhat(bool safety_mode=false) const { return safety_mode ? dbar : dhat; }
 
-    double adaptive_dhat_ratio() const { return m_adaptive_dhat_ratio; }
-
-    void set_adaptive_dhat_ratio(const double adaptive_dhat_ratio)
-    {
-        m_adaptive_dhat_ratio = adaptive_dhat_ratio;
-    }
-
     const FaceQuadRule& get_quad_rule() const { return face_quad_rule; }
 
     /// Face quadrature rule. Empty (default) skips face quadrature entirely,
@@ -93,7 +86,6 @@ struct HighOrderContactParameters {
     }
 
 private:
-    double m_adaptive_dhat_ratio = 0.5;
     std::shared_ptr<std::atomic<double>> m_min_dist_seen =
         std::make_shared<std::atomic<double>>(std::numeric_limits<double>::infinity());
 };

@@ -17,7 +17,6 @@ void HighOrderCollisionsBuilder<2>::build_edge_collisions(
     const Eigen::MatrixXd& V,
     const Candidates& candidates,
     const HighOrderContactParameters& params,
-    const std::function<double(index_t)>& edge_dhat_fn,
     size_t start,
     size_t end)
 {
@@ -38,7 +37,7 @@ void HighOrderCollisionsBuilder<2>::build_edge_collisions(
             if (!has_non_obstacle) continue;
         }
 
-        const double dhat = edge_dhat_fn(ei);
+        const double dhat = params.dhat;
         std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>> qp_dicts;
         qp_dicts.reserve(rule.size());
         bool has_any = false;

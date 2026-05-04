@@ -3,8 +3,228 @@
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/point_triangle.hpp>
 #include <ipc/distance/edge_edge.hpp>
+#include <ipc/tangent/closest_point.hpp>
 #include <ipc/smooth_contact/distance/point_edge.hpp>
 #include <ipc/utils/eigen_ext.hpp>
+#include <ipc/utils/autodiff_types.hpp>
+
+namespace {
+
+template <typename T>
+double scalar_val(const T& x)
+{
+    if constexpr (std::is_same_v<T, double>) return x;
+    else return x.val;
+}
+
+// Evaluate barrier with AD or double types.
+// NormalizedClampedLogBarrier must be checked before ClampedLogBarrier
+// because the former inherits from the latter.
+template <typename T>
+T eval_barrier_ad(const ipc::Barrier& b, const T& dist, const T& dhat)
+{
+    using ipc::NormalizedClampedLogBarrier;
+    using ipc::ClampedLogBarrier;
+    using ipc::InversePowerBarrier;
+
+    if (scalar_val(dist) >= scalar_val(dhat)) return T(0.0);
+
+    if (dynamic_cast<const NormalizedClampedLogBarrier*>(&b)) {
+        const T t = dist / dhat;
+        return -(t - 1.0) * (t - 1.0) * log(t);
+    }
+    if (dynamic_cast<const ClampedLogBarrier*>(&b)) {
+        return -(dist - dhat) * (dist - dhat) * log(dist / dhat);
+    }
+    if (const auto* ipb = dynamic_cast<const InversePowerBarrier*>(&b)) {
+        const double p = ipb->power();
+        const T t = 2.0 * dist / dhat;
+        T h;
+        if (scalar_val(t) < 1.0) {
+            h = 2.0/3.0 - t*t + t*t*t * 0.5;
+        } else if (scalar_val(t) < 2.0) {
+            const T s = 2.0 - t;
+            h = s*s*s / 6.0;
+        } else {
+            return T(0.0);
+        }
+        return h * pow(dist, -p);
+    }
+    throw std::runtime_error("eval_barrier_ad: unsupported barrier type");
+}
+
+// Edge-Vertex 3D energy with AD types.
+// positions order: [e0 (0:3), e1 (3:6), vertex (6:9)]
+template <typename T>
+T eval_ev3d_energy_ad(
+    Eigen::ConstRef<ipc::VectorMax<double, ipc::HighOrderCollision::ELEMENT_SIZE>> positions,
+    const ipc::HighOrderContactParameters& params,
+    const ipc::AdaptiveSupport& adaptive,
+    ipc::index_t edge_id)
+{
+    using Vec3T = Eigen::Vector3<T>;
+    ipc::ScalarBase::setVariableCount(9);
+
+    Vec3T e0, e1, p;
+    for (int i = 0; i < 3; i++) {
+        e0[i] = T(positions[i],     i);
+        e1[i] = T(positions[3 + i], 3 + i);
+        p[i]  = T(positions[6 + i], 6 + i);
+    }
+
+    const auto dtype = ipc::point_edge_distance_type(
+        positions.template segment<3>(6),
+        positions.template head<3>(),
+        positions.template segment<3>(3));
+
+    T u;
+    Vec3T closest;
+    switch (dtype) {
+    case ipc::PointEdgeDistanceType::P_E0:
+        u = T(0.0); closest = e0; break;
+    case ipc::PointEdgeDistanceType::P_E1:
+        u = T(1.0); closest = e1; break;
+    default: { // P_E interior
+        const Vec3T t = e1 - e0;
+        u = (p - e0).dot(t) / t.squaredNorm();
+        closest = e0 + u * t;
+        break;
+    }
+    }
+
+    const T dist = sqrt((p - closest).squaredNorm());
+    const T eps  = (1.0 - u) * adaptive.edge(edge_id, 0.0)
+                 + u          * adaptive.edge(edge_id, 1.0);
+
+    params.record_dist(scalar_val(dist));
+    return eval_barrier_ad(*params.barrier, dist, eps);
+}
+
+// Face-Vertex 3D energy with AD types.
+// positions order: [f0 (0:3), f1 (3:6), f2 (6:9), vertex (9:12)]
+template <typename T>
+T eval_fv3d_energy_ad(
+    Eigen::ConstRef<ipc::VectorMax<double, ipc::HighOrderCollision::ELEMENT_SIZE>> positions,
+    const ipc::HighOrderContactParameters& params,
+    const ipc::AdaptiveSupport& adaptive,
+    ipc::index_t face_id)
+{
+    using Vec3T = Eigen::Vector3<T>;
+    ipc::ScalarBase::setVariableCount(12);
+
+    Vec3T f0, f1, f2, p;
+    for (int i = 0; i < 3; i++) {
+        f0[i] = T(positions[i],      i);
+        f1[i] = T(positions[3 + i],  3 + i);
+        f2[i] = T(positions[6 + i],  6 + i);
+        p[i]  = T(positions[9 + i],  9 + i);
+    }
+
+    const auto dtype = ipc::point_triangle_distance_type(
+        positions.template segment<3>(9),
+        positions.template head<3>(),
+        positions.template segment<3>(3),
+        positions.template segment<3>(6));
+
+    T u, v;
+    Vec3T closest;
+    switch (dtype) {
+    case ipc::PointTriangleDistanceType::P_T0:
+        u = T(0.0); v = T(0.0); closest = f0; break;
+    case ipc::PointTriangleDistanceType::P_T1:
+        u = T(1.0); v = T(0.0); closest = f1; break;
+    case ipc::PointTriangleDistanceType::P_T2:
+        u = T(0.0); v = T(1.0); closest = f2; break;
+    case ipc::PointTriangleDistanceType::P_E0: { // edge f0-f1
+        const Vec3T t = f1 - f0;
+        u = (p - f0).dot(t) / t.squaredNorm();
+        v = T(0.0);
+        closest = f0 + u * t;
+        break;
+    }
+    case ipc::PointTriangleDistanceType::P_E1: { // edge f1-f2
+        const Vec3T t = f2 - f1;
+        const T s = (p - f1).dot(t) / t.squaredNorm();
+        u = 1.0 - s; v = s;
+        closest = f1 + s * t;
+        break;
+    }
+    case ipc::PointTriangleDistanceType::P_E2: { // edge f2-f0
+        const Vec3T t = f0 - f2;
+        const T s = (p - f2).dot(t) / t.squaredNorm();
+        u = T(0.0); v = 1.0 - s;
+        closest = f2 + s * t;
+        break;
+    }
+    default: { // P_T interior
+        const Vec3T e0t = f1 - f0, e1t = f2 - f0, dp = p - f0;
+        const T A00 = e0t.dot(e0t), A01 = e0t.dot(e1t), A11 = e1t.dot(e1t);
+        const T b0  = dp.dot(e0t),  b1  = dp.dot(e1t);
+        const T det = A00*A11 - A01*A01;
+        u = (b0*A11 - b1*A01) / det;
+        v = (b1*A00 - b0*A01) / det;
+        closest = f0 + u * e0t + v * e1t;
+        break;
+    }
+    }
+
+    const T dist = sqrt((p - closest).squaredNorm());
+    const T eps  = (1.0 - u - v) * adaptive.face(face_id, 0.0, 0.0)
+                 + u              * adaptive.face(face_id, 1.0, 0.0)
+                 + v              * adaptive.face(face_id, 0.0, 1.0);
+
+    params.record_dist(scalar_val(dist));
+    return eval_barrier_ad(*params.barrier, dist, eps);
+}
+
+// Vertex-Edge 2D energy with AD types.
+// positions order: [q (0:2), e0 (2:4), e1 (4:6)]
+template <typename T>
+T eval_ve2d_energy_ad(
+    Eigen::ConstRef<ipc::VectorMax<double, ipc::HighOrderCollision::ELEMENT_SIZE>> positions,
+    const ipc::HighOrderContactParameters& params,
+    const ipc::AdaptiveSupport& adaptive,
+    ipc::index_t edge_id)
+{
+    using Vec2T = Eigen::Vector2<T>;
+    ipc::ScalarBase::setVariableCount(6);
+
+    Vec2T q, e0, e1;
+    for (int i = 0; i < 2; i++) {
+        q[i]  = T(positions[i],     i);
+        e0[i] = T(positions[2 + i], 2 + i);
+        e1[i] = T(positions[4 + i], 4 + i);
+    }
+
+    const auto dtype = ipc::point_edge_distance_type(
+        positions.template head<2>(),
+        positions.template segment<2>(2),
+        positions.template segment<2>(4));
+
+    T u;
+    Vec2T closest;
+    switch (dtype) {
+    case ipc::PointEdgeDistanceType::P_E0:
+        u = T(0.0); closest = e0; break;
+    case ipc::PointEdgeDistanceType::P_E1:
+        u = T(1.0); closest = e1; break;
+    default: { // P_E interior
+        const Vec2T t = e1 - e0;
+        u = (q - e0).dot(t) / t.squaredNorm();
+        closest = e0 + u * t;
+        break;
+    }
+    }
+
+    const T dist = sqrt((q - closest).squaredNorm());
+    const T eps  = (1.0 - u) * adaptive.edge(edge_id, 0.0)
+                 + u          * adaptive.edge(edge_id, 1.0);
+
+    params.record_dist(scalar_val(dist));
+    return eval_barrier_ad(*params.barrier, dist, eps);
+}
+
+} // anonymous namespace
 
 namespace ipc {
 
@@ -66,7 +286,8 @@ index_t HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::vertex_id(index_t i)
 template <typename PrimitiveA, typename PrimitiveB>
 double HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::operator()(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> /*positions*/,
-    const HighOrderContactParameters& /*params*/) const
+    const HighOrderContactParameters& /*params*/,
+    const AdaptiveSupport* /*adaptive*/) const
 {
     return 0;
 }
@@ -74,7 +295,8 @@ double HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::operator()(
 template <typename PrimitiveA, typename PrimitiveB>
 auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::gradient(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> /*positions*/,
-    const HighOrderContactParameters& /*params*/) const
+    const HighOrderContactParameters& /*params*/,
+    const AdaptiveSupport* /*adaptive*/) const
     -> VectorMax<double, ELEMENT_SIZE>
 {
     return VectorMax<double, ELEMENT_SIZE>::Zero(n_dofs());
@@ -83,7 +305,8 @@ auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::gradient(
 template <typename PrimitiveA, typename PrimitiveB>
 auto HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>::hessian(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> /*positions*/,
-    const HighOrderContactParameters& /*params*/) const
+    const HighOrderContactParameters& /*params*/,
+    const AdaptiveSupport* /*adaptive*/) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     return MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n_dofs(), n_dofs());
@@ -153,10 +376,13 @@ double HighOrderCollisionTemplate<Face3P1, Vertex3>::compute_distance(
 template <>
 double HighOrderCollisionTemplate<Vertex3, Vertex3>::operator()(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
 {
     const double dist = (positions.template head<3>() - positions.template segment<3>(3)).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = adaptive ?
+        adaptive->vertex(primitive_a.id()) :
+        params.get_dhat(safety_mode);
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -164,13 +390,21 @@ double HighOrderCollisionTemplate<Vertex3, Vertex3>::operator()(
 template <>
 double HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator()(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
 {
+    double eps;
+    if (adaptive) {
+        const double u = point_edge_closest_point(
+            positions.template segment<3>(6),
+            positions.template head<3>(),
+            positions.template segment<3>(3));
+        eps = adaptive->edge(primitive_a.id(), u);
+    } else eps = params.get_dhat(safety_mode);
     const double dist = sqrt(point_edge_distance(
         positions.template segment<3>(6),
         positions.template head<3>(),
         positions.template segment<3>(3)));
-    const double eps = params.get_dhat(safety_mode);
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -178,14 +412,23 @@ double HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator()(
 template <>
 double HighOrderCollisionTemplate<Face3P1, Vertex3>::operator()(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
 {
+    double eps;
+    if (adaptive) {
+        const Eigen::Vector2d uv = point_triangle_closest_point(
+            positions.template segment<3>(9),
+            positions.template head<3>(),
+            positions.template segment<3>(3),
+            positions.template segment<3>(6));
+        eps = adaptive->face(primitive_a.id(), uv[0], uv[1]);
+    } else eps = params.get_dhat(safety_mode);
     const double dist = sqrt(point_triangle_distance(
         positions.template segment<3>(9),
         positions.template head<3>(),
         positions.template segment<3>(3),
         positions.template segment<3>(6)));
-    const double eps = params.get_dhat(safety_mode);
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -193,12 +436,13 @@ double HighOrderCollisionTemplate<Face3P1, Vertex3>::operator()(
 template <>
 auto HighOrderCollisionTemplate<Vertex3, Vertex3>::gradient(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> VectorMax<double, ELEMENT_SIZE>
 {
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = adaptive ? adaptive->vertex(primitive_a.id()) : params.get_dhat(safety_mode);
     params.record_dist(dist);
     const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.);
     Vector6d grad = deriv * point_point_distance_gradient(positions.template head<3>(), positions.template tail<3>());
@@ -208,10 +452,17 @@ auto HighOrderCollisionTemplate<Vertex3, Vertex3>::gradient(
 template <>
 auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::gradient(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> VectorMax<double, ELEMENT_SIZE>
 {
     assert(positions.size() == 9);
+    if (adaptive) {
+        ScalarBase::setVariableCount(9);
+        using T = ADGrad<9>;
+        const T energy = eval_ev3d_energy_ad<T>(positions, params, *adaptive, primitive_a.id());
+        return energy.grad;
+    }
     auto dtype = point_edge_distance_type(
         positions.template segment<3>(6),
         positions.template head<3>(),
@@ -235,10 +486,17 @@ auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::gradient(
 template <>
 auto HighOrderCollisionTemplate<Face3P1, Vertex3>::gradient(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> VectorMax<double, ELEMENT_SIZE>
 {
     assert(positions.size() == 12);
+    if (adaptive) {
+        ScalarBase::setVariableCount(12);
+        using T = ADGrad<12>;
+        const T energy = eval_fv3d_energy_ad<T>(positions, params, *adaptive, primitive_a.id());
+        return energy.grad;
+    }
     auto dtype = point_triangle_distance_type(
         positions.template segment<3>(9),
         positions.template head<3>(),
@@ -265,12 +523,13 @@ auto HighOrderCollisionTemplate<Face3P1, Vertex3>::gradient(
 template <>
 auto HighOrderCollisionTemplate<Vertex3, Vertex3>::hessian(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = adaptive ? adaptive->vertex(primitive_a.id()) : params.get_dhat(safety_mode);
     params.record_dist(dist);
     double deriv1 = params.barrier->first_derivative(dist, eps);
     double deriv2 = params.barrier->second_derivative(dist, eps);
@@ -284,10 +543,17 @@ auto HighOrderCollisionTemplate<Vertex3, Vertex3>::hessian(
 template <>
 auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::hessian(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     assert(positions.size() == 9);
+    if (adaptive) {
+        ScalarBase::setVariableCount(9);
+        using T = ADHessian<9>;
+        const T energy = eval_ev3d_energy_ad<T>(positions, params, *adaptive, primitive_a.id());
+        return energy.Hess;
+    }
     auto dtype = point_edge_distance_type(
         positions.template segment<3>(6),
         positions.template head<3>(),
@@ -318,10 +584,17 @@ auto HighOrderCollisionTemplate<Edge3P1, Vertex3>::hessian(
 template <>
 auto HighOrderCollisionTemplate<Face3P1, Vertex3>::hessian(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     assert(positions.size() == 12);
+    if (adaptive) {
+        ScalarBase::setVariableCount(12);
+        using T = ADHessian<12>;
+        const T energy = eval_fv3d_energy_ad<T>(positions, params, *adaptive, primitive_a.id());
+        return energy.Hess;
+    }
     auto dtype = point_triangle_distance_type(
         positions.template segment<3>(9),
         positions.template head<3>(),
@@ -383,10 +656,13 @@ double HighOrderCollisionTemplate<Vertex2, Edge2P1>::compute_distance(
 template <>
 double HighOrderCollisionTemplate<Vertex2, Vertex2>::operator()(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
 {
     const double dist = (positions.template head<2>() - positions.template tail<2>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = adaptive ?
+        adaptive->vertex(primitive_b.id()) : //TODO Check primitive index
+        params.get_dhat(safety_mode);
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -394,13 +670,21 @@ double HighOrderCollisionTemplate<Vertex2, Vertex2>::operator()(
 template <>
 double HighOrderCollisionTemplate<Vertex2, Edge2P1>::operator()(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
 {
+    double eps;
+    if (adaptive) {
+        const double u = point_edge_closest_point(
+            positions.template head<2>(),
+            positions.template segment<2>(2),
+            positions.template segment<2>(4));
+        eps = adaptive->edge(primitive_b.id(), u);
+    } else eps = params.get_dhat(safety_mode);
     const double dist = std::sqrt(point_edge_distance(
         positions.template head<2>(),
         positions.template segment<2>(2),
         positions.template segment<2>(4)));
-    const double eps = params.get_dhat(safety_mode);
     params.record_dist(dist);
     return (*params.barrier)(dist, eps);
 }
@@ -408,11 +692,12 @@ double HighOrderCollisionTemplate<Vertex2, Edge2P1>::operator()(
 template <>
 auto HighOrderCollisionTemplate<Vertex2, Vertex2>::gradient(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> VectorMax<double, ELEMENT_SIZE>
 {
     const double dist = (positions.template head<2>() - positions.template tail<2>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = adaptive ? adaptive->vertex(primitive_b.id()) : params.get_dhat(safety_mode);
     params.record_dist(dist);
     const double deriv = params.barrier->first_derivative(dist, eps) / (dist * 2.0);
     const VectorMax6d g = point_point_distance_gradient(
@@ -423,9 +708,16 @@ auto HighOrderCollisionTemplate<Vertex2, Vertex2>::gradient(
 template <>
 auto HighOrderCollisionTemplate<Vertex2, Edge2P1>::gradient(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> VectorMax<double, ELEMENT_SIZE>
 {
+    if (adaptive) {
+        ScalarBase::setVariableCount(6);
+        using T = ADGrad<6>;
+        const T energy = eval_ve2d_energy_ad<T>(positions, params, *adaptive, primitive_b.id());
+        return energy.grad;
+    }
     const double dist = std::sqrt(point_edge_distance(
         positions.template head<2>(),
         positions.template segment<2>(2),
@@ -443,11 +735,12 @@ auto HighOrderCollisionTemplate<Vertex2, Edge2P1>::gradient(
 template <>
 auto HighOrderCollisionTemplate<Vertex2, Vertex2>::hessian(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
     const double dist = (positions.template head<2>() - positions.template tail<2>()).norm();
-    const double eps = params.get_dhat(safety_mode);
+    const double eps = adaptive ? adaptive->vertex(primitive_b.id()) : params.get_dhat(safety_mode);
     params.record_dist(dist);
     double deriv1 = params.barrier->first_derivative(dist, eps);
     double deriv2 = params.barrier->second_derivative(dist, eps);
@@ -463,9 +756,16 @@ auto HighOrderCollisionTemplate<Vertex2, Vertex2>::hessian(
 template <>
 auto HighOrderCollisionTemplate<Vertex2, Edge2P1>::hessian(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-    const HighOrderContactParameters& params) const
+    const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive) const
     -> MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>
 {
+    if (adaptive) {
+        ScalarBase::setVariableCount(6);
+        using T = ADHessian<6>;
+        const T energy = eval_ve2d_energy_ad<T>(positions, params, *adaptive, primitive_b.id());
+        return energy.Hess;
+    }
     const double dist = std::sqrt(point_edge_distance(
         positions.template head<2>(),
         positions.template segment<2>(2),

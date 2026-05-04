@@ -87,12 +87,13 @@ namespace ipc {
     double PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX>& collisions,
-        const HighOrderContactParameters& params)
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive)
     {
         double potential = 0;
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            potential += cc.weight * cc(cc.dof(V), params);
+            potential += cc.weight * cc(cc.dof(V), params, adaptive);
         }
 
         return potential;
@@ -101,12 +102,13 @@ namespace ipc {
     Eigen::VectorXd PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX>& collisions,
-        const HighOrderContactParameters& params)
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive)
     {
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V), params);
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V), params, adaptive);
             assert(g.size() == cc.num_vertices() * 3);
             for (index_t j = 0; j < cc.num_vertices(); j++) {
                 grad.segment<3>(3 * collisions.vertex_ids_inverse(cc.vertex_id(j))) += g.segment<3>(3 * j);
@@ -120,12 +122,13 @@ namespace ipc {
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         PSDProjectionMethod project_to_psd)
     {
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(collisions.vertex_ids().size() * 3, collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::MatrixXd h = cc.hessian(cc.dof(V), params);
+            Eigen::MatrixXd h = cc.hessian(cc.dof(V), params, adaptive);
             // The following code can be used only if all weights are positive
             // if (project_to_psd != PSDProjectionMethod::NONE) {
             //     h = ipc::project_to_psd(h, project_to_psd);
@@ -388,12 +391,13 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         EdgeEdgeDistanceType dtype)
     {
         double potential = 0;
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            double term = cc(cc.dof(V_extended), params);
+            double term = cc(cc.dof(V_extended), params, adaptive);
             assert(std::isfinite(term));
             potential += cc.weight * term;
         }
@@ -407,13 +411,14 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADType>> q)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params, adaptive);
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id = cc.vertex_id(i);
                 if (global_id == n_real_vertices) {
@@ -439,6 +444,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> q);
 
     template
@@ -447,6 +453,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q);
 
     Eigen::MatrixXd
@@ -454,6 +461,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
@@ -461,8 +469,8 @@ namespace ipc {
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
             const Eigen::VectorXd cc_dof = cc.dof(V_extended);
-            Eigen::MatrixXd h = cc.weight * cc.hessian(cc_dof, params);
-            Eigen::VectorXd g = cc.weight * cc.gradient(cc_dof, params);
+            Eigen::MatrixXd h = cc.weight * cc.hessian(cc_dof, params, adaptive);
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc_dof, params, adaptive);
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t gi = cc.vertex_id(i);
@@ -681,13 +689,14 @@ namespace ipc {
     Eigen::VectorXd PointPotentialHelper::evaluate_potential_gradient_at_face_center_with_cached_collisions(
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
-        const HighOrderContactParameters& params)
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params, adaptive);
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id = cc.vertex_id(i);
                 if (global_id == n_real_vertices) {
@@ -710,13 +719,14 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         PSDProjectionMethod project_to_psd)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(collisions.vertex_ids().size() * 3, collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params);
+            Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params, adaptive);
             // if (project_to_psd != PSDProjectionMethod::NONE) {
             //     h = ipc::project_to_psd(h, project_to_psd);
             // }
@@ -770,12 +780,13 @@ namespace ipc {
     double PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
-        const HighOrderContactParameters& params)
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive)
     {
         double potential = 0;
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            potential += cc.weight * cc(cc.dof(V_extended), params);
+            potential += cc.weight * cc(cc.dof(V_extended), params, adaptive);
         }
 
         return potential;
@@ -792,13 +803,14 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const std::array<double, 3>& lambda)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params, adaptive);
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id = cc.vertex_id(i);
                 if (global_id == n_real_vertices) {
@@ -821,6 +833,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const std::array<double, 3>& lambda,
         PSDProjectionMethod project_to_psd)
     {
@@ -831,7 +844,7 @@ namespace ipc {
 
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params);
+            Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params, adaptive);
             h *= cc.weight;
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {
@@ -974,12 +987,13 @@ namespace ipc {
     double PointPotentialHelper::evaluate_potential_at_edge_qp(
         VertexMatrixView<2> V_extended,
         const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
-        const HighOrderContactParameters& params)
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive)
     {
         double potential = 0;
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            potential += cc.weight * cc(cc.dof(V_extended), params);
+            potential += cc.weight * cc(cc.dof(V_extended), params, adaptive);
         }
         return potential;
     }
@@ -988,13 +1002,14 @@ namespace ipc {
         VertexMatrixView<2> V_extended,
         const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const std::array<double, 2>& lambda)
     {
         const index_t n_real_vertices = V_extended.rows() - 1;
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 2);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params);
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V_extended), params, adaptive);
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id = cc.vertex_id(i);
                 if (global_id == n_real_vertices) {
@@ -1070,12 +1085,13 @@ namespace ipc {
     double PointPotentialHelper::evaluate_potential_at_vertex_2d(
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX, 2>& collisions,
-        const HighOrderContactParameters& params)
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive)
     {
         double potential = 0;
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            potential += cc.weight * cc(cc.dof(V), params);
+            potential += cc.weight * cc(cc.dof(V), params, adaptive);
         }
         return potential;
     }
@@ -1083,12 +1099,13 @@ namespace ipc {
     Eigen::VectorXd PointPotentialHelper::evaluate_potential_gradient_at_vertex_2d(
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX, 2>& collisions,
-        const HighOrderContactParameters& params)
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive)
     {
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 2);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V), params);
+            Eigen::VectorXd g = cc.weight * cc.gradient(cc.dof(V), params, adaptive);
             for (index_t j = 0; j < cc.num_vertices(); j++) {
                 grad.segment<2>(2 * collisions.vertex_ids_inverse(cc.vertex_id(j))) += g.segment<2>(2 * j);
             }
@@ -1100,12 +1117,13 @@ namespace ipc {
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX, 2>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         PSDProjectionMethod project_to_psd)
     {
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(collisions.vertex_ids().size() * 2, collisions.vertex_ids().size() * 2);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::MatrixXd h = cc.weight * cc.hessian(cc.dof(V), params);
+            Eigen::MatrixXd h = cc.weight * cc.hessian(cc.dof(V), params, adaptive);
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t li = collisions.vertex_ids_inverse(cc.vertex_id(i));
                 for (index_t j = 0; j < cc.num_vertices(); j++) {
@@ -1124,6 +1142,7 @@ namespace ipc {
         VertexMatrixView<2> V_extended,
         const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const std::array<double, 2>& lambda,
         PSDProjectionMethod project_to_psd)
     {
@@ -1134,7 +1153,7 @@ namespace ipc {
 
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params);
+            Eigen::MatrixXd h = cc.hessian(cc.dof(V_extended), params, adaptive);
             h *= cc.weight;
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {

@@ -92,112 +92,18 @@ namespace
     }
 }
 
-void HighOrderCollisions::compute_adaptive_dhat(
-    const CollisionMesh& mesh,
-    Eigen::ConstRef<Eigen::MatrixXd> vertices, // set to zero for rest pose
-    const HighOrderContactParameters params,
-    BroadPhase* broad_phase)
-{
-    throw std::logic_error("Please don't use adaptive dhat right now"); //TODO enable
-    assert(vertices.rows() == mesh.num_vertices());
-
-    const double dhat = params.dhat;
-    double inflation_radius = dhat / 2;
-
-    // Candidates m_candidates;
-    m_candidates.build(mesh, vertices, inflation_radius, broad_phase, true);
-    m_candidates.convert_candidates_to_sets();
-    this->build(
-        m_candidates, mesh, vertices, params,
-        false /*disable adaptive dhat to compute true pairs*/);
-
-    vert_adaptive_dhat.setConstant(mesh.num_vertices(), dhat);
-    edge_adaptive_dhat.setConstant(mesh.num_edges(), dhat);
-    if (mesh.dim() == 3) {
-        face_adaptive_dhat.setConstant(mesh.num_faces(), dhat);
-    } else {
-        face_adaptive_dhat.resize(0);
-    }
-
-    auto assign_min = [](double& a, const double b) -> void {
-        a = std::min(a, b);
-    };
-
-    // TODO: update adaptive dhat computation to work with QP-based collisions
-
-    // face adaptive dhat should be minimum of all its adjacent vertices and
-    // edges
-    if (mesh.dim() == 3) {
-        for (int f = 0; f < mesh.num_faces(); f++) {
-            for (int lv = 0; lv < 3; lv++) {
-                face_adaptive_dhat(f) = std::min(
-                    face_adaptive_dhat(f),
-                    vert_adaptive_dhat(mesh.faces()(f, lv)));
-                face_adaptive_dhat(f) = std::min(
-                    face_adaptive_dhat(f),
-                    edge_adaptive_dhat(mesh.faces_to_edges()(f, lv)));
-            }
-        }
-    }
-
-    // edge adaptive dhat should be minimum of all its adjacent vertices
-    for (int e = 0; e < mesh.num_edges(); e++) {
-        for (int lv = 0; lv < 2; lv++) {
-            edge_adaptive_dhat(e) = std::min(
-                edge_adaptive_dhat(e), vert_adaptive_dhat(mesh.edges()(e, lv)));
-        }
-    }
-
-    logger().debug(
-        "Adaptive dhat: vert dhat min {:.2e}, max {:.2e}",
-        vert_adaptive_dhat.minCoeff(), vert_adaptive_dhat.maxCoeff());
-    logger().debug(
-        "Adaptive dhat: edge dhat min {:.2e}, max {:.2e}",
-        edge_adaptive_dhat.minCoeff(), edge_adaptive_dhat.maxCoeff());
-    if (mesh.dim() == 3) {
-        logger().debug(
-            "Adaptive dhat: face dhat min {:.2e}, max {:.2e}",
-            face_adaptive_dhat.minCoeff(), face_adaptive_dhat.maxCoeff());
-    }
-}
-
 void HighOrderCollisions::build(
     const Candidates& candidates,
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
-    const HighOrderContactParameters params,
-    const bool use_adaptive_dhat)
+    const HighOrderContactParameters params)
 {
     assert(vertices.rows() == mesh.num_vertices());
 
     IPC_PROFILE_SCOPE("ho.collision_build");
     clear();
 
-    const double dhat = params.dhat;
-    if (!use_adaptive_dhat) {
-        vert_adaptive_dhat.resize(1);
-        vert_adaptive_dhat(0) = dhat;
-        edge_adaptive_dhat.resize(1);
-        edge_adaptive_dhat(0) = dhat;
-        if (mesh.dim() == 3) {
-            face_adaptive_dhat.resize(1);
-            face_adaptive_dhat(0) = dhat;
-        } else {
-            face_adaptive_dhat.resize(0);
-        }
-    }
-
-    auto vert_dhat = [&](const index_t v_id) {
-        return this->get_vert_dhat(v_id);
-    };
-    auto edge_dhat = [&](const index_t e_id) {
-        return this->get_edge_dhat(e_id);
-    };
-
     if (mesh.dim() == 2) {
-        if (use_adaptive_dhat) {
-            log_and_throw_error("Adaptive dhat not implemented for 2D quadrature path!");
-        }
         // Ensure candidate sets are populated (ev_set/ee_set/vv_set lookups require them).
         const_cast<Candidates&>(candidates).convert_candidates_to_sets();
 
@@ -224,7 +130,7 @@ void HighOrderCollisions::build(
                     HighOrderCollisionsBuilder<2>& local_storage =
                         get_local_thread_storage(storage, thread_id);
                     local_storage.build_edge_collisions(
-                        mesh, vertices, candidates, params, edge_dhat,
+                        mesh, vertices, candidates, params,
                         static_cast<size_t>(start), static_cast<size_t>(end));
                 });
             HighOrderCollisionsBuilder<2>::merge(storage, *this);
@@ -368,11 +274,29 @@ void HighOrderCollisions::build(
         "ho.candidates.total", static_cast<double>(candidates.size()));
 }
 
+std::unique_ptr<AdaptiveSupport> HighOrderCollisions::compute_adaptive_dhat(
+    const CollisionMesh& mesh,
+    Eigen::ConstRef<Eigen::MatrixXd> vertices,
+    const HighOrderContactParameters& params)
+{
+    return std::make_unique<AdaptiveSupport>(mesh, vertices, params);
+}
+
+void HighOrderCollisions::build(
+    const Candidates& _candidates,
+    const CollisionMesh& mesh,
+    Eigen::ConstRef<Eigen::MatrixXd> vertices,
+    const HighOrderContactParameters params,
+    const AdaptiveSupport* adaptive)
+{
+    adaptive_dhat = adaptive ? std::make_unique<AdaptiveSupport>(*adaptive) : nullptr;
+    this->build(_candidates, mesh, vertices, params);
+}
+
 void HighOrderCollisions::build(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
     const HighOrderContactParameters params,
-    const bool use_adaptive_dhat,
     BroadPhase* broad_phase)
 {
     assert(vertices.rows() == mesh.num_vertices());
@@ -388,9 +312,30 @@ void HighOrderCollisions::build(
         }
     }
 
-    // The inner overload accumulates collision_build + collision/candidate
-    // counts into the ProfileRegistry.
-    this->build(m_candidates, mesh, vertices, params, use_adaptive_dhat);
+    this->build(m_candidates, mesh, vertices, params);
+}
+
+void HighOrderCollisions::build(
+    const CollisionMesh& mesh,
+    Eigen::ConstRef<Eigen::MatrixXd> vertices,
+    const HighOrderContactParameters params,
+    const AdaptiveSupport* adaptive,
+    BroadPhase* broad_phase)
+{
+    assert(vertices.rows() == mesh.num_vertices());
+
+    double inflation_radius = params.dhat / 2;
+
+    {
+        IPC_PROFILE_SCOPE("ho.broad_phase");
+        m_candidates.build(mesh, vertices, inflation_radius, broad_phase, true);
+        {
+            IPC_PROFILE_SCOPE("ho.convert_sets");
+            m_candidates.convert_candidates_to_sets();
+        }
+    }
+
+    this->build(m_candidates, mesh, vertices, params, adaptive);
 }
 
 // ============================================================================
@@ -443,8 +388,8 @@ std::string HighOrderCollisions::to_string(
                 ss << fmt::format(
                     "vert [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
                     cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
-                    cc(cc.dof(vertices), params),
-                    cc.gradient(cc.dof(vertices), params).norm());
+                    cc(cc.dof(vertices), params, adaptive_dhat.get()),
+                    cc.gradient(cc.dof(vertices), params, adaptive_dhat.get()).norm());
             }
         }
     }
@@ -469,8 +414,8 @@ std::string HighOrderCollisions::to_string(
                     ss << fmt::format(
                         "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
                         cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
-                        cc(cc.dof(vertices), params),
-                        cc.gradient(cc.dof(vertices), params).norm());
+                        cc(cc.dof(vertices), params, adaptive_dhat.get()),
+                        cc.gradient(cc.dof(vertices), params, adaptive_dhat.get()).norm());
                 }
             }
         }

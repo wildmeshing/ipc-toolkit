@@ -65,15 +65,18 @@ public:
 
     double operator()(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const override;
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport *adaptive = nullptr) const override;
 
     VectorMax<double, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const override;
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport *adaptive = nullptr) const override;
 
     MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const override;
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport *adaptive = nullptr) const override;
 
     double compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
 
