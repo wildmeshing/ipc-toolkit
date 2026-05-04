@@ -283,9 +283,11 @@ double HighOrderContactPotential::operator()(
                         } else if (total_w_near > 0) {
                             total += w * (total_p_near / total_w_near);
                         }
-                    } else {
+                    } else if (use_near_far) {
                         assert(total_w > 0);
                         total += w * (total_p / total_w);
+                    } else {
+                        total += w * total_p;
                     }
                 }
             };
@@ -531,6 +533,10 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             const auto& qp = face_quad_rule[qi];
                             const double qp_weight_scale = face_quadrature_weight_scale * qp.weight;
                             total_w += qp_weight_scale;
+                            if (use_nf_grad) {
+                                total_w_near += qp_weight_scale;
+                                total_w_far += qp_weight_scale;
+                            }
                             if (iter != collisions.face_collisions.end() && qi < iter->second.size()) {
                                 const auto& dict = *iter->second[qi];
                                 const Eigen::RowVector3d q_pos =
@@ -553,8 +559,6 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                     });
                                     total_p_near += qp_weight_scale * P_n;
                                     total_p_far += qp_weight_scale * P_f;
-                                    total_w_near += qp_weight_scale;
-                                    total_w_far += qp_weight_scale;
                                 } else {
                                     const double P = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
                                         X_qp, dict, params);
@@ -577,6 +581,10 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         for (index_t lv = 0; lv < 3; lv++) {
                             const index_t v = mesh.faces()(f, lv);
                             total_w += 1.;
+                            if (use_nf_grad) {
+                                total_w_near += 1.0;
+                                total_w_far += 1.0;
+                            }
                             if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
                                 if (use_nf_grad) {
                                     auto [P_n, P_f] = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions_nearfar(
@@ -592,8 +600,6 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                     });
                                     total_p_near += P_n;
                                     total_p_far += P_f;
-                                    total_w_near += 1.0;
-                                    total_w_far += 1.0;
                                 } else {
                                     const double P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
                                         X, (*iter->second), params);
@@ -937,6 +943,10 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
                             const auto& qp = face_quad_rule[qi];
                             total_w += face_quadrature_weight_scale * qp.weight;
+                            if (use_nf_hess) {
+                                total_w_near += face_quadrature_weight_scale * qp.weight;
+                                total_w_far += face_quadrature_weight_scale * qp.weight;
+                            }
                             if (iter != collisions.face_collisions.end() && qi < iter->second.size()) {
                                 const auto& dict = *iter->second[qi];
                                 const Eigen::RowVector3d q_pos =
@@ -963,8 +973,6 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     entry.local_hess_far = face_quadrature_weight_scale * qp.weight * hess_f;
                                     total_p_near += entry.P_near;
                                     total_p_far += entry.P_far;
-                                    total_w_near += face_quadrature_weight_scale * qp.weight;
-                                    total_w_far += face_quadrature_weight_scale * qp.weight;
                                 } else {
                                     entry.P_near = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
                                         X_qp, dict, params);
@@ -986,6 +994,10 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         for (index_t lv = 0; lv < 3; lv++) {
                             const index_t v = mesh.faces()(f, lv);
                             total_w += 1.;
+                            if (use_nf_hess) {
+                                total_w_near += 1.0;
+                                total_w_far += 1.0;
+                            }
                             if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
                                 const auto& dict = *iter->second;
                                 ConstHessEntry entry;
@@ -1007,8 +1019,6 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     entry.local_hess_far = hess_f;
                                     total_p_near += entry.P_near;
                                     total_p_far += entry.P_far;
-                                    total_w_near += 1.0;
-                                    total_w_far += 1.0;
                                 } else {
                                     entry.P_near = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
                                         X, dict, params);
@@ -1032,9 +1042,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         assert(total_w_near > 0 && total_w_far > 0);
                         // Apply quotient rule separately for near and far components
                         const double avg_P_near = total_p_near / total_w_near;
-                        const double avg_P_far = total_p_far / total_w_far;
                         const double scale_C_near = -(w / (total_w_near * total_w_near));
-                        const double scale_C_far = -(w / (total_w_far * total_w_far));
 
                         if (combined_psd_projection) {
                             // Nothing contributes from this face: skip combined block.
@@ -1129,16 +1137,15 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 add_block(e.local_hess_far, *e.vertex_ids, w / total_w_far);
                             }
 
-                            // Term B: -(w*avg_P_near/total_w_near²) * Σ_i H(mol_i)
-                            //         -(w*avg_P_far/total_w_far²) * Σ_i H(mol_i)  [only const contrib]
-                            const double scale_B_near = -(w * avg_P_near / (total_w_near * total_w_near));
-                            const double scale_B_far = -(w * avg_P_far / (total_w_far * total_w_far));
+                            // Term B: -(w*avg_P_near/total_w_near) * Σ_i H(mol_i)
+                            // (Z_far has no V-dependence, so no far Term B.)
+                            const double scale_B_near = -(w * avg_P_near / total_w_near);
                             for (const auto& e : ee_cache) {
                                 add_block(e.mol_hess, e.dict->primary_vertex_ids(), scale_B_near);
                             }
 
                             // Term C: -(w/total_w_near²) * sym(G_near ⊗ ∇Z_near)
-                            //         -(w/total_w_far²) * sym(G_far ⊗ ∇Z_far)
+                            // (Z_far has no V-dependence, so no far Term C.)
                             for (const auto& ei : ee_cache) {
                                 const auto& prim_dofs_i = ei.dict->primary_dofs();
                                 const Eigen::Vector<double, 12>& mol_grad_i = ei.mol_grad;
@@ -1157,14 +1164,6 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 for (const auto& ej : const_cache) {
                                     add_sym_correction_dense(
                                         *ej.dofs, ej.grad_P_near, prim_dofs_i, mol_grad_i, scale_C_near);
-                                }
-                            }
-                            // Term C far: const-const far interactions (EE only contribute near)
-                            for (const auto& ei : const_cache) {
-                                const auto& dofs_i = ei.dofs;
-                                const Eigen::VectorXd& grad_i = ei.grad_P_far;
-                                for (const auto& ej : const_cache) {
-                                    add_sym_correction_dense(*ej.dofs, ej.grad_P_far, *dofs_i, grad_i, scale_C_far);
                                 }
                             }
 
@@ -1214,19 +1213,19 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     *(hess_triplets.cache));
                             }
 
-                            // Term B: -(w*avg_P_near/total_w_near²) * Σ_i H(mol_i)
-                            //         -(w*avg_P_far/total_w_far²) * Σ_i H(mol_i) [const only]
+                            // Term B: -(w*avg_P_near/total_w_near) * Σ_i H(mol_i)
+                            // (Z_far has no V-dependence, so no far Term B.)
                             for (const auto& e : ee_cache) {
                                 ProfileRegistry::instance().add_value(
                                     "ho.local_hessian.size", e.mol_hess.rows());
                                 local_hessian_to_global_triplets(
-                                    -(w * avg_P_near / (total_w_near * total_w_near)) * e.mol_hess,
+                                    -(w * avg_P_near / total_w_near) * e.mol_hess,
                                     e.dict->primary_vertex_ids(), dim,
                                     *(hess_triplets.cache));
                             }
 
                             // Term C: -(w/total_w_near²) * sym(G_near ⊗ ∇Z_near)
-                            //         -(w/total_w_far²) * sym(G_far ⊗ ∇Z_far)
+                            // (Z_far has no V-dependence, so no far Term C.)
                             for (const auto& ei : ee_cache) {
                                 const auto& prim_dofs_i = ei.dict->primary_dofs();
                                 const Eigen::Vector<double, 12>& mol_grad_i = ei.mol_grad;
@@ -1244,14 +1243,6 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 // EE-const near interactions
                                 for (const auto& ej : const_cache) {
                                     add_sym_correction(*ej.dofs, ej.grad_P_near, prim_dofs_i, mol_grad_i, scale_C_near);
-                                }
-                            }
-                            // Term C far: const-const far interactions (EE only contribute near)
-                            for (const auto& ei : const_cache) {
-                                const auto& dofs_i = ei.dofs;
-                                const Eigen::VectorXd& grad_i = ei.grad_P_far;
-                                for (const auto& ej : const_cache) {
-                                    add_sym_correction(*ej.dofs, ej.grad_P_far, *dofs_i, grad_i, scale_C_far);
                                 }
                             }
                         }

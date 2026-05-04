@@ -222,11 +222,16 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
 {
     auto [V, E, F, mesh] = load_wrapped_sphere();
 
-    const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 1., 0);
+    const double dbar_factor = GENERATE(1.0, 0.7);
+    // Keep dbar = dhat * dbar_factor ≈ 0.15 so the active contact set is
+    // comparable across dbar_factor values.
+    const double dhat = 0.15 / dbar_factor;
+    CAPTURE(dbar_factor);
+    HighOrderContactParameters params(dhat, dbar_factor, 0);
 
-    const bool normalize_weights = GENERATE(true, false);
-    HighOrderContactPotential potential(params, normalize_weights);
+    const bool use_near_far = GENERATE(true, false);
+    CAPTURE(use_near_far);
+    HighOrderContactPotential potential(params, use_near_far);
 
     HighOrderCollisions collisions;
     collisions.build(mesh, V, params);
@@ -248,9 +253,9 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
                 HighOrderCollisions collisions_;
                 collisions_.build(mesh, V_, params);
                 return potential(collisions_, mesh, V_);
-            }, fg, fd::AccuracyOrder::SECOND, 1e-7);
+            }, fg, fd::AccuracyOrder::FOURTH, 1e-5);
 
-        REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-6);
+        REQUIRE(abs(fg(0) - g.dot(test_dir)) < fg.norm() * 1e-7);
     }
 
     SECTION("hessian") {
@@ -263,9 +268,9 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
                 HighOrderCollisions collisions_;
                 collisions_.build(mesh, V_, params);
                 return potential.gradient(collisions_, mesh, V_);
-            }, fh, fd::AccuracyOrder::SECOND, 1e-8);
+            }, fh, fd::AccuracyOrder::FOURTH, 1e-5);
 
-        REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-4);
+        REQUIRE((fh.col(0) - h * test_dir).norm() < fh.norm() * 1e-6);
     }
 }
 
