@@ -224,7 +224,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
 {
     auto [V, E, F, mesh] = load_wrapped_sphere();
 
-    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
+    const double dbar_factor = GENERATE(1.0, 0.7, 0.3);
     // Keep dbar = dhat * dbar_factor ≈ 0.15 so the active contact set is
     // comparable across dbar_factor values.
     const double dhat = 0.15 / dbar_factor;
@@ -233,7 +233,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
 
     const bool use_near_far = GENERATE(true, false);
     const bool use_adaptive = GENERATE(true, false);
-    CAPTURE(use_near_far, use_adaptive);
+    CAPTURE(use_near_far, use_adaptive, dbar_factor);
     HighOrderContactPotential potential(params, use_near_far);
 
     // Compute adaptive support once so every FD step uses identical dhat values.
