@@ -224,7 +224,7 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian", "[high_order_potential],
 {
     auto [V, E, F, mesh] = load_wrapped_sphere();
 
-    const double dbar_factor = GENERATE(1.0, 0.7);
+    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
     // Keep dbar = dhat * dbar_factor ≈ 0.15 so the active contact set is
     // comparable across dbar_factor values.
     const double dhat = 0.15 / dbar_factor;
@@ -293,7 +293,8 @@ TEST_CASE("Convergent Quadrature Gradient and Hessian Expensive", tagsopt)
     auto [V, E, F, mesh] = load_wrapped_sphere();
 
     const double dhat = 0.1;
-    HighOrderContactParameters params(dhat, 1., 0);
+    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
+    HighOrderContactParameters params(dhat, dbar_factor, 0);
 
     const bool use_adaptive = GENERATE(true, false);
     auto adaptive = use_adaptive
@@ -342,7 +343,8 @@ TEST_CASE("Convergent Quadrature Zero on Sphere", "[high_order_potential], [high
         (tests::DATA_DIR / "../src/tests/potential/sphere.obj").string());
 
     const double dhat = 0.2;
-    HighOrderContactParameters params(dhat, 1., 0);
+    const double dbar_factor = GENERATE(1.0, 0.9);
+    HighOrderContactParameters params(dhat, dbar_factor, 0);
 
     const bool adaptive_dhat = GENERATE(true, false);
     auto adaptive = adaptive_dhat
@@ -423,7 +425,8 @@ TEST_CASE("Convergent Quadrature Vertex Hessian", "[high_order_potential], [high
     auto [V, E, F, mesh] = load_wrapped_sphere();
 
     const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 1., 0);
+    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
+    HighOrderContactParameters params(dhat, dbar_factor, 0);
 
     const bool use_adaptive = GENERATE(true, false);
     auto adaptive = use_adaptive
@@ -478,7 +481,8 @@ TEST_CASE("Convergent Quadrature Face Hessian", "[high_order_potential], [high_o
     auto [V, E, F, mesh] = load_wrapped_sphere();
 
     const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 1., 0);
+    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
+    HighOrderContactParameters params(dhat, dbar_factor, 0);
 
     const bool use_adaptive = GENERATE(true, false);
     auto adaptive = use_adaptive
@@ -567,13 +571,17 @@ TEST_CASE("High order potential 3D finite differences (FV mollification)", "[hig
     CollisionMesh mesh(V, E, F);
 
     const double dhat = .5;
-    HighOrderContactParameters params(dhat, 1., 0);
+    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
+    HighOrderContactParameters params(dhat, dbar_factor, 0);
 
     const bool use_adaptive = GENERATE(true, false);
     CAPTURE(use_adaptive);
 
     auto adaptive = use_adaptive
         ? HighOrderCollisions::compute_adaptive_dhat(mesh, V, params) : nullptr;
+    if (adaptive) {
+        adaptive->scale(1.2); // manually scale adaptive dhat so energy is not zero
+    }
 
     Candidates candidates;
     candidates.build(mesh, V, dhat / 2, method.get(), true);
@@ -983,7 +991,8 @@ TEST_CASE("Convergent Quadrature Hessian PSD", "[high_order_potential], [high_or
     auto [V, E, F, mesh] = load_wrapped_sphere();
 
     const double dhat = 0.15;
-    HighOrderContactParameters params(dhat, 1., 0);
+    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
+    HighOrderContactParameters params(dhat, dbar_factor, 0);
 
     const bool use_adaptive = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);
@@ -1076,71 +1085,6 @@ TEST_CASE("NearFarBarrier decomposition", "[high_order_potential][barrier]")
     }
 }
 
-
-/*
-TEST_CASE("Convergent Quadrature Adaptive Dhat Consistency", "[high_order_potential], [high_order_potential_3d]")
-{
-    TriMeshData data = load_triangle_mesh(
-        (tests::DATA_DIR / "../src/tests/potential/armadillo_s.obj").string());
-
-    const double dhat = 0.1;
-    HighOrderContactParameters params(dhat, 1.0, 0);
-
-    std::chrono::high_resolution_clock::time_point start_time;
-    std::chrono::duration<double> duration;
-
-    HighOrderCollisions collisions_no_adaptive;
-    start_time = std::chrono::high_resolution_clock::now();
-    collisions_no_adaptive.build(data.mesh, data.V, params, nullptr);
-    duration = std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "build no adaptive: " << duration.count() << "s" << std::endl;
-
-    auto adaptive = HighOrderCollisions::compute_adaptive_dhat(data.mesh, data.V, params);
-    HighOrderCollisions collisions_adaptive;
-    start_time = std::chrono::high_resolution_clock::now();
-    collisions_adaptive.build(data.mesh, data.V, params, adaptive.get());
-    duration = std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "build adaptive: " << duration.count() << "s" << std::endl;
-
-    HighOrderContactPotential potential(params);
-
-    start_time = std::chrono::high_resolution_clock::now();
-    const double energy_no_adaptive = potential(collisions_no_adaptive, data.mesh, data.V);
-    duration = std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "energy no adaptive: " << duration.count() << "s" << std::endl;
-
-    start_time = std::chrono::high_resolution_clock::now();
-    const double energy_adaptive = potential(collisions_adaptive, data.mesh, data.V);
-    duration = std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "energy adaptive: " << duration.count() << "s" << std::endl;
-
-    CHECK(std::abs(energy_no_adaptive - energy_adaptive) < 1e-12);
-
-    start_time = std::chrono::high_resolution_clock::now();
-    const Eigen::VectorXd grad_no_adaptive = potential.gradient(collisions_no_adaptive, data.mesh, data.V);
-    duration = std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "gradient no adaptive: " << duration.count() << "s" << std::endl;
-
-    start_time = std::chrono::high_resolution_clock::now();
-    const Eigen::VectorXd grad_adaptive = potential.gradient(collisions_adaptive, data.mesh, data.V);
-    duration = std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "gradient adaptive: " << duration.count() << "s" << std::endl;
-
-    CHECK((grad_no_adaptive - grad_adaptive).norm() < 1e-12);
-
-    start_time = std::chrono::high_resolution_clock::now();
-    const Eigen::MatrixXd hess_no_adaptive = potential.hessian(collisions_no_adaptive, data.mesh, data.V);
-    duration = std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "hessian no adaptive: " << duration.count() << "s" << std::endl;
-
-    start_time = std::chrono::high_resolution_clock::now();
-    const Eigen::MatrixXd hess_adaptive = potential.hessian(collisions_adaptive, data.mesh, data.V);
-    duration = std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "hessian adaptive: " << duration.count() << "s" << std::endl;
-
-    CHECK((hess_no_adaptive - hess_adaptive).norm() < 1e-9);
-}*/
-
 // ---------------------------------------------------------------------------
 // Adaptive support tests
 // ---------------------------------------------------------------------------
@@ -1156,7 +1100,8 @@ TEST_CASE("Adaptive Support Reduces Potential to Zero (3D)", "[adaptive_support]
     // dhat = 0.3 is intentionally large: many vertex pairs are within range,
     // so the potential without adaptive support is clearly non-zero.
     const double dhat = 10;
-    HighOrderContactParameters params(dhat, 1.0, 0);
+    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
+    HighOrderContactParameters params(dhat, dbar_factor, 0);
     HighOrderContactPotential potential(params);
 
     // Baseline: without adaptive, potential must be non-zero.
@@ -1308,7 +1253,8 @@ TEST_CASE("Face Quadrature Hessian PSD", "[high_order_potential], [high_order_po
 
     const double dhat = 0.15;
     const int quad_order = GENERATE(0, 3, 6);
-    HighOrderContactParameters params(dhat, 1., quad_order);
+    const double dbar_factor = GENERATE(1.0, 0.7, 0.4, 0.1);
+    HighOrderContactParameters params(dhat, dbar_factor, quad_order);
 
     const bool use_adaptive = GENERATE(true, false);
     const bool normalize_weights = GENERATE(true, false);

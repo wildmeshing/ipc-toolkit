@@ -1361,12 +1361,13 @@ namespace ipc {
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
     {
         double near = 0, far = 0;
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [n, f] = cc.operator_nearfar(cc.dof(V), params, &nf_barrier);
+            auto [n, f] = cc.operator_nearfar(cc.dof(V), params, adaptive, &nf_barrier);
             near += cc.weight * n;
             far += cc.weight * f;
         }
@@ -1377,6 +1378,7 @@ namespace ipc {
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
     {
         const int n_vertices = collisions.vertex_ids().size();
@@ -1386,7 +1388,7 @@ namespace ipc {
 
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V), params, &nf_barrier);
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V), params, adaptive, &nf_barrier);
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id = cc.vertex_id(i);
@@ -1404,6 +1406,7 @@ namespace ipc {
         const Eigen::MatrixXd& V,
         const HighOrderCollisionDict<PointType::VERTEX>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         PSDProjectionMethod project_to_psd,
         const NearFarBarrier& nf_barrier)
     {
@@ -1415,7 +1418,7 @@ namespace ipc {
 
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [hn, hf] = cc.hessian_nearfar(cc.dof(V), params, &nf_barrier);
+            auto [hn, hf] = cc.hessian_nearfar(cc.dof(V), params, adaptive, &nf_barrier);
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id_i = cc.vertex_id(i);
@@ -1445,13 +1448,14 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         EdgeEdgeDistanceType dtype,
         const NearFarBarrier& nf_barrier)
     {
         double near = 0;
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            near += cc.weight * cc.operator_nearfar(cc.dof(V_extended), params, &nf_barrier).first;
+            near += cc.weight * cc.operator_nearfar(cc.dof(V_extended), params, adaptive, &nf_barrier).first;
         }
         return near;
     }
@@ -1462,6 +1466,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADGrad<12>>> q,
         const NearFarBarrier& nf_barrier)
     {
@@ -1469,7 +1474,7 @@ namespace ipc {
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, adaptive, &nf_barrier);
             Eigen::VectorXd g = cc.weight * gn;
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id = cc.vertex_id(i);
@@ -1496,6 +1501,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
         const NearFarBarrier& nf_barrier)
     {
@@ -1503,7 +1509,7 @@ namespace ipc {
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(collisions.vertex_ids().size() * 3);
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, adaptive, &nf_barrier);
             Eigen::VectorXd g = cc.weight * gn;
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id = cc.vertex_id(i);
@@ -1528,6 +1534,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::EDGE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
         const NearFarBarrier& nf_barrier)
     {
@@ -1536,8 +1543,8 @@ namespace ipc {
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
             const Eigen::VectorXd cc_dof = cc.dof(V_extended);
-            auto [gn, gf] = cc.gradient_nearfar(cc_dof, params, &nf_barrier);
-            auto [hn, hf] = cc.hessian_nearfar(cc_dof, params, &nf_barrier);
+            auto [gn, gf] = cc.gradient_nearfar(cc_dof, params, adaptive, &nf_barrier);
+            auto [hn, hf] = cc.hessian_nearfar(cc_dof, params, adaptive, &nf_barrier);
             Eigen::VectorXd g = cc.weight * gn;
             Eigen::MatrixXd h = cc.weight * hn;
 
@@ -1599,12 +1606,13 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
     {
         double near = 0, far = 0;
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [n, f] = cc.operator_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            auto [n, f] = cc.operator_nearfar(cc.dof(V_extended), params, adaptive, &nf_barrier);
             near += cc.weight * n;
             far += cc.weight * f;
         }
@@ -1615,6 +1623,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
     {
         const int n_vertices = collisions.vertex_ids().size();
@@ -1623,7 +1632,7 @@ namespace ipc {
 
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, adaptive, &nf_barrier);
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id = cc.vertex_id(i);
@@ -1645,6 +1654,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         PSDProjectionMethod project_to_psd,
         const NearFarBarrier& nf_barrier)
     {
@@ -1656,7 +1666,7 @@ namespace ipc {
 
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [hn, hf] = cc.hessian_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            auto [hn, hf] = cc.hessian_nearfar(cc.dof(V_extended), params, adaptive, &nf_barrier);
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id_i = cc.vertex_id(i);
@@ -1699,6 +1709,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const std::array<double, 3>& lambda,
         const NearFarBarrier& nf_barrier)
     {
@@ -1708,7 +1719,7 @@ namespace ipc {
 
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            auto [gn, gf] = cc.gradient_nearfar(cc.dof(V_extended), params, adaptive, &nf_barrier);
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id = cc.vertex_id(i);
@@ -1732,6 +1743,7 @@ namespace ipc {
         VertexMatrixView<3> V_extended,
         const HighOrderCollisionDict<PointType::FACE>& collisions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const std::array<double, 3>& lambda,
         PSDProjectionMethod project_to_psd,
         const NearFarBarrier& nf_barrier)
@@ -1744,7 +1756,7 @@ namespace ipc {
 
         for (int ci = 0; ci < collisions.size(); ci++) {
             const auto& cc = collisions[ci];
-            auto [hn, hf] = cc.hessian_nearfar(cc.dof(V_extended), params, &nf_barrier);
+            auto [hn, hf] = cc.hessian_nearfar(cc.dof(V_extended), params, adaptive, &nf_barrier);
 
             for (index_t i = 0; i < cc.num_vertices(); i++) {
                 const index_t global_id_i = cc.vertex_id(i);

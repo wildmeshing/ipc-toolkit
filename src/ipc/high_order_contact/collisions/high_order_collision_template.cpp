@@ -608,10 +608,11 @@ template <>
 std::pair<double, double> HighOrderCollisionTemplate<Vertex3, Vertex3>::operator_nearfar(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive,
     const NearFarBarrier* nf_barrier) const
 {
     const double dist = (positions.template head<3>() - positions.template segment<3>(3)).norm();
-    const double eps = params.dhat;
+    const double eps = adaptive ? adaptive->vertex(primitive_a.id()) : params.dhat;
     params.record_dist(dist);
     return {nf_barrier->near(dist, eps), nf_barrier->far(dist, eps)};
 }
@@ -620,13 +621,16 @@ template <>
 std::pair<double, double> HighOrderCollisionTemplate<Edge3P1, Vertex3>::operator_nearfar(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive,
     const NearFarBarrier* nf_barrier) const
 {
     const double dist = sqrt(point_edge_distance(
         positions.template segment<3>(6),
         positions.template head<3>(),
         positions.template segment<3>(3)));
-    const double eps = params.dhat;
+    const double eps = adaptive ?
+        adaptive->edge(primitive_a.id(), 0.5) :
+        params.dhat;
     params.record_dist(dist);
     return {nf_barrier->near(dist, eps), nf_barrier->far(dist, eps)};
 }
@@ -635,6 +639,7 @@ template <>
 std::pair<double, double> HighOrderCollisionTemplate<Face3P1, Vertex3>::operator_nearfar(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive,
     const NearFarBarrier* nf_barrier) const
 {
     const double dist = sqrt(point_triangle_distance(
@@ -642,7 +647,9 @@ std::pair<double, double> HighOrderCollisionTemplate<Face3P1, Vertex3>::operator
         positions.template head<3>(),
         positions.template segment<3>(3),
         positions.template segment<3>(6)));
-    const double eps = params.dhat;
+    const double eps = adaptive ?
+        adaptive->face(primitive_a.id(), 1.0/3.0, 1.0/3.0) :
+        params.dhat;
     params.record_dist(dist);
     return {nf_barrier->near(dist, eps), nf_barrier->far(dist, eps)};
 }
@@ -651,11 +658,12 @@ template <>
 std::pair<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>, VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Vertex3, Vertex3>::gradient_nearfar(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive,
     const NearFarBarrier* nf_barrier) const
 {
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
-    const double eps = params.dhat;
+    const double eps = adaptive ? adaptive->vertex(primitive_a.id()) : params.dhat;
     params.record_dist(dist);
     const double deriv_near = nf_barrier->first_derivative_near(dist, eps) / (dist * 2.);
     const double deriv_far = nf_barrier->first_derivative_far(dist, eps) / (dist * 2.);
@@ -670,6 +678,7 @@ template <>
 std::pair<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>, VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Edge3P1, Vertex3>::gradient_nearfar(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive,
     const NearFarBarrier* nf_barrier) const
 {
     assert(positions.size() == 9);
@@ -681,7 +690,9 @@ std::pair<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>, VectorMax<double,
         positions.template segment<3>(6),
         positions.template head<3>(),
         positions.template segment<3>(3), dtype));
-    const double eps = params.dhat;
+    const double eps = adaptive ?
+        adaptive->edge(primitive_a.id(), 0.5) :
+        params.dhat;
     params.record_dist(dist);
     const double deriv_near = nf_barrier->first_derivative_near(dist, eps) / (dist * 2.);
     const double deriv_far = nf_barrier->first_derivative_far(dist, eps) / (dist * 2.);
@@ -703,6 +714,7 @@ template <>
 std::pair<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>, VectorMax<double, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Face3P1, Vertex3>::gradient_nearfar(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive,
     const NearFarBarrier* nf_barrier) const
 {
     assert(positions.size() == 12);
@@ -716,7 +728,9 @@ std::pair<VectorMax<double, HighOrderCollision::ELEMENT_SIZE>, VectorMax<double,
         positions.template head<3>(),
         positions.template segment<3>(3),
         positions.template segment<3>(6), dtype));
-    const double eps = params.dhat;
+    const double eps = adaptive ?
+        adaptive->face(primitive_a.id(), 1.0/3.0, 1.0/3.0) :
+        params.dhat;
     params.record_dist(dist);
     const double deriv_near = nf_barrier->first_derivative_near(dist, eps) / (dist * 2.);
     const double deriv_far = nf_barrier->first_derivative_far(dist, eps) / (dist * 2.);
@@ -739,11 +753,12 @@ template <>
 std::pair<MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>, MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Vertex3, Vertex3>::hessian_nearfar(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive,
     const NearFarBarrier* nf_barrier) const
 {
     assert(positions.size() == 6);
     const double dist = (positions.template head<3>() - positions.template tail<3>()).norm();
-    const double eps = params.dhat;
+    const double eps = adaptive ? adaptive->vertex(primitive_a.id()) : params.dhat;
     params.record_dist(dist);
     double deriv1_near = nf_barrier->first_derivative_near(dist, eps);
     double deriv2_near = nf_barrier->second_derivative_near(dist, eps);
@@ -767,6 +782,7 @@ template <>
 std::pair<MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>, MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Edge3P1, Vertex3>::hessian_nearfar(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive,
     const NearFarBarrier* nf_barrier) const
 {
     assert(positions.size() == 9);
@@ -778,7 +794,9 @@ std::pair<MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision
         positions.template segment<3>(6),
         positions.template head<3>(),
         positions.template segment<3>(3), dtype));
-    const double eps = params.dhat;
+    const double eps = adaptive ?
+        adaptive->edge(primitive_a.id(), 0.5) :
+        params.dhat;
     params.record_dist(dist);
     double deriv1_near = nf_barrier->first_derivative_near(dist, eps);
     double deriv2_near = nf_barrier->second_derivative_near(dist, eps);
@@ -811,6 +829,7 @@ template <>
 std::pair<MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>, MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision::ELEMENT_SIZE>> HighOrderCollisionTemplate<Face3P1, Vertex3>::hessian_nearfar(
     Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
     const HighOrderContactParameters& params,
+    const AdaptiveSupport* adaptive,
     const NearFarBarrier* nf_barrier) const
 {
     assert(positions.size() == 12);
@@ -824,7 +843,9 @@ std::pair<MatrixMax<double, HighOrderCollision::ELEMENT_SIZE, HighOrderCollision
         positions.template head<3>(),
         positions.template segment<3>(3),
         positions.template segment<3>(6), dtype));
-    const double eps = params.dhat;
+    const double eps = adaptive ?
+        adaptive->face(primitive_a.id(), 1.0/3.0, 1.0/3.0) :
+        params.dhat;
     params.record_dist(dist);
     double deriv1_near = nf_barrier->first_derivative_near(dist, eps);
     double deriv2_near = nf_barrier->second_derivative_near(dist, eps);

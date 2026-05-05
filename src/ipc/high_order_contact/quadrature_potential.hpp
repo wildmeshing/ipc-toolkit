@@ -33,18 +33,21 @@ namespace ipc
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const NearFarBarrier& nf_barrier);
 
         std::pair<Eigen::VectorXd, Eigen::VectorXd> evaluate_potential_gradient_at_vertex_with_cached_collisions_nearfar(
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const NearFarBarrier& nf_barrier);
 
         std::pair<Eigen::MatrixXd, Eigen::MatrixXd> evaluate_potential_hessian_at_vertex_with_cached_collisions_nearfar(
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             PSDProjectionMethod project_to_psd,
             const NearFarBarrier& nf_barrier);
 
@@ -59,6 +62,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             EdgeEdgeDistanceType dtype,
             const NearFarBarrier& nf_barrier);
 
@@ -83,6 +87,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             Eigen::ConstRef<Eigen::Vector3<ADType>> q,
             const NearFarBarrier& nf_barrier);
 
@@ -97,6 +102,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q,
             const NearFarBarrier& nf_barrier);
 
@@ -110,6 +116,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const NearFarBarrier& nf_barrier);
 
         Eigen::VectorXd evaluate_potential_gradient_at_face_center_with_cached_collisions(
@@ -129,12 +136,14 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const NearFarBarrier& nf_barrier);
 
         std::pair<Eigen::MatrixXd, Eigen::MatrixXd> evaluate_potential_hessian_at_face_center_with_cached_collisions_nearfar(
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             PSDProjectionMethod project_to_psd,
             const NearFarBarrier& nf_barrier);
 
@@ -163,6 +172,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const std::array<double, 3>& lambda,
             const NearFarBarrier& nf_barrier);
 
@@ -170,6 +180,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const std::array<double, 3>& lambda,
             PSDProjectionMethod project_to_psd,
             const NearFarBarrier& nf_barrier);

@@ -122,6 +122,7 @@ public:
     virtual std::pair<double, double> operator_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const
     {
         return {0.0, 0.0};
@@ -130,6 +131,7 @@ public:
     virtual std::pair<VectorMax<double, ELEMENT_SIZE>, VectorMax<double, ELEMENT_SIZE>> gradient_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const
     {
         VectorMax<double, ELEMENT_SIZE> zero = VectorMax<double, ELEMENT_SIZE>::Zero(positions.size());
@@ -139,6 +141,7 @@ public:
     virtual std::pair<MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>, MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>> hessian_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
+        const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const
     {
         int n = positions.size();
