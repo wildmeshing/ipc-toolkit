@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../adaptive_support.hpp"
 #include "high_order_primitives.hpp"
 #include "vertex_matrix_view.hpp"
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
@@ -89,17 +90,20 @@ public:
     /// @brief Compute the value of the GCP potential
     virtual double operator()(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const = 0;
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport *adaptive = nullptr) const = 0;
 
     /// @brief Compute the gradient of the GCP potential wrt. vertices involved
     virtual VectorMax<double, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const = 0;
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport *adaptive = nullptr) const = 0;
 
     /// @brief Compute the Hessian of the GCP potential wrt. vertices involved
     virtual MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params) const = 0;
+        const HighOrderContactParameters& params,
+        const AdaptiveSupport *adaptive = nullptr) const = 0;
 
     bool operator==(const HighOrderCollision& other) const
     {

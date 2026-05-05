@@ -30,7 +30,6 @@ public:
         const Eigen::MatrixXd& vertices,
         const Candidates& candidates,
         const HighOrderContactParameters& params,
-        const std::function<double(index_t)>& edge_dhat,
         size_t start,
         size_t end);
 
@@ -83,17 +82,6 @@ public:
         const CollisionMesh& mesh,
         const VertexMatrixView<3>& vertices,
         PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
-
-    void add_edge_edge_collisions(
-        const CollisionMesh& mesh,
-        const Eigen::MatrixXd& vertices,
-        const std::vector<EdgeEdgeCandidate>& candidates,
-        const HighOrderContactParameters& params,
-        const std::function<double(const index_t)>& vert_dhat,
-        const std::function<double(const index_t)>& edge_dhat,
-        const std::function<double(const index_t)>& face_dhat,
-        const size_t start_i,
-        const size_t end_i);
 
     void add_face_vertex_collisions(
         const CollisionMesh& mesh,

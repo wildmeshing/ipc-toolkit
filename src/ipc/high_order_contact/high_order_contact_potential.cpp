@@ -97,7 +97,8 @@ double HighOrderContactPotential::operator()(
                         VertexMatrixView<2> X_ext(X, q_pos);
                         total += w_edge * qp.weight
                             * PointPotentialHelper::evaluate_potential_at_edge_qp(
-                                X_ext, dict, params);
+                                X_ext, dict, params,
+                                collisions.adaptive_dhat.get());
                     }
                 }
             });
@@ -122,7 +123,8 @@ double HighOrderContactPotential::operator()(
                         const index_t vi = active_verts[k];
                         const auto& dict = *collisions.vertex_collisions_2d.at(vi);
                         const double w_vertex = params.area_weights ? (mesh.vertex_area(vi)) : 1.0;
-                        total += w_vertex * PointPotentialHelper::evaluate_potential_at_vertex_2d(X, dict, params);
+                        total += w_vertex * PointPotentialHelper::evaluate_potential_at_vertex_2d(
+                            X, dict, params, collisions.adaptive_dhat.get());
                     }
                 });
             for (const double v : v_storage) result += v;
@@ -210,7 +212,8 @@ double HighOrderContactPotential::operator()(
                                     total_p_near += mollifier * P_near;
                                 } else {
                                     const double P_val = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                        VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, dtype);
+                                        VertexMatrixView<3>(X, ee_closest_point), *(iter->second),
+                                        params, collisions.adaptive_dhat.get(), dtype);
                                     total_w += mollifier;
                                     total_p += mollifier * P_val;
                                 }
@@ -244,7 +247,8 @@ double HighOrderContactPotential::operator()(
                                     total_p_far += face_quadrature_weight_scale * qp.weight * fq_far;
                                 } else {
                                     const double fq_val = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                                        VertexMatrixView<3>(X, q_pos), *iter->second[qi], params);
+                                        VertexMatrixView<3>(X, q_pos), *iter->second[qi],
+                                        params, collisions.adaptive_dhat.get());
                                     total_p += face_quadrature_weight_scale * qp.weight * fq_val;
                                 }
                             }
@@ -269,7 +273,8 @@ double HighOrderContactPotential::operator()(
                                     total_p_far += vt_far;
                                 } else {
                                     const double vt_val = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                        X, *(iter->second), params);
+                                        X, *(iter->second), params,
+                                        collisions.adaptive_dhat.get());
                                     total_p += vt_val;
                                 }
                             }
@@ -365,7 +370,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
                         const Eigen::VectorXd local_grad = w_edge * qp.weight
                             * PointPotentialHelper::evaluate_potential_gradient_at_edge_qp(
-                                X_ext, dict, params, lambda);
+                                X_ext, dict, params,
+                                collisions.adaptive_dhat.get(), lambda);
 
                         local_gradient_to_global_gradient(
                             local_grad, dict.vertex_ids(), dim, global_grad);
@@ -389,7 +395,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                         const auto& dict = *collisions.vertex_collisions_2d.at(vi);
                         const double w_vertex = params.area_weights ? (mesh.vertex_area(vi)) : 1.0;
                         const Eigen::VectorXd local_grad = w_vertex *
-                            PointPotentialHelper::evaluate_potential_gradient_at_vertex_2d(X, dict, params);
+                            PointPotentialHelper::evaluate_potential_gradient_at_vertex_2d(
+                                X, dict, params, collisions.adaptive_dhat.get());
                         local_gradient_to_global_gradient(
                             local_grad, dict.vertex_ids(), dim, global_grad);
                     }
@@ -503,7 +510,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                         X_extended, dict, params, dtype, *nf_barrier);
                                 } else {
                                     P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                        X_extended, dict, params, dtype);
+                                        X_extended, dict, params,
+                                        collisions.adaptive_dhat.get(), dtype);
                                 }
                                 Eigen::VectorXd grad_P;
                                 if (use_nf_grad) {
@@ -511,7 +519,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                         X_extended, dict, params, ee_closest_point_T, *nf_barrier);
                                 } else {
                                     grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
-                                        X_extended, dict, params, ee_closest_point_T);
+                                        X_extended, dict, params,
+                                        collisions.adaptive_dhat.get(), ee_closest_point_T);
                                 }
 
                                 ee_cache.push_back({&dict, mollifier.val, mollifier.grad, P, grad_P});
@@ -561,9 +570,11 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                     total_p_far += qp_weight_scale * P_f;
                                 } else {
                                     const double P = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                                        X_qp, dict, params);
+                                        X_qp, dict, params,
+                                        collisions.adaptive_dhat.get());
                                     const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
-                                        X_qp, dict, params, qp.lambda);
+                                        X_qp, dict, params,
+                                        collisions.adaptive_dhat.get(), qp.lambda);
                                     const_cache.push_back(ConstGradEntry{
                                         &dict.dofs(),
                                         qp_weight_scale * grad_P,
@@ -602,9 +613,11 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                                     total_p_far += P_f;
                                 } else {
                                     const double P = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                        X, (*iter->second), params);
+                                        X, (*iter->second), params,
+                                        collisions.adaptive_dhat.get());
                                     const Eigen::VectorXd grad_P = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                                        X, (*iter->second), params);
+                                        X, (*iter->second), params,
+                                        collisions.adaptive_dhat.get());
                                     const_cache.push_back(ConstGradEntry{
                                         &(*iter->second).dofs(),
                                         grad_P,
@@ -721,7 +734,8 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                         const Eigen::MatrixXd local_hess = w_edge * qp.weight
                             * PointPotentialHelper::evaluate_potential_hessian_at_edge_qp(
-                                X_ext, dict, params, lambda, project_hessian_to_psd);
+                                X_ext, dict, params, collisions.adaptive_dhat.get(),
+                                lambda, project_hessian_to_psd);
 
                         ProfileRegistry::instance().add_value(
                             "ho.local_hessian.size", local_hess.rows());
@@ -749,7 +763,8 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                         const double w_vertex = params.area_weights ? (mesh.vertex_area(vi)) : 1.0;
                         const Eigen::MatrixXd local_hess = w_vertex *
                             PointPotentialHelper::evaluate_potential_hessian_at_vertex_2d(
-                                X, dict, params, project_hessian_to_psd);
+                                X, dict, params, collisions.adaptive_dhat.get(),
+                                project_hessian_to_psd);
                         local_hessian_to_global_triplets(
                             local_hess, dict.vertex_ids(), dim, *(hess_triplets.cache));
                     }
@@ -887,11 +902,14 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                         X_extended, dict, params, ee_closest_point_T, *nf_barrier_hess);
                                 } else {
                                     P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
-                                        X_extended, dict, params, dtype);
+                                        X_extended, dict, params,
+                                        collisions.adaptive_dhat.get(), dtype);
                                     grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions<T>(
-                                        X_extended, dict, params, ee_closest_point_T);
+                                        X_extended, dict, params,
+                                        collisions.adaptive_dhat.get(), ee_closest_point_T);
                                     base_hess = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions(
-                                        X_extended, dict, params, ee_closest_point_T);
+                                        X_extended, dict, params,
+                                        collisions.adaptive_dhat.get(), ee_closest_point_T);
                                 }
                                 Eigen::MatrixXd local_hess = base_hess * mollifier.val;
 
@@ -975,11 +993,14 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     total_p_far += entry.P_far;
                                 } else {
                                     entry.P_near = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions(
-                                        X_qp, dict, params);
+                                        X_qp, dict, params,
+                                        collisions.adaptive_dhat.get());
                                     entry.grad_P_near = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions(
-                                        X_qp, dict, params, qp.lambda);
+                                        X_qp, dict, params,
+                                        collisions.adaptive_dhat.get(), qp.lambda);
                                     entry.local_hess_near = face_quadrature_weight_scale * qp.weight * PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions(
-                                        X_qp, dict, params, qp.lambda, inner_psd_method);
+                                        X_qp, dict, params,
+                                        collisions.adaptive_dhat.get(), qp.lambda, inner_psd_method);
                                     entry.P_far = 0;
                                     entry.grad_P_far = Eigen::VectorXd::Zero(0);
                                     entry.local_hess_far = Eigen::MatrixXd::Zero(0, 0);
@@ -1021,11 +1042,14 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                     total_p_far += entry.P_far;
                                 } else {
                                     entry.P_near = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions(
-                                        X, dict, params);
+                                        X, dict, params,
+                                        collisions.adaptive_dhat.get());
                                     entry.grad_P_near = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions(
-                                        X, dict, params);
+                                        X, dict, params,
+                                        collisions.adaptive_dhat.get());
                                     entry.local_hess_near = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions(
-                                        X, dict, params, inner_psd_method);
+                                        X, dict, params,
+                                        collisions.adaptive_dhat.get(), inner_psd_method);
                                     entry.P_far = 0;
                                     entry.grad_P_far = Eigen::VectorXd::Zero(0);
                                     entry.local_hess_far = Eigen::MatrixXd::Zero(0, 0);

@@ -1,4 +1,6 @@
 set(SOURCES
+  adaptive_support.cpp
+  adaptive_support.hpp
   high_order_collisions.cpp
   high_order_collisions.hpp
   high_order_collisions_builder.cpp

@@ -13,17 +13,20 @@ namespace ipc
         double evaluate_potential_at_vertex_with_cached_collisions(
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX>& collisions,
-            const HighOrderContactParameters& params);
+            const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive);
 
         Eigen::VectorXd evaluate_potential_gradient_at_vertex_with_cached_collisions(
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX>& collisions,
-            const HighOrderContactParameters& params);
+            const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive);
 
         Eigen::MatrixXd evaluate_potential_hessian_at_vertex_with_cached_collisions(
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             PSDProjectionMethod project_to_psd);
 
         std::pair<double, double> evaluate_potential_at_vertex_with_cached_collisions_nearfar(
@@ -49,6 +52,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             EdgeEdgeDistanceType dtype);
 
         double evaluate_potential_at_edge_edge_closest_point_with_cached_collisions_near(
@@ -69,6 +73,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             Eigen::ConstRef<Eigen::Vector3<ADType>> q);
 
         /// @brief Compute the near component gradient (NearFarBarrier)
@@ -85,6 +90,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::EDGE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             Eigen::ConstRef<Eigen::Vector3<ADHessian<12>>> q);
 
         Eigen::MatrixXd evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions_near(
@@ -97,7 +103,8 @@ namespace ipc
         double evaluate_potential_at_face_center_with_cached_collisions(
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
-            const HighOrderContactParameters& params);
+            const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive);
 
         std::pair<double, double> evaluate_potential_at_face_center_with_cached_collisions_nearfar(
             VertexMatrixView<3> V_extended,
@@ -108,12 +115,14 @@ namespace ipc
         Eigen::VectorXd evaluate_potential_gradient_at_face_center_with_cached_collisions(
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
-            const HighOrderContactParameters& params);
+            const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive);
 
         Eigen::MatrixXd evaluate_potential_hessian_at_face_center_with_cached_collisions(
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             PSDProjectionMethod project_to_psd);
 
         std::pair<Eigen::VectorXd, Eigen::VectorXd> evaluate_potential_gradient_at_face_center_with_cached_collisions_nearfar(
@@ -137,6 +146,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const std::array<double, 3>& lambda);
 
         /// @brief Hessian of the face-interior potential for an arbitrary
@@ -145,6 +155,7 @@ namespace ipc
             VertexMatrixView<3> V_extended,
             const HighOrderCollisionDict<PointType::FACE>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const std::array<double, 3>& lambda,
             PSDProjectionMethod project_to_psd);
 
@@ -168,17 +179,20 @@ namespace ipc
         double evaluate_potential_at_vertex_2d(
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX, 2>& collisions,
-            const HighOrderContactParameters& params);
+            const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive);
 
         Eigen::VectorXd evaluate_potential_gradient_at_vertex_2d(
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX, 2>& collisions,
-            const HighOrderContactParameters& params);
+            const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive);
 
         Eigen::MatrixXd evaluate_potential_hessian_at_vertex_2d(
             const Eigen::MatrixXd& V,
             const HighOrderCollisionDict<PointType::VERTEX, 2>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             PSDProjectionMethod project_to_psd);
 
         // ---- 2D edge quadrature point helpers ----
@@ -190,7 +204,8 @@ namespace ipc
         double evaluate_potential_at_edge_qp(
             VertexMatrixView<2> V_extended,
             const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
-            const HighOrderContactParameters& params);
+            const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive);
 
         /// @brief Gradient of P(q) w.r.t. all real vertices, using chain rule
         /// dP/de_k += lambda[k] * dP/dq.
@@ -199,6 +214,7 @@ namespace ipc
             VertexMatrixView<2> V_extended,
             const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const std::array<double, 2>& lambda);
 
         /// @brief Hessian of P(q) w.r.t. all real vertices.
@@ -207,6 +223,7 @@ namespace ipc
             VertexMatrixView<2> V_extended,
             const HighOrderCollisionDict<PointType::EDGE, 2>& collisions,
             const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
             const std::array<double, 2>& lambda,
             PSDProjectionMethod project_to_psd);
     }
@@ -220,10 +237,13 @@ namespace ipc
         PointPotential(
             const CollisionMesh& mesh_,
             const Candidates& candidates_,
-            const HighOrderContactParameters params_)
+            const HighOrderContactParameters params_,
+            const AdaptiveSupport* adaptive_ = nullptr
+        )
             : mesh(mesh_)
             , candidates(candidates_)
             , params(params_)
+            , adaptive(adaptive_)
         {
         }
 
@@ -296,5 +316,6 @@ namespace ipc
         const CollisionMesh& mesh;
         const Candidates& candidates;
         const HighOrderContactParameters params;
+        const AdaptiveSupport* adaptive;
     };
 }

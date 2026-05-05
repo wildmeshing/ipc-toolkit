@@ -720,7 +720,7 @@ TEST_CASE(
         std::vector<bool>(V0.rows(), false), V0, E, F);
 
     HighOrderCollisions collisions;
-    collisions.build(mesh, V0, params, false);
+    collisions.build(mesh, V0, params);
     REQUIRE(!collisions.empty());
 
     // Slide left square to the right to create tangential velocity
@@ -780,7 +780,7 @@ TEST_CASE(
     const Eigen::MatrixXd Ut = Eigen::MatrixXd::Zero(X.rows(), X.cols());
     CollisionMesh mesh(X, E, F);
     HighOrderCollisions collisions;
-    collisions.build(mesh, X + Ut, params, false);
+    collisions.build(mesh, X + Ut, params);
     REQUIRE(!collisions.empty());
 
     // Test both tangential slide directions for each scene.

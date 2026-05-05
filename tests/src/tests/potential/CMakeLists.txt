@@ -5,6 +5,7 @@ set(SOURCES
   test_smooth_potential.cpp
   test_high_order_potential.cpp
   test_friction_potential.cpp
+  test_smooth_clamp.cpp
 
   # Benchmarks
 

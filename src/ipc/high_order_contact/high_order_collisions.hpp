@@ -7,19 +7,20 @@
 #include <ipc/collisions/normal/edge_edge.hpp>
 #include "collisions/high_order_collision.hpp"
 #include "collisions/high_order_collision_dict.hpp"
+#include "adaptive_support.hpp"
 
 namespace ipc {
 class HighOrderCollisions {
 public:
-public:
     HighOrderCollisions() = default;
     virtual ~HighOrderCollisions() = default;
 
-    void compute_adaptive_dhat(
+    /// @brief Compute per-vertex adaptive dhat values. The returned object can
+    ///        be passed to build() to avoid recomputing it on every rebuild.
+    static std::unique_ptr<AdaptiveSupport> compute_adaptive_dhat(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
-        const HighOrderContactParameters params,
-        BroadPhase* broad_phase = nullptr);
+        const HighOrderContactParameters& params);
 
     /// @brief Initialize the set of collisions used to compute the barrier potential.
     /// @param mesh The collision mesh.
@@ -29,7 +30,15 @@ public:
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
         const HighOrderContactParameters params,
-        const bool use_adaptive_dhat = false,
+        BroadPhase* broad_phase = nullptr);
+
+    /// @brief Build using a pre-computed AdaptiveSupport (copied internally;
+    ///        pass nullptr to build without adaptive dhat).
+    void build(
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> vertices,
+        const HighOrderContactParameters params,
+        const AdaptiveSupport* adaptive,
         BroadPhase* broad_phase = nullptr);
 
     /// @brief Initialize the set of collisions used to compute the barrier potential.
@@ -40,8 +49,15 @@ public:
         const Candidates& _candidates,
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
+        const HighOrderContactParameters params);
+
+    /// @brief Build from candidates using a pre-computed AdaptiveSupport (copied internally).
+    void build(
+        const Candidates& _candidates,
+        const CollisionMesh& mesh,
+        Eigen::ConstRef<Eigen::MatrixXd> vertices,
         const HighOrderContactParameters params,
-        const bool use_adaptive_dhat = false);
+        const AdaptiveSupport* adaptive);
 
     // ------------------------------------------------------------------------
 
@@ -68,44 +84,6 @@ public:
         Eigen::ConstRef<Eigen::MatrixXd> vertices,
         const HighOrderContactParameters& params) const;
 
-    /// @brief Get per-vertex dhat value when dhat is adaptive
-    double get_vert_dhat(int vert_id) const
-    {
-        if (vert_adaptive_dhat.size() > 1) {
-            return vert_adaptive_dhat(vert_id);
-        } else {
-            return vert_adaptive_dhat(0);
-        }
-    }
-    /// @brief Get per-edge dhat value when dhat is adaptive
-    double get_edge_dhat(int edge_id) const
-    {
-        if (edge_adaptive_dhat.size() > 1) {
-            return edge_adaptive_dhat(edge_id);
-        } else {
-            return edge_adaptive_dhat(0);
-        }
-    }
-    /// @brief Get per-face dhat value when dhat is adaptive
-    double get_face_dhat(int face_id) const
-    {
-        if (face_adaptive_dhat.size() > 1) {
-            return face_adaptive_dhat(face_id);
-        } else {
-            return face_adaptive_dhat(0);
-        }
-    }
-    /// @brief Get maximum dhat value when dhat is adaptive
-    double get_max_dhat() const
-    {
-        double out = std::max(
-            vert_adaptive_dhat.maxCoeff(), edge_adaptive_dhat.maxCoeff());
-        if (face_adaptive_dhat.size() > 0) {
-            return std::max(out, face_adaptive_dhat.maxCoeff());
-        }
-        return out;
-    }
-
     /// @brief Number of contact candidates
     int n_candidates() const { return m_candidates.size(); }
 
@@ -120,12 +98,8 @@ public:
     Eigen::VectorXd edge_collision_counts(size_t num_edges) const;
 
 public:
-    /// @brief per-vertex adaptive dhat
-    Eigen::VectorXd vert_adaptive_dhat;
-    /// @brief per-edge adaptive dhat
-    Eigen::VectorXd edge_adaptive_dhat;
-    /// @brief per-face adaptive dhat
-    Eigen::VectorXd face_adaptive_dhat;
+    /// @brief per-vertex adaptive dhat interpolated on edges/faces
+    std::unique_ptr<AdaptiveSupport> adaptive_dhat = nullptr;
 
     /// @brief Collision candidates
     Candidates m_candidates;
