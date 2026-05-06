@@ -141,7 +141,10 @@ double HighOrderContactPotential::operator()(
             const bool use_nf = use_near_far && dbar_factor > 0 && dbar_factor < 1;
             const bool skip_ee = (dbar_factor == 0); // Skip EE pairs when dbar_factor == 0
 
-            NearFarBarrier nf_barrier(params.barrier.get(), dbar_factor);
+            std::unique_ptr<NearFarBarrier> nf_barrier;
+            if (use_nf) {
+                nf_barrier = std::make_unique<NearFarBarrier>(params.barrier.get(), dbar_factor);
+            }
 
             auto loop_body = [&](int start, int end, int thread_id) {
                 double& total = get_local_thread_storage(potential_storage, thread_id);
@@ -207,7 +210,7 @@ double HighOrderContactPotential::operator()(
 
                                 if (use_nf) {
                                     const double P_near = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions_near(
-                                        VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, collisions.adaptive_dhat.get(), dtype, nf_barrier);
+                                        VertexMatrixView<3>(X, ee_closest_point), *(iter->second), params, collisions.adaptive_dhat.get(), dtype, *nf_barrier);
                                     total_w_near += mollifier;
                                     total_p_near += mollifier * P_near;
                                 } else {
@@ -242,7 +245,7 @@ double HighOrderContactPotential::operator()(
                                     + qp.lambda[2] * X.row(mesh.faces()(f, 2));
                                 if (use_nf) {
                                     auto [fq_near, fq_far] = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions_nearfar(
-                                        VertexMatrixView<3>(X, q_pos), *iter->second[qi], params, collisions.adaptive_dhat.get(), nf_barrier);
+                                        VertexMatrixView<3>(X, q_pos), *iter->second[qi], params, collisions.adaptive_dhat.get(), *nf_barrier);
                                     total_p_near += face_quadrature_weight_scale * qp.weight * fq_near;
                                     total_p_far += face_quadrature_weight_scale * qp.weight * fq_far;
                                 } else {
@@ -268,7 +271,7 @@ double HighOrderContactPotential::operator()(
                             if (auto iter = collisions.vertex_collisions.find(v); iter != collisions.vertex_collisions.end()) {
                                 if (use_nf) {
                                     auto [vt_near, vt_far] = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions_nearfar(
-                                        X, *(iter->second), params, collisions.adaptive_dhat.get(), nf_barrier);
+                                        X, *(iter->second), params, collisions.adaptive_dhat.get(), *nf_barrier);
                                     total_p_near += vt_near;
                                     total_p_far += vt_far;
                                 } else {
@@ -436,9 +439,9 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                     double total_w_near = 0, total_p_near = 0;
                     double total_w_far = 0, total_p_far = 0;
 
-                    const NearFarBarrier* nf_barrier = nullptr;
+                    std::unique_ptr<NearFarBarrier> nf_barrier;
                     if (use_nf_grad) {
-                        nf_barrier = new NearFarBarrier(params.barrier.get(), params.dbar_factor());
+                        nf_barrier = std::make_unique<NearFarBarrier>(params.barrier.get(), params.dbar_factor());
                     }
 
                     for (index_t le = 0; le < 3; le++) {
@@ -635,15 +638,14 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                     if (use_nf_grad) {
                         assert(total_w_near > 0 && total_w_far > 0);
                         const double avg_P_near = total_p_near / total_w_near;
+                        const double avg_P_far = total_p_far / total_w_far;
                         for (const auto& e : ee_cache) {
                             grad(e.dict->dofs()) += (w / total_w_near * e.mol_val) * e.grad_P;
                             grad(e.dict->primary_dofs()) += (w / total_w_near * (e.P - avg_P_near)) * e.mol_grad;
                         }
                         for (const auto& e : const_cache) {
-                            const double avg_P_far = total_p_far / total_w_far;
                             grad(*e.dofs) += (w / total_w_near) * e.grad_P_near + (w / total_w_far) * e.grad_P_far;
                         }
-                        delete nf_barrier;
                     } else if (use_near_far) {
                         // Normalized but without NearFarBarrier splitting (dbar_factor not in (0,1))
                         assert(total_w > 0);
@@ -823,9 +825,9 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                     double total_w_far = 0, total_p_far = 0;
 
                     // Construct NearFarBarrier if needed
-                    std::unique_ptr<NearFarBarrier> nf_barrier_hess;
+                    std::unique_ptr<NearFarBarrier> nf_barrier;
                     if (use_nf_hess) {
-                        nf_barrier_hess = std::make_unique<NearFarBarrier>(params.barrier.get(), params.dbar_factor());
+                        nf_barrier = std::make_unique<NearFarBarrier>(params.barrier.get(), params.dbar_factor());
                     }
 
                     for (index_t le = 0; le < 3; le++) {
@@ -895,11 +897,11 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 Eigen::MatrixXd base_hess;
                                 if (use_nf_hess) {
                                     P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions_near(
-                                        X_extended, dict, params, collisions.adaptive_dhat.get(), dtype, *nf_barrier_hess);
+                                        X_extended, dict, params, collisions.adaptive_dhat.get(), dtype, *nf_barrier);
                                     grad_P = PointPotentialHelper::evaluate_potential_gradient_at_edge_edge_closest_point_with_cached_collisions_near<T>(
-                                        X_extended, dict, params, collisions.adaptive_dhat.get(), ee_closest_point_T, *nf_barrier_hess);
+                                        X_extended, dict, params, collisions.adaptive_dhat.get(), ee_closest_point_T, *nf_barrier);
                                     base_hess = PointPotentialHelper::evaluate_potential_hessian_at_edge_edge_closest_point_with_cached_collisions_near(
-                                        X_extended, dict, params, collisions.adaptive_dhat.get(), ee_closest_point_T, *nf_barrier_hess);
+                                        X_extended, dict, params, collisions.adaptive_dhat.get(), ee_closest_point_T, *nf_barrier);
                                 } else {
                                     P = PointPotentialHelper::evaluate_potential_at_edge_edge_closest_point_with_cached_collisions(
                                         X_extended, dict, params,
@@ -978,11 +980,11 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                                 if (use_nf_hess) {
                                     auto [P_n, P_f] = PointPotentialHelper::evaluate_potential_at_face_center_with_cached_collisions_nearfar(
-                                        X_qp, dict, params, collisions.adaptive_dhat.get(), *nf_barrier_hess);
+                                        X_qp, dict, params, collisions.adaptive_dhat.get(), *nf_barrier);
                                     auto [grad_n, grad_f] = PointPotentialHelper::evaluate_potential_gradient_at_face_interior_point_with_cached_collisions_nearfar(
-                                        X_qp, dict, params, collisions.adaptive_dhat.get(), qp.lambda, *nf_barrier_hess);
+                                        X_qp, dict, params, collisions.adaptive_dhat.get(), qp.lambda, *nf_barrier);
                                     auto [hess_n, hess_f] = PointPotentialHelper::evaluate_potential_hessian_at_face_interior_point_with_cached_collisions_nearfar(
-                                        X_qp, dict, params, collisions.adaptive_dhat.get(), qp.lambda, inner_psd_method, *nf_barrier_hess);
+                                        X_qp, dict, params, collisions.adaptive_dhat.get(), qp.lambda, inner_psd_method, *nf_barrier);
                                     entry.P_near = face_quadrature_weight_scale * qp.weight * P_n;
                                     entry.P_far = face_quadrature_weight_scale * qp.weight * P_f;
                                     entry.grad_P_near = face_quadrature_weight_scale * qp.weight * grad_n;
@@ -1027,11 +1029,11 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                                 if (use_nf_hess) {
                                     auto [P_n, P_f] = PointPotentialHelper::evaluate_potential_at_vertex_with_cached_collisions_nearfar(
-                                        X, dict, params, collisions.adaptive_dhat.get(), *nf_barrier_hess);
+                                        X, dict, params, collisions.adaptive_dhat.get(), *nf_barrier);
                                     auto [grad_n, grad_f] = PointPotentialHelper::evaluate_potential_gradient_at_vertex_with_cached_collisions_nearfar(
-                                        X, dict, params, collisions.adaptive_dhat.get(), *nf_barrier_hess);
+                                        X, dict, params, collisions.adaptive_dhat.get(), *nf_barrier);
                                     auto [hess_n, hess_f] = PointPotentialHelper::evaluate_potential_hessian_at_vertex_with_cached_collisions_nearfar(
-                                        X, dict, params, collisions.adaptive_dhat.get(), inner_psd_method, *nf_barrier_hess);
+                                        X, dict, params, collisions.adaptive_dhat.get(), inner_psd_method, *nf_barrier);
                                     entry.P_near = P_n;
                                     entry.P_far = P_f;
                                     entry.grad_P_near = grad_n;
@@ -1061,7 +1063,6 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                     }
 
                     // Pass 2: apply hessian
-                    assert(total_w > 0);
                     if (use_nf_hess) {
                         assert(total_w_near > 0 && total_w_far > 0);
                         // Apply quotient rule separately for near and far components
