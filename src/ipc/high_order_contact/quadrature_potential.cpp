@@ -28,6 +28,17 @@ namespace ipc {
                 map[collision->get_typed_hash()] = std::move(collision);
             }
         }
+
+        template <typename KeyType, typename ValueType>
+        void
+        insert_pair_ogc(unordered_map<KeyType, ValueType>& map, ValueType&& collision)
+        {
+            collision->weight = 1;
+            const auto key = collision->get_typed_hash();
+            if (map.find(key) == map.end()) {
+                map[key] = std::move(collision);
+            }
+        }
     } // namespace
 
     std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>
@@ -1045,7 +1056,7 @@ namespace ipc {
             if (!ogc::check_vertex_feasible_region(mesh, V, vid, vj)) continue;
             if (point_point_distance(q_pos, V.row(vj)) >= dhat2) continue;
             ++num_collision_pairs;
-            insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+            insert_pair_ogc(pairs, std::shared_ptr<HighOrderCollision>(
                 std::make_shared<HighOrderCollisionTemplate<Vertex2, Vertex2>>(vid, vj, mesh)));
         }
 
@@ -1058,7 +1069,7 @@ namespace ipc {
             if (dtype != PointEdgeDistanceType::P_E) continue;
             if (point_edge_distance(q_pos, V.row(ea), V.row(eb), dtype) >= dhat2) continue;
             ++num_collision_pairs;
-            insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+            insert_pair_ogc(pairs, std::shared_ptr<HighOrderCollision>(
                 std::make_shared<HighOrderCollisionTemplate<Vertex2, Edge2P1>>(vid, ej, mesh)));
         }
 
@@ -1227,21 +1238,19 @@ namespace ipc {
             if (dtype != PointTriangleDistanceType::P_T) continue;
             if (point_triangle_distance(q_pos, V.row(f0), V.row(f1), V.row(f2), dtype) >= dhat2) continue;
             ++num_collision_pairs;
-            insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+            insert_pair_ogc(pairs, std::shared_ptr<HighOrderCollision>(
                 std::make_shared<HighOrderCollisionTemplate<Face3P1, Vertex3>>(fi, vid, mesh)));
         }
 
-        // VE: add if vid projects to interior of edge ei (dtype == P_E)
+        // VE: add if vid is in the feasible region of edge ei (cylindrical OGC region)
         for (const index_t ei : candidates.ve_set(vid)) {
             if (filter_obstacles && mesh.is_obstacle_edge(ei)) continue;
             const index_t e0 = mesh.edges()(ei, 0);
             const index_t e1 = mesh.edges()(ei, 1);
-            const auto dtype = point_edge_distance_type(
-                q_pos, V.row(e0), V.row(e1));
-            if (dtype != PointEdgeDistanceType::P_E) continue;
-            if (point_edge_distance(q_pos, V.row(e0), V.row(e1), dtype) >= dhat2) continue;
+            if (!ogc::check_edge_feasible_region(mesh, V, vid, ei)) continue;
+            if (point_edge_distance(q_pos, V.row(e0), V.row(e1), PointEdgeDistanceType::P_E) >= dhat2) continue;
             ++num_collision_pairs;
-            insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+            insert_pair_ogc(pairs, std::shared_ptr<HighOrderCollision>(
                 std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(ei, vid, mesh)));
         }
 
@@ -1251,7 +1260,7 @@ namespace ipc {
             if (!ogc::check_vertex_feasible_region(mesh, V, vid, vj)) continue;
             if (point_point_distance(q_pos, V.row(vj)) >= dhat2) continue;
             ++num_collision_pairs;
-            insert_pair(pairs, std::shared_ptr<HighOrderCollision>(
+            insert_pair_ogc(pairs, std::shared_ptr<HighOrderCollision>(
                 std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(vid, vj, mesh)));
         }
 
@@ -1263,97 +1272,6 @@ namespace ipc {
     // =========================================================================
     // 3D EE closest point (OGC mode) — collision building
     // =========================================================================
-
-    std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>
-    PointPotential::build_collisions_at_ee_cp_ogc(
-        const Eigen::MatrixXd& V,
-        const index_t e0,
-        const index_t e1,
-        EdgeEdgeDistanceType dtype,
-        size_t& num_collision_pairs) const
-    {
-        assert(mesh.are_adjacencies_initialized());
-
-        const index_t e00 = mesh.edges()(e0, 0);
-        const index_t e01 = mesh.edges()(e0, 1);
-        const index_t e10 = mesh.edges()(e1, 0);
-        const index_t e11 = mesh.edges()(e1, 1);
-
-#ifndef NDEBUG
-        // Caller guarantees QA is interior to EA
-        assert(dtype == EdgeEdgeDistanceType::EA_EB
-            || dtype == EdgeEdgeDistanceType::EA_EB0
-            || dtype == EdgeEdgeDistanceType::EA_EB1);
-#endif
-
-        unordered_map<std::array<int, 3>, std::shared_ptr<HighOrderCollision>> pairs;
-        num_collision_pairs = 0;
-
-        // Compute closest point parameter on e0
-        double closest_uv = 0;
-        if (dtype == EdgeEdgeDistanceType::EA_EB) {
-            closest_uv = line_line_closest_point_pairs_uv<double>(
-                V.row(e00), V.row(e01), V.row(e10), V.row(e11))(0);
-        } else if (dtype == EdgeEdgeDistanceType::EA_EB0) {
-            const Eigen::RowVector3d p = V.row(e10);
-            const Eigen::RowVector3d t = V.row(e01) - V.row(e00);
-            closest_uv = (p - V.row(e00)).dot(t) / t.squaredNorm();
-        } else { // EA_EB1
-            const Eigen::RowVector3d p = V.row(e11);
-            const Eigen::RowVector3d t = V.row(e01) - V.row(e00);
-            closest_uv = (p - V.row(e00)).dot(t) / t.squaredNorm();
-        }
-
-        if (!std::isfinite(closest_uv)) {
-            // Parallel edges — skip
-            auto dict = std::make_unique<HighOrderCollisionDict<PointType::EDGE>>();
-            dict->initialize(std::vector<index_t>{e0, e1}, std::vector{e00, e01, e10, e11}, pairs);
-            dict->set_ee_dtype(dtype);
-            return dict;
-        }
-
-        const index_t vid = V.rows(); // virtual vertex
-        const Eigen::RowVector3d ee_closest_point =
-            closest_uv * (V.row(e01) - V.row(e00)) + V.row(e00);
-        VertexMatrixView<3> V_(V, ee_closest_point);
-
-        const double dhat2 = params.dhat * params.dhat;
-
-        const bool src_is_obstacle_e = mesh.is_obstacle_edge(e0);
-        const bool filter_obstacles_e = src_is_obstacle_e
-            && params.integration_type != HighOrderContactParameters::IntegrationType::BRUTE_FORCE;
-
-        // v_set: add if Q is in the feasible region of vi
-        for (const index_t vi : candidates.ev_set(e0)) {
-            if (filter_obstacles_e && mesh.is_obstacle_vertex(vi)) continue;
-            if ((V_(vid) - V_(vi)).squaredNorm() >= dhat2) continue;
-            if (!ogc::check_vertex_feasible_region(mesh, V, ee_closest_point.transpose(), vi)) continue;
-            ++num_collision_pairs;
-            auto pair = std::make_shared<HighOrderCollisionTemplate<Vertex3, Vertex3>>(vid, vi, mesh);
-            insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
-        }
-
-        // e_set: add if Q projects to interior of other edge ej (dtype == P_E)
-        for (const index_t ej : candidates.ee_set(e0)) {
-            if (ej == e0) continue;
-            if (filter_obstacles_e && mesh.is_obstacle_edge(ej)) continue;
-            const index_t ea = mesh.edges()(ej, 0);
-            const index_t eb = mesh.edges()(ej, 1);
-            const auto dtype2 = point_edge_distance_type(V_(vid), V_(ea), V_(eb));
-            if (dtype2 != PointEdgeDistanceType::P_E) continue;
-            if (point_edge_distance(V_(vid), V_(ea), V_(eb), dtype2) >= dhat2) continue;
-            ++num_collision_pairs;
-            auto pair = std::make_shared<HighOrderCollisionTemplate<Edge3P1, Vertex3>>(ej, vid, mesh);
-            insert_pair(pairs, std::shared_ptr<HighOrderCollision>(pair));
-        }
-
-        // f_set: skipped entirely in OGC mode
-
-        auto dict = std::make_unique<HighOrderCollisionDict<PointType::EDGE>>();
-        dict->initialize(std::vector<index_t>{e0, e1}, std::vector{e00, e01, e10, e11}, pairs);
-        dict->set_ee_dtype(dtype);
-        return dict;
-    }
 
     // ---- NearFarBarrier evaluation functions (3D) ----
 

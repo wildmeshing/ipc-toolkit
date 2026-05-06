@@ -313,17 +313,6 @@ namespace ipc
             index_t vid,
             size_t& num_collision_pairs) const;
 
-        /// @brief [OGC mode, 3D] Build EE closest-point collision dict for the QA
-        /// interior point on edge e0 (given the EE distance type).
-        /// Only checks v_set and e_set (no faces), always weight +1.
-        std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>
-        build_collisions_at_ee_cp_ogc(
-            const Eigen::MatrixXd& V,
-            index_t e0,
-            index_t e1,
-            EdgeEdgeDistanceType dtype,
-            size_t& num_collision_pairs) const;
-
         const CollisionMesh& mesh;
         const Candidates& candidates;
         const HighOrderContactParameters params;
