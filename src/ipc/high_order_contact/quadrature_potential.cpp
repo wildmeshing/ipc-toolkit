@@ -1725,8 +1725,9 @@ namespace ipc {
                 const index_t global_id = cc.vertex_id(i);
                 if (global_id == V_extended.rows() - 1) {
                     for (index_t li = 0; li < 3; li++) {
-                        grad_near.template segment<3>(li * 3) += cc.weight * lambda[li] * gn.template segment<3>(i * 3);
-                        grad_far.template segment<3>(li * 3) += cc.weight * lambda[li] * gf.template segment<3>(i * 3);
+                        const index_t local_id = collisions.primary_local_ids()[li];
+                        grad_near.template segment<3>(local_id * 3) += cc.weight * lambda[li] * gn.template segment<3>(i * 3);
+                        grad_far.template segment<3>(local_id * 3) += cc.weight * lambda[li] * gf.template segment<3>(i * 3);
                     }
                 } else {
                     const index_t local_id = collisions.vertex_ids_inverse(global_id);
@@ -1774,21 +1775,25 @@ namespace ipc {
                     } else if (i_virtual && j_virtual) {
                         for (index_t li = 0; li < 3; li++) {
                             for (index_t lj = 0; lj < 3; lj++) {
-                                H_near.block<3, 3>(li * 3, lj * 3) += cc.weight * lambda[li] * lambda[lj] * hn.block<3, 3>(i * 3, j * 3);
-                                H_far.block<3, 3>(li * 3, lj * 3) += cc.weight * lambda[li] * lambda[lj] * hf.block<3, 3>(i * 3, j * 3);
+                                const index_t local_li = collisions.primary_local_ids()[li];
+                                const index_t local_lj = collisions.primary_local_ids()[lj];
+                                H_near.block<3, 3>(local_li * 3, local_lj * 3) += cc.weight * lambda[li] * lambda[lj] * hn.block<3, 3>(i * 3, j * 3);
+                                H_far.block<3, 3>(local_li * 3, local_lj * 3) += cc.weight * lambda[li] * lambda[lj] * hf.block<3, 3>(i * 3, j * 3);
                             }
                         }
                     } else if (i_virtual) {
                         const index_t local_j = collisions.vertex_ids_inverse(global_id_j);
                         for (index_t li = 0; li < 3; li++) {
-                            H_near.block<3, 3>(li * 3, local_j * 3) += cc.weight * lambda[li] * hn.block<3, 3>(i * 3, j * 3);
-                            H_far.block<3, 3>(li * 3, local_j * 3) += cc.weight * lambda[li] * hf.block<3, 3>(i * 3, j * 3);
+                            const index_t local_li = collisions.primary_local_ids()[li];
+                            H_near.block<3, 3>(local_li * 3, local_j * 3) += cc.weight * lambda[li] * hn.block<3, 3>(i * 3, j * 3);
+                            H_far.block<3, 3>(local_li * 3, local_j * 3) += cc.weight * lambda[li] * hf.block<3, 3>(i * 3, j * 3);
                         }
                     } else if (j_virtual) {
                         const index_t local_i = collisions.vertex_ids_inverse(global_id_i);
                         for (index_t lj = 0; lj < 3; lj++) {
-                            H_near.block<3, 3>(local_i * 3, lj * 3) += cc.weight * lambda[lj] * hn.block<3, 3>(i * 3, j * 3);
-                            H_far.block<3, 3>(local_i * 3, lj * 3) += cc.weight * lambda[lj] * hf.block<3, 3>(i * 3, j * 3);
+                            const index_t local_lj = collisions.primary_local_ids()[lj];
+                            H_near.block<3, 3>(local_i * 3, local_lj * 3) += cc.weight * lambda[lj] * hn.block<3, 3>(i * 3, j * 3);
+                            H_far.block<3, 3>(local_i * 3, local_lj * 3) += cc.weight * lambda[lj] * hf.block<3, 3>(i * 3, j * 3);
                         }
                     }
                 }

@@ -286,6 +286,9 @@ double HighOrderContactPotential::operator()(
 
                     if (use_nf) {
                         assert(total_w_near >= total_w_far - 1e-14);
+                        if (total_w_far == 0) {
+                            assert(total_p_far == 0);
+                        }
                         if (total_w_near > 0 && total_w_far > 0) {
                             total += w * (total_p_near / total_w_near + total_p_far / total_w_far);
                         } else if (total_w_near > 0) {
@@ -636,7 +639,10 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
                     // Pass 2: apply gradient
                     if (use_nf_grad) {
-                        assert(total_w_near > 0 && total_w_far > 0);
+                        assert(total_w_near > 0);
+                        if (total_w_far == 0) {
+                            assert(total_p_far == 0);
+                        }
                         const double avg_P_near = total_p_near / total_w_near;
                         const double avg_P_far = total_p_far / total_w_far;
                         for (const auto& e : ee_cache) {
@@ -644,7 +650,11 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             grad(e.dict->primary_dofs()) += (w / total_w_near * (e.P - avg_P_near)) * e.mol_grad;
                         }
                         for (const auto& e : const_cache) {
-                            grad(*e.dofs) += (w / total_w_near) * e.grad_P_near + (w / total_w_far) * e.grad_P_far;
+                            if (total_w_far > 0) {
+                                grad(*e.dofs) += (w / total_w_near) * e.grad_P_near + (w / total_w_far) * e.grad_P_far;
+                            } else {
+                                grad(*e.dofs) += (w / total_w_near) * e.grad_P_near;
+                            }
                         }
                     } else if (use_near_far) {
                         // Normalized but without NearFarBarrier splitting (dbar_factor not in (0,1))
@@ -1064,7 +1074,10 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
                     // Pass 2: apply hessian
                     if (use_nf_hess) {
-                        assert(total_w_near > 0 && total_w_far > 0);
+                        assert(total_w_near > 0);
+                        if (total_w_far == 0) {
+                            assert(total_p_far == 0);
+                        }
                         // Apply quotient rule separately for near and far components
                         const double avg_P_near = total_p_near / total_w_near;
                         const double scale_C_near = -(w / (total_w_near * total_w_near));
@@ -1159,7 +1172,9 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                             }
                             for (const auto& e : const_cache) {
                                 add_block(e.local_hess_near, *e.vertex_ids, w / total_w_near);
-                                add_block(e.local_hess_far, *e.vertex_ids, w / total_w_far);
+                                if (total_w_far > 0) {
+                                    add_block(e.local_hess_far, *e.vertex_ids, w / total_w_far);
+                                }
                             }
 
                             // Term B: -(w*avg_P_near/total_w_near) * Σ_i H(mol_i)
@@ -1231,11 +1246,13 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                                 local_hessian_to_global_triplets(
                                     (w / total_w_near) * e.local_hess_near, *e.vertex_ids, dim,
                                     *(hess_triplets.cache));
-                                ProfileRegistry::instance().add_value(
-                                    "ho.local_hessian.size", e.local_hess_far.rows());
-                                local_hessian_to_global_triplets(
-                                    (w / total_w_far) * e.local_hess_far, *e.vertex_ids, dim,
-                                    *(hess_triplets.cache));
+                                if (total_w_far > 0) {
+                                    ProfileRegistry::instance().add_value(
+                                        "ho.local_hessian.size", e.local_hess_far.rows());
+                                    local_hessian_to_global_triplets(
+                                        (w / total_w_far) * e.local_hess_far, *e.vertex_ids, dim,
+                                        *(hess_triplets.cache));
+                                }
                             }
 
                             // Term B: -(w*avg_P_near/total_w_near) * Σ_i H(mol_i)
