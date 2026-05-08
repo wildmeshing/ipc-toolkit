@@ -1060,6 +1060,26 @@ TEST_CASE("NearFarBarrier decomposition", "[high_order_potential][barrier]")
 
             const double ddb = base.second_derivative(d, dhat);
             CHECK(nf.second_derivative_near(d, dhat) + nf.second_derivative_far(d, dhat) == Catch::Approx(ddb));
+
+            CAPTURE(d);
+            CAPTURE(alpha);
+            CAPTURE(dhat);
+            CAPTURE(alpha * dhat);
+            CAPTURE(alpha * dhat/2);
+            // Check that near barrier is 0 above alpha*dhat and non-zero below
+            constexpr double eps_tol = 1e-9;
+            if (d >= alpha * dhat) {
+                CHECK(nf.near(d, dhat) == 0.0);
+            } else if (d < alpha * dhat - eps_tol) {
+                CHECK(nf.near(d, dhat) > 0.0);
+            }
+
+            // Check that far barrier is 0 below dhat*alpha/2 and non-zero above
+            if (d <= dhat * alpha / 2 || d >= dhat) {
+                CHECK(nf.far(d, dhat) == 0.0);
+            } else if (d > dhat * alpha / 2 + eps_tol) {
+                CHECK(nf.far(d, dhat) > 0.0);
+            }
         }
     };
 
