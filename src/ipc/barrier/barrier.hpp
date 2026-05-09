@@ -463,6 +463,17 @@ public:
     {
     }
 
+    /// @brief Construct a NearFarBarrier holding shared ownership of the base
+    /// barrier. Prefer this over the raw-pointer overload whenever the caller
+    /// already has a shared_ptr — it pins the base barrier for the lifetime of
+    /// this object, eliminating dangling-pointer risk.
+    NearFarBarrier(std::shared_ptr<const Barrier> base_barrier, const double alpha)
+        : m_base_barrier_owned(std::move(base_barrier))
+        , m_base_barrier(m_base_barrier_owned.get())
+        , m_alpha(alpha)
+    {
+    }
+
     /// @brief Evaluate the barrier function.
     /// @param d Distance.
     /// @param dhat Activation distance of the barrier.
@@ -514,6 +525,8 @@ public:
     double second_derivative_far(const double d, const double dhat) const;
 
 private:
+    // Optional shared ownership; null when constructed from a raw pointer.
+    const std::shared_ptr<const Barrier> m_base_barrier_owned;
     const Barrier *const m_base_barrier;
     const double m_alpha;
 };

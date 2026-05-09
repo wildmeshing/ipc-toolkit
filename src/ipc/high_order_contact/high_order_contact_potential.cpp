@@ -143,7 +143,7 @@ double HighOrderContactPotential::operator()(
 
             std::unique_ptr<NearFarBarrier> nf_barrier;
             if (use_nf) {
-                nf_barrier = std::make_unique<NearFarBarrier>(params.barrier.get(), dbar_factor);
+                nf_barrier = std::make_unique<NearFarBarrier>(params.barrier, dbar_factor);
             }
 
             auto loop_body = [&](int start, int end, int thread_id) {
@@ -444,7 +444,7 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
                     std::unique_ptr<NearFarBarrier> nf_barrier;
                     if (use_nf_grad) {
-                        nf_barrier = std::make_unique<NearFarBarrier>(params.barrier.get(), params.dbar_factor());
+                        nf_barrier = std::make_unique<NearFarBarrier>(params.barrier, params.dbar_factor());
                     }
 
                     for (index_t le = 0; le < 3; le++) {
@@ -644,7 +644,6 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                             assert(total_p_far == 0);
                         }
                         const double avg_P_near = total_p_near / total_w_near;
-                        const double avg_P_far = total_p_far / total_w_far;
                         for (const auto& e : ee_cache) {
                             grad(e.dict->dofs()) += (w / total_w_near * e.mol_val) * e.grad_P;
                             grad(e.dict->primary_dofs()) += (w / total_w_near * (e.P - avg_P_near)) * e.mol_grad;
@@ -837,7 +836,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                     // Construct NearFarBarrier if needed
                     std::unique_ptr<NearFarBarrier> nf_barrier;
                     if (use_nf_hess) {
-                        nf_barrier = std::make_unique<NearFarBarrier>(params.barrier.get(), params.dbar_factor());
+                        nf_barrier = std::make_unique<NearFarBarrier>(params.barrier, params.dbar_factor());
                     }
 
                     for (index_t le = 0; le < 3; le++) {
