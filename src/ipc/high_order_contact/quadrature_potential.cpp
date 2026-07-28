@@ -1,5 +1,6 @@
 #include "quadrature_potential.hpp"
 
+#include <algorithm>
 #include <array>
 #include "absl/strings/internal/str_format/extension.h"
 #include "ipc/candidates/candidates.hpp"
@@ -294,8 +295,9 @@ namespace ipc {
                 }
             }
 
+            const auto& e0_faces = mesh.edges_to_faces()[e0];
             for (const auto& other_f : f_set) {
-                if (mesh.edges_to_faces()(e0, 0) == other_f || mesh.edges_to_faces()(e0, 1) == other_f) continue;
+                if (std::find(e0_faces.begin(), e0_faces.end(), other_f) != e0_faces.end()) continue;
                 if (filter_obstacles_e && mesh.is_obstacle_face(other_f)) continue;
 
                 auto dtype2 = point_triangle_distance_type(V_(vid), V_(mesh.faces()(other_f, 0)),

@@ -1,8 +1,10 @@
 set(SOURCES
   # Tests
-  test_utils.cpp
+  test_local_to_global.cpp
   test_matrixcache.cpp
   test_vertex_matrix_view.cpp
+  test_profiler.cpp
+  test_utils.cpp
 
   # Benchmarks
 

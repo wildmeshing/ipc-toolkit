@@ -10,7 +10,6 @@
 #include <ipc/distance/point_point.hpp>
 #include <ipc/utils/local_to_global.hpp>
 #include <ipc/utils/world_bbox_diagonal_length.hpp>
-#include <ipc/utils/maybe_parallel_for.hpp>
 #include <ipc/utils/profile_registry.hpp>
 #include <ipc/high_order_contact/quadrature_potential.hpp>
 
@@ -107,31 +106,30 @@ void HighOrderCollisions::build(
         // Ensure candidate sets are populated (ev_set/ee_set/vv_set lookups require them).
         const_cast<Candidates&>(candidates).convert_candidates_to_sets();
 
-        auto storage = create_thread_storage<HighOrderCollisionsBuilder<2>>(
-            HighOrderCollisionsBuilder<2>());
+        tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>> storage {
+            HighOrderCollisionsBuilder<2>()
+        };
 
         if (params.ogc_collisions) {
             // OGC mode: build per-vertex collision dicts.
-            maybe_parallel_for(
-                static_cast<int>(mesh.num_vertices()),
-                [&](int start, int end, int thread_id) {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, mesh.num_vertices()),
+                [&](const tbb::blocked_range<size_t>& r) {
                     HighOrderCollisionsBuilder<2>& local_storage =
-                        get_local_thread_storage(storage, thread_id);
+                        storage.local();
                     local_storage.build_vertex_collisions_ogc(
-                        mesh, vertices, candidates, params,
-                        static_cast<size_t>(start), static_cast<size_t>(end));
+                        mesh, vertices, candidates, params, r.begin(), r.end());
                 });
             HighOrderCollisionsBuilder<2>::merge_ogc(storage, *this);
         } else {
             // Standard mode: loop over all edges with per-QP collision dicts.
-            maybe_parallel_for(
-                static_cast<int>(mesh.num_edges()),
-                [&](int start, int end, int thread_id) {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, mesh.num_edges()),
+                [&](const tbb::blocked_range<size_t>& r) {
                     HighOrderCollisionsBuilder<2>& local_storage =
-                        get_local_thread_storage(storage, thread_id);
+                        storage.local();
                     local_storage.build_edge_collisions(
-                        mesh, vertices, candidates, params,
-                        static_cast<size_t>(start), static_cast<size_t>(end));
+                        mesh, vertices, candidates, params, r.begin(), r.end());
                 });
             HighOrderCollisionsBuilder<2>::merge(storage, *this);
         }
@@ -172,59 +170,59 @@ void HighOrderCollisions::build(
         }
 
         // create builder and parallel loops
-        auto storage = create_thread_storage<QuadratureCollisionsBuilder>(
+        tbb::enumerable_thread_specific<QuadratureCollisionsBuilder> storage(
             QuadratureCollisionsBuilder(mesh, candidates, params));
 
         if (params.ogc_collisions) {
             // OGC mode: vertex collisions with feasibility checks.
-            maybe_parallel_for(
-                vertices_to_process.size(),
-                [&](int start, int end, int thread_id) {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, vertices_to_process.size()),
+                [&](const tbb::blocked_range<size_t>& r) {
                     QuadratureCollisionsBuilder& local_storage =
-                        get_local_thread_storage(storage, thread_id);
+                        storage.local();
                     local_storage.build_vertex_collisions_ogc(
-                        vertices, vertices_to_process, start, end);
+                        vertices, vertices_to_process, r.begin(), r.end());
                 });
 
             // OGC mode: EE collisions with feasibility checks (no face QPs).
-            maybe_parallel_for(
-                candidates.ee_candidates.size(),
-                [&](int start, int end, int thread_id) {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, candidates.ee_candidates.size()),
+                [&](const tbb::blocked_range<size_t>& r) {
                     QuadratureCollisionsBuilder& local_storage =
-                        get_local_thread_storage(storage, thread_id);
+                        storage.local();
                     local_storage.build_edge_edge_collisions_ogc(
-                        vertices, candidates.ee_candidates, start, end);
+                        vertices, candidates.ee_candidates, r.begin(), r.end());
                 });
         } else {
             if (params.quad_order == 0) {
-                maybe_parallel_for(
-                    vertices_to_process.size(),
-                    [&](int start, int end, int thread_id) {
+                tbb::parallel_for(
+                    tbb::blocked_range<size_t>(0, vertices_to_process.size()),
+                    [&](const tbb::blocked_range<size_t>& r) {
                         QuadratureCollisionsBuilder& local_storage =
-                            get_local_thread_storage(storage, thread_id);
+                            storage.local();
                         local_storage.build_vertex_collisions(
-                            vertices, vertices_to_process, start, end);
+                            vertices, vertices_to_process, r.begin(), r.end());
                     });
             }
 
             if (params.quad_order > 0) {
-                maybe_parallel_for(
-                    faces_to_process.size(),
-                    [&](int start, int end, int thread_id) {
+                tbb::parallel_for(
+                    tbb::blocked_range<size_t>(0, faces_to_process.size()),
+                    [&](const tbb::blocked_range<size_t>& r) {
                         QuadratureCollisionsBuilder& local_storage =
-                            get_local_thread_storage(storage, thread_id);
+                            storage.local();
                         local_storage.build_face_collisions(
-                            vertices, faces_to_process, start, end);
+                            vertices, faces_to_process, r.begin(), r.end());
                     });
             }
 
-            maybe_parallel_for(
-                candidates.ee_candidates.size(),
-                [&](int start, int end, int thread_id) {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, candidates.ee_candidates.size()),
+                [&](const tbb::blocked_range<size_t>& r) {
                     QuadratureCollisionsBuilder& local_storage =
-                        get_local_thread_storage(storage, thread_id);
+                        storage.local();
                     local_storage.build_edge_edge_collisions(
-                        vertices, candidates.ee_candidates, start, end);
+                        vertices, candidates.ee_candidates, r.begin(), r.end());
                 });
         }
 

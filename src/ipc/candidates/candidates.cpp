@@ -2,12 +2,14 @@
 
 #include <ipc/config.hpp>
 #include <ipc/ipc.hpp>
+#include <ipc/broad_phase/default_broad_phase.hpp>
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/point_line.hpp>
 #include <ipc/distance/point_plane.hpp>
 #include <ipc/distance/point_point.hpp>
 #include <ipc/utils/eigen_ext.hpp>
+#include <ipc/utils/profiler.hpp>
 #include <ipc/utils/save_obj.hpp>
 
 #include <igl/remove_unreferenced.h>
@@ -46,6 +48,8 @@ void Candidates::build(
     BroadPhase* broad_phase,
     const bool all_types)
 {
+    IPC_TOOLKIT_PROFILE_BLOCK("Candidates::build(static)");
+
     std::unique_ptr<BroadPhase> default_broad_phase;
     if (broad_phase == nullptr) {
         default_broad_phase = make_default_broad_phase();
@@ -101,10 +105,9 @@ void Candidates::build(
 
         // TODO: Can we reuse the broad phase from above?
         broad_phase->clear();
-        broad_phase->can_vertices_collide = [&](size_t vi, size_t vj) {
-            // Ignore c-edge to c-edge and c-vertex to c-vertex
-            return ((vi < nCV) ^ (vj < nCV)) && mesh.can_collide(vi, vj);
-        };
+        // Ignore c-edge to c-edge and c-vertex to c-vertex
+        broad_phase->can_vertices_collide =
+            make_codim_cross_filter(nCV) & mesh.can_collide;
         broad_phase->build(V, CE, Eigen::MatrixXi(), inflation_radius);
 
         broad_phase->detect_edge_vertex_candidates(ev_candidates);
@@ -112,6 +115,15 @@ void Candidates::build(
             assert(vi < mesh.codim_vertices().size());
             ei = mesh.codim_edges()[ei];    // Map back to mesh.edges
             vi = mesh.codim_vertices()[vi]; // Map back to vertices
+        }
+    }
+
+    // Planes to vertices:
+    for (const auto& plane : mesh.planes) {
+        for (index_t vi = 0; vi < mesh.num_vertices(); ++vi) {
+            if (plane.signedDistance(vertices.row(vi)) < inflation_radius) {
+                pv_candidates.emplace_back(plane, vi);
+            }
         }
     }
 }
@@ -124,6 +136,8 @@ void Candidates::build(
     BroadPhase* broad_phase,
     const bool all_types)
 {
+    IPC_TOOLKIT_PROFILE_BLOCK("Candidates::build(dynamic)");
+
     std::unique_ptr<BroadPhase> default_broad_phase;
     if (broad_phase == nullptr) {
         default_broad_phase = make_default_broad_phase();
@@ -187,10 +201,9 @@ void Candidates::build(
 
         // TODO: Can we reuse the broad phase from above?
         broad_phase->clear();
-        broad_phase->can_vertices_collide = [&](size_t vi, size_t vj) {
-            // Ignore c-edge to c-edge and c-vertex to c-vertex
-            return ((vi < nCV) ^ (vj < nCV)) && mesh.can_collide(vi, vj);
-        };
+        // Ignore c-edge to c-edge and c-vertex to c-vertex
+        broad_phase->can_vertices_collide =
+            make_codim_cross_filter(nCV) & mesh.can_collide;
         broad_phase->build(V_t0, V_t1, CE, Eigen::MatrixXi(), inflation_radius);
 
         broad_phase->detect_edge_vertex_candidates(ev_candidates);
@@ -198,6 +211,17 @@ void Candidates::build(
             assert(vi < mesh.codim_vertices().size());
             ei = mesh.codim_edges()[ei];    // Map back to mesh.edges
             vi = mesh.codim_vertices()[vi]; // Map back to vertices
+        }
+    }
+
+    // Planes to vertices:
+    for (const auto& plane : mesh.planes) {
+        for (index_t vi = 0; vi < mesh.num_vertices(); ++vi) {
+            const double d_t0 = plane.signedDistance(vertices_t0.row(vi));
+            const double d_t1 = plane.signedDistance(vertices_t1.row(vi));
+            if (d_t0 < inflation_radius || d_t1 < inflation_radius) {
+                pv_candidates.emplace_back(plane, vi);
+            }
         }
     }
 }
@@ -239,6 +263,7 @@ double Candidates::compute_collision_free_stepsize(
 {
     assert(vertices_t0.rows() == mesh.num_vertices());
     assert(vertices_t1.rows() == mesh.num_vertices());
+    IPC_TOOLKIT_PROFILE_BLOCK("Candidates::compute_collision_free_stepsize");
 
     if (empty()) {
         return 1; // No possible collisions, so can take full step.
@@ -246,29 +271,25 @@ double Candidates::compute_collision_free_stepsize(
 
     std::atomic<double> earliest_toi(1.0);
 
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, size()),
-        [&](tbb::blocked_range<size_t> r) {
-            for (size_t i = r.begin(); i < r.end(); i++) {
-                double tmax = earliest_toi.load(std::memory_order_relaxed);
+    tbb::parallel_for(size_t(0), size(), [&](size_t i) {
+        double tmax = earliest_toi.load(std::memory_order_relaxed);
 
-                const CollisionStencil& candidate = (*this)[i];
+        const CollisionStencil& candidate = (*this)[i];
 
-                double toi = std::numeric_limits<double>::infinity(); // output
-                const bool are_colliding = candidate.ccd(
-                    candidate.dof(vertices_t0, mesh.edges(), mesh.faces()),
-                    candidate.dof(vertices_t1, mesh.edges(), mesh.faces()), //
-                    toi, min_distance, tmax, narrow_phase_ccd);
+        double toi = std::numeric_limits<double>::infinity(); // output
+        const bool are_colliding = candidate.ccd(
+            candidate.dof(vertices_t0, mesh.edges(), mesh.faces()),
+            candidate.dof(vertices_t1, mesh.edges(), mesh.faces()), //
+            toi, min_distance, tmax, narrow_phase_ccd);
 
-                if (are_colliding) {
-                    // Update the earliest time of impact (TOI) atomically
-                    double prev = earliest_toi.load(std::memory_order_relaxed);
-                    while (toi < prev
-                           && !earliest_toi.compare_exchange_weak(
-                               prev, toi, std::memory_order_relaxed)) { }
-                }
-            }
-        });
+        if (are_colliding) {
+            // Update the earliest time of impact (TOI) atomically
+            double prev = earliest_toi.load(std::memory_order_relaxed);
+            while (toi < prev
+                   && !earliest_toi.compare_exchange_weak(
+                       prev, toi, std::memory_order_relaxed)) { }
+        }
+    });
 
     double result = earliest_toi.load(std::memory_order_relaxed);
     assert(result >= 0 && result <= 1.0);
@@ -294,19 +315,14 @@ double Candidates::compute_noncandidate_conservative_stepsize(
         is_vertex_a_candidates[i].store(false, std::memory_order_relaxed);
     }
 
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, size()),
-        [&](const tbb::blocked_range<size_t>& r) {
-            for (size_t i = r.begin(); i < r.end(); ++i) {
-                for (const index_t vid : (*this)[i].vertex_ids(E, F)) {
-                    if (vid < 0) {
-                        break;
-                    }
-                    is_vertex_a_candidates[vid].store(
-                        true, std::memory_order_relaxed);
-                }
+    tbb::parallel_for(size_t(0), size(), [&](size_t i) {
+        for (const index_t vid : (*this)[i].vertex_ids(E, F)) {
+            if (vid < 0) {
+                break;
             }
-        });
+            is_vertex_a_candidates[vid].store(true, std::memory_order_relaxed);
+        }
+    });
 
     double max_displacement = tbb::parallel_reduce(
         tbb::blocked_range<size_t>(0, displacements.rows()), 0.0,
@@ -366,31 +382,25 @@ Eigen::VectorXd Candidates::compute_per_vertex_safe_distances(
             inflation_radius - min_distance, std::memory_order_relaxed);
     }
 
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, size()),
-        [&](const tbb::blocked_range<size_t>& r) {
-            for (size_t i = r.begin(); i < r.end(); i++) {
-                const CollisionStencil& candidate = (*this)[i];
+    tbb::parallel_for(size_t(0), size(), [&](size_t i) {
+        const CollisionStencil& candidate = (*this)[i];
 
-                const double d = sqrt(candidate.compute_distance(
-                                     vertices, mesh.edges(), mesh.faces()))
-                    - min_distance;
+        const double d = sqrt(candidate.compute_distance(
+                             vertices, mesh.edges(), mesh.faces()))
+            - min_distance;
 
-                // Compute the distance for each vertex in the candidate
-                for (const index_t vid :
-                     candidate.vertex_ids(mesh.edges(), mesh.faces())) {
-                    if (vid < 0) {
-                        break; // No more vertices in this candidate
-                    }
-                    // Update the minimum distance atomically
-                    double old_val =
-                        min_distances[vid].load(std::memory_order_relaxed);
-                    while (d < old_val
-                           && !min_distances[vid].compare_exchange_weak(
-                               old_val, d, std::memory_order_relaxed)) { }
-                }
+        // Compute the distance for each vertex in the candidate
+        for (auto vid : candidate.vertex_ids(mesh.edges(), mesh.faces())) {
+            if (vid < 0) {
+                break; // No more vertices in this candidate
             }
-        });
+            // Update the minimum distance atomically
+            double old_val = min_distances[vid].load(std::memory_order_relaxed);
+            while (d < old_val
+                   && !min_distances[vid].compare_exchange_weak(
+                       old_val, d, std::memory_order_relaxed)) { }
+        }
+    });
 
     // Convert atomic distances to a vector
     Eigen::VectorXd result(mesh.num_vertices());
@@ -472,13 +482,14 @@ Eigen::VectorXd Candidates::compute_per_vertex_safe_distances(
 size_t Candidates::size() const
 {
     return vv_candidates.size() + ev_candidates.size() + ee_candidates.size()
-        + fv_candidates.size();
+        + fv_candidates.size() + pv_candidates.size();
 }
 
 bool Candidates::empty() const
 {
     return vv_candidates.empty() && ev_candidates.empty()
-        && ee_candidates.empty() && fv_candidates.empty();
+        && ee_candidates.empty() && fv_candidates.empty()
+        && pv_candidates.empty();
 }
 
 void Candidates::clear()
@@ -489,6 +500,7 @@ void Candidates::clear()
     fv_candidates.clear();
     ef_candidates.clear();
     ff_candidates.clear();
+    pv_candidates.clear();
 }
 
 CollisionStencil& Candidates::operator[](size_t i)
@@ -507,6 +519,10 @@ CollisionStencil& Candidates::operator[](size_t i)
     i -= ee_candidates.size();
     if (i < fv_candidates.size()) {
         return fv_candidates[i];
+    }
+    i -= fv_candidates.size();
+    if (i < pv_candidates.size()) {
+        return pv_candidates[i];
     }
     throw std::out_of_range("Candidate index is out of range!");
 }
@@ -528,7 +544,46 @@ const CollisionStencil& Candidates::operator[](size_t i) const
     if (i < fv_candidates.size()) {
         return fv_candidates[i];
     }
+    i -= fv_candidates.size();
+    if (i < pv_candidates.size()) {
+        return pv_candidates[i];
+    }
     throw std::out_of_range("Candidate index is out of range!");
+}
+
+bool Candidates::is_vertex_vertex(size_t i) const
+{
+    return i < vv_candidates.size();
+}
+
+bool Candidates::is_edge_vertex(size_t i) const
+{
+    return i >= vv_candidates.size()
+        && i < vv_candidates.size() + ev_candidates.size();
+}
+
+bool Candidates::is_edge_edge(size_t i) const
+{
+    return i >= vv_candidates.size() + ev_candidates.size()
+        && i
+        < vv_candidates.size() + ev_candidates.size() + ee_candidates.size();
+}
+
+bool Candidates::is_face_vertex(size_t i) const
+{
+    return i
+        >= vv_candidates.size() + ev_candidates.size() + ee_candidates.size()
+        && i < vv_candidates.size() + ev_candidates.size()
+            + ee_candidates.size() + fv_candidates.size();
+}
+
+bool Candidates::is_plane_vertex(size_t i) const
+{
+    return i >= vv_candidates.size() + ev_candidates.size()
+            + ee_candidates.size() + fv_candidates.size()
+        && i < vv_candidates.size() + ev_candidates.size()
+            + ee_candidates.size() + fv_candidates.size()
+            + pv_candidates.size();
 }
 
 // == Convert to subelement candidates ========================================
@@ -786,8 +841,9 @@ std::set<index_t> Candidates::ef_set(index_t id) const
             out.insert(fid);
         }
     }
-    out.erase(mesh_.edges_to_faces()(id, 0));
-    out.erase(mesh_.edges_to_faces()(id, 1));
+    for (const index_t fid : mesh_.edges_to_faces()[id]) {
+        out.erase(fid);
+    }
     return out;
 }
 

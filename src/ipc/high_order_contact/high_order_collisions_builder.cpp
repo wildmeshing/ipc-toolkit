@@ -58,7 +58,7 @@ void HighOrderCollisionsBuilder<2>::build_edge_collisions(
 }
 
 void HighOrderCollisionsBuilder<2>::merge(
-    ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
+    tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>>& local_storage,
     HighOrderCollisions& merged_collisions)
 {
     size_t total_pairs = 0;
@@ -105,7 +105,7 @@ void HighOrderCollisionsBuilder<2>::build_vertex_collisions_ogc(
 }
 
 void HighOrderCollisionsBuilder<2>::merge_ogc(
-    ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
+    tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>>& local_storage,
     HighOrderCollisions& merged_collisions)
 {
     size_t total_pairs = 0;
@@ -598,7 +598,7 @@ void QuadratureCollisionsBuilder::build_edge_edge_collisions_ogc(
 }
 
 void QuadratureCollisionsBuilder::merge(
-    ParallelCacheType<QuadratureCollisionsBuilder>& local_storage,
+    tbb::enumerable_thread_specific<QuadratureCollisionsBuilder>& local_storage,
     HighOrderCollisions& merged_collisions)
 {
     // Reserve space

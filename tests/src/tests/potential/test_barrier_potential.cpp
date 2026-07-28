@@ -1,4 +1,5 @@
 #include <tests/config.hpp>
+#include <tests/dof_layout.hpp>
 #include <tests/utils.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -13,6 +14,8 @@
 
 #include <finitediff.hpp>
 #include <igl/edges.h>
+
+#include <Eigen/Eigenvalues>
 
 using namespace ipc;
 
@@ -36,7 +39,6 @@ TEST_CASE(
 
     double dhat = -1;
     std::string mesh_name;
-    bool all_vertices_on_surface = true;
     SECTION("cube")
     {
         dhat = sqrt(2.0);
@@ -67,18 +69,13 @@ TEST_CASE(
     NormalCollisions collisions;
     collisions.set_use_area_weighting(use_area_weighting);
     collisions.set_collision_set_type(collision_set_type);
-    if (all_vertices_on_surface) {
-        mesh = CollisionMesh(vertices, edges, faces);
-    } else {
-        mesh = CollisionMesh::build_from_full_mesh(vertices, edges, faces);
-        vertices = mesh.vertices(vertices);
-    }
+    mesh = CollisionMesh(vertices, edges, faces);
     collisions.build(mesh, vertices, dhat, /*dmin=*/0, broad_phase.get());
-    CAPTURE(
-        dhat, broad_phase->name(), all_vertices_on_surface, collision_set_type);
+    CAPTURE(dhat, broad_phase->name(), use_area_weighting, collision_set_type);
     CHECK(!collisions.empty());
 
-    BarrierPotential barrier_potential(dhat, use_physical_barrier);
+    double kappa = 1.0;
+    BarrierPotential barrier_potential(dhat, kappa, use_physical_barrier);
 
     // -------------------------------------------------------------------------
     // Gradient
@@ -92,9 +89,9 @@ TEST_CASE(
     {
         auto f = [&](const Eigen::VectorXd& x) {
             return barrier_potential(
-                collisions, mesh, fd::unflatten(x, vertices.cols()));
+                collisions, mesh, tests::unflatten(x, vertices.cols()));
         };
-        fd::finite_gradient(fd::flatten(vertices), f, fgrad_b);
+        fd::finite_gradient(tests::flatten(vertices), f, fgrad_b);
     }
 
     REQUIRE(grad_b.squaredNorm() > 0);
@@ -112,9 +109,9 @@ TEST_CASE(
     {
         auto f = [&](const Eigen::VectorXd& x) {
             return barrier_potential.gradient(
-                collisions, mesh, fd::unflatten(x, vertices.cols()));
+                collisions, mesh, tests::unflatten(x, vertices.cols()));
         };
-        fd::finite_jacobian(fd::flatten(vertices), f, fhess_b);
+        fd::finite_jacobian(tests::flatten(vertices), f, fhess_b);
     }
 
     REQUIRE(hess_b.squaredNorm() > 0);
@@ -216,6 +213,8 @@ TEST_CASE(
             < dhat * dhat);
     }
 
+    REQUIRE(vertices.size() > 0);
+
     const CollisionMesh mesh(vertices, edges, faces);
 
     NormalCollisions collisions;
@@ -225,14 +224,14 @@ TEST_CASE(
     collisions.build(mesh, vertices, dhat);
     CHECK(!collisions.empty());
 
-    BarrierPotential barrier_potential(dhat, use_physical_barrier);
+    BarrierPotential barrier_potential(dhat, 1.0, use_physical_barrier);
 
     const Eigen::VectorXd grad_b =
         barrier_potential.gradient(collisions, mesh, vertices);
 
     // Compute the gradient using finite differences
     auto f = [&](const Eigen::VectorXd& x) {
-        const Eigen::MatrixXd fd_V = fd::unflatten(x, mesh.dim());
+        const Eigen::MatrixXd fd_V = tests::unflatten(x, mesh.dim());
 
         NormalCollisions fd_collisions;
         fd_collisions.set_use_area_weighting(use_area_weighting);
@@ -243,7 +242,7 @@ TEST_CASE(
         return barrier_potential(collisions, mesh, fd_V);
     };
     Eigen::VectorXd fgrad_b;
-    fd::finite_gradient(fd::flatten(vertices), f, fgrad_b);
+    fd::finite_gradient(tests::flatten(vertices), f, fgrad_b);
 
     CHECK(fd::compare_gradient(grad_b, fgrad_b));
 }
@@ -302,14 +301,15 @@ TEST_CASE(
     collisions.build(candidates, mesh, vertices, dhat);
     REQUIRE(!collisions.ee_collisions.empty());
 
-    BarrierPotential barrier_potential(dhat, use_physical_barrier);
+    BarrierPotential barrier_potential(dhat, 1.0, use_physical_barrier);
 
     for (int i = 0; i < collisions.size(); i++) {
         std::vector<Eigen::Triplet<double>> triplets;
         barrier_potential.shape_derivative(
             collisions[i], collisions[i].vertex_ids(edges, faces),
             collisions[i].dof(rest_positions, edges, faces),
-            collisions[i].dof(vertices, edges, faces), triplets);
+            collisions[i].dof(vertices, edges, faces), triplets,
+            vertices.rows());
         Eigen::SparseMatrix<double> JF_wrt_X_sparse(ndof, ndof);
         JF_wrt_X_sparse.setFromTriplets(triplets.begin(), triplets.end());
         const Eigen::MatrixXd JF_wrt_X = Eigen::MatrixXd(JF_wrt_X_sparse);
@@ -318,20 +318,19 @@ TEST_CASE(
             // TODO: Recompute weight based on x
             assert(use_area_weighting == false);
             // Recompute eps_x based on x
+            const Eigen::MatrixXd X =
+                tests::unflatten(x, rest_positions.cols());
             double prev_eps_x = -1;
             if (collisions.is_edge_edge(i)) {
                 EdgeEdgeNormalCollision& c =
                     dynamic_cast<EdgeEdgeNormalCollision&>(collisions[i]);
                 prev_eps_x = c.eps_x;
                 c.eps_x = edge_edge_mollifier_threshold(
-                    x.segment<3>(3 * edges(c.edge0_id, 0)),
-                    x.segment<3>(3 * edges(c.edge0_id, 1)),
-                    x.segment<3>(3 * edges(c.edge1_id, 0)),
-                    x.segment<3>(3 * edges(c.edge1_id, 1)));
+                    X.row(edges(c.edge0_id, 0)), X.row(edges(c.edge0_id, 1)),
+                    X.row(edges(c.edge1_id, 0)), X.row(edges(c.edge1_id, 1)));
             }
 
-            const Eigen::MatrixXd positions =
-                fd::unflatten(x, rest_positions.cols()) + displacements;
+            const Eigen::MatrixXd positions = X + displacements;
             const VectorMax12d dof = collisions[i].dof(positions, edges, faces);
 
             Eigen::VectorXd grad = Eigen::VectorXd::Zero(ndof);
@@ -350,10 +349,10 @@ TEST_CASE(
         };
 
         Eigen::MatrixXd fd_JF_wrt_X;
-        fd::finite_jacobian(fd::flatten(rest_positions), F_X, fd_JF_wrt_X);
+        fd::finite_jacobian(tests::flatten(rest_positions), F_X, fd_JF_wrt_X);
 
-        CHECKED_ELSE(fd::compare_jacobian(JF_wrt_X, fd_JF_wrt_X))
-        {
+        CHECK(fd::compare_jacobian(JF_wrt_X, fd_JF_wrt_X));
+        if (!fd::compare_jacobian(JF_wrt_X, fd_JF_wrt_X)) {
             tests::print_compare_nonzero(JF_wrt_X, fd_JF_wrt_X);
         }
     }
@@ -369,7 +368,8 @@ TEST_CASE(
         barrier_potential.shape_derivative(
             collisions[i], collisions[i].vertex_ids(edges, faces),
             collisions[i].dof(rest_positions, edges, faces),
-            collisions[i].dof(vertices, edges, faces), triplets);
+            collisions[i].dof(vertices, edges, faces), triplets,
+            vertices.rows());
         Eigen::SparseMatrix<double> JF_wrt_X_sparse(ndof, ndof);
         JF_wrt_X_sparse.setFromTriplets(triplets.begin(), triplets.end());
         sum += Eigen::MatrixXd(JF_wrt_X_sparse);
@@ -377,7 +377,7 @@ TEST_CASE(
     CHECK(fd::compare_jacobian(JF_wrt_X, sum));
 
     auto F_X = [&](const Eigen::VectorXd& x) {
-        const Eigen::MatrixXd fd_X = fd::unflatten(x, rest_positions.cols());
+        const Eigen::MatrixXd fd_X = tests::unflatten(x, rest_positions.cols());
         const Eigen::MatrixXd fd_V = fd_X + displacements;
 
         CollisionMesh fd_mesh(fd_X, mesh.edges(), mesh.faces());
@@ -392,10 +392,10 @@ TEST_CASE(
         return barrier_potential.gradient(collisions, fd_mesh, fd_V);
     };
     Eigen::MatrixXd fd_JF_wrt_X;
-    fd::finite_jacobian(fd::flatten(rest_positions), F_X, fd_JF_wrt_X);
+    fd::finite_jacobian(tests::flatten(rest_positions), F_X, fd_JF_wrt_X);
 
-    CHECKED_ELSE(fd::compare_jacobian(JF_wrt_X, fd_JF_wrt_X))
-    {
+    CHECK(fd::compare_jacobian(JF_wrt_X, fd_JF_wrt_X));
+    if (!fd::compare_jacobian(JF_wrt_X, fd_JF_wrt_X)) {
         tests::print_compare_nonzero(JF_wrt_X, fd_JF_wrt_X);
     }
 }
@@ -441,13 +441,13 @@ TEST_CASE(
     collisions.set_enable_shape_derivatives(true);
     collisions.build(mesh, vertices, dhat);
 
-    BarrierPotential barrier_potential(dhat, use_physical_barrier);
+    BarrierPotential barrier_potential(dhat, 1.0, use_physical_barrier);
 
     const Eigen::MatrixXd JF_wrt_X =
         barrier_potential.shape_derivative(collisions, mesh, vertices);
 
     auto F_X = [&](const Eigen::VectorXd& x) {
-        const Eigen::MatrixXd fd_X = fd::unflatten(x, X.cols());
+        const Eigen::MatrixXd fd_X = tests::unflatten(x, X.cols());
         const Eigen::MatrixXd fd_V = fd_X + U;
 
         CollisionMesh fd_mesh(fd_X, mesh.edges(), mesh.faces());
@@ -460,12 +460,77 @@ TEST_CASE(
         return barrier_potential.gradient(fd_collisions, fd_mesh, fd_V);
     };
     Eigen::MatrixXd fd_JF_wrt_X;
-    fd::finite_jacobian(fd::flatten(X), F_X, fd_JF_wrt_X);
+    fd::finite_jacobian(tests::flatten(X), F_X, fd_JF_wrt_X);
 
-    CHECKED_ELSE(fd::compare_jacobian(JF_wrt_X, fd_JF_wrt_X))
-    {
+    CHECK(fd::compare_jacobian(JF_wrt_X, fd_JF_wrt_X));
+    if (!fd::compare_jacobian(JF_wrt_X, fd_JF_wrt_X)) {
         tests::print_compare_nonzero(JF_wrt_X, fd_JF_wrt_X);
     }
+}
+
+TEST_CASE(
+    "Mollified m<=0 hessian block is PSD",
+    "[potential][barrier_potential][hessian]")
+{
+    // The cube's edges are axis-aligned, so IMPROVED_MAX_APPROX's near-parallel
+    // negative-weight collisions have mollifier m == 0 exactly. That exercises
+    // NormalPotential::hessian()'s m <= 0 early-return branch.
+    //
+    // Before the fix, that branch returned (weight * f) * hess_m without
+    // applying the requested PSD projection, so negative-weight collisions
+    // could introduce non-PSD blocks into the assembled "PSD-projected"
+    // hessian.
+    Eigen::MatrixXd vertices;
+    Eigen::MatrixXi edges, faces;
+    REQUIRE(tests::load_mesh("cube.ply", vertices, edges, faces));
+    const CollisionMesh mesh(vertices, edges, faces);
+
+    const double dhat = std::sqrt(2.0);
+    NormalCollisions collisions;
+    collisions.set_use_area_weighting(true);
+    collisions.set_collision_set_type(
+        NormalCollisions::CollisionSetType::IMPROVED_MAX_APPROX);
+    collisions.build(mesh, vertices, dhat);
+    REQUIRE(!collisions.empty());
+
+    // Ensure the test actually exercises NormalPotential::hessian()'s m <= 0
+    // early-return branch (and the negative-weight case that motivated the
+    // fix).
+    int m_le_0_count = 0;
+    int m_le_0_negative_weight_count = 0;
+    for (size_t i = 0; i < collisions.size(); i++) {
+        const NormalCollision& c = collisions[i];
+        if (!c.is_mollified()) {
+            continue;
+        }
+        const double m =
+            c.mollifier(c.dof(vertices, mesh.edges(), mesh.faces()));
+        if (m <= 0) {
+            m_le_0_count++;
+            if (c.weight < 0) {
+                m_le_0_negative_weight_count++;
+            }
+        }
+    }
+    REQUIRE(m_le_0_count > 0);
+    REQUIRE(m_le_0_negative_weight_count > 0);
+
+    const BarrierPotential barrier_potential(dhat, /*stiffness=*/1.0);
+
+    // Triggers the m <= 0 early-return (and its debug PSD assert) for every
+    // mollified collision that reaches it.
+    const Eigen::SparseMatrix<double> H = barrier_potential.hessian(
+        collisions, mesh, vertices, PSDProjectionMethod::CLAMP);
+    REQUIRE(H.nonZeros() > 0);
+
+    // With per-block CLAMP projection (including the m <= 0 blocks), the
+    // assembled hessian must be PSD. Before the fix, the m <= 0 branch returned
+    // negative-definite blocks unprojected, making this fail.
+    const Eigen::MatrixXd H_dense = H.toDense();
+    const Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(H_dense);
+    const double min_eig = eigensolver.eigenvalues().minCoeff();
+    const double scale = eigensolver.eigenvalues().cwiseAbs().maxCoeff();
+    CHECK(min_eig >= -1e-10 * std::max(scale, 1.0));
 }
 
 // -- Benchmarking ------------------------------------------------------------
@@ -507,7 +572,7 @@ TEST_CASE(
     CAPTURE(mesh_name, dhat);
     CHECK(!collisions.empty());
 
-    BarrierPotential barrier_potential(dhat, use_physical_barrier);
+    BarrierPotential barrier_potential(dhat, 1.0, use_physical_barrier);
 
     BENCHMARK("Compute barrier potential")
     {
@@ -573,7 +638,7 @@ TEST_CASE(
     collisions.set_enable_shape_derivatives(true);
     collisions.build(mesh, vertices, dhat);
 
-    BarrierPotential barrier_potential(dhat, use_physical_barrier);
+    BarrierPotential barrier_potential(dhat, 1.0, use_physical_barrier);
 
     Eigen::SparseMatrix<double> JF_wrt_X;
 

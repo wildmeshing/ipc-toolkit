@@ -62,7 +62,25 @@ cmake_policy(SET CMP0114 NEW) # Support the Xcode "new build system"
 project(IPCToolkit
         DESCRIPTION "A set of reusable functions to integrate IPC into an existing simulation."
         LANGUAGES CXX
-        VERSION "1.5.0")
+        VERSION "2.0.0")
+
+if(IPC_TOOLKIT_TOPLEVEL_PROJECT)
+  # Generate a compile_commands.json file
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ${IPC_TOOLKIT_TOPLEVEL_PROJECT})
+
+  # If we are on a Mac, explicitly add the sysroot to the compiler flags
+  if(CMAKE_EXPORT_COMPILE_COMMANDS AND APPLE)
+    # CMake usually finds the sysroot automatically, but if it didn't, fetch it
+    if(NOT CMAKE_OSX_SYSROOT)
+      execute_process(COMMAND xcrun --show-sdk-path
+                          OUTPUT_VARIABLE CMAKE_OSX_SYSROOT
+                          OUTPUT_STRIP_TRAILING_WHITESPACE)
+    endif()
+
+    # Force the -isysroot flag into the compile commands for clang-tidy
+    add_compile_options("-isysroot" "${CMAKE_OSX_SYSROOT}")
+  endif()
+endif()
 
 if(IPC_TOOLKIT_TOPLEVEL_PROJECT)
   option(IPC_TOOLKIT_BUILD_TESTS  "Build unit-tests"       ON)
@@ -83,11 +101,15 @@ option(IPC_TOOLKIT_WITH_FILIB                 "Use filib for interval arithmetic
 option(IPC_TOOLKIT_WITH_INEXACT_CCD           "Use the original inexact CCD method of IPC"    OFF)
 option(IPC_TOOLKIT_WITH_PROFILER              "Enable performance profiler"                   OFF)
 option(IPC_TOOLKIT_WITH_GEOGRAM               "Use geogram for predicates / expansion types"  ON)
+option(IPC_TOOLKIT_WITH_TRACY                 "Enable Tracy frame profiler"                   OFF)
 
 # Advanced options
 option(IPC_TOOLKIT_WITH_CODE_COVERAGE         "Enable coverage reporting"                     OFF)
-
 mark_as_advanced(IPC_TOOLKIT_WITH_CODE_COVERAGE) # This is used in GitHub Actions
+
+set(IPC_TOOLKIT_VERTEX_DERIVATIVE_LAYOUT "RowMajor" CACHE STRING "Layout of the vertex derivatives")
+set_property(CACHE IPC_TOOLKIT_VERTEX_DERIVATIVE_LAYOUT PROPERTY STRINGS "ColMajor" "RowMajor")
+mark_as_advanced(IPC_TOOLKIT_VERTEX_DERIVATIVE_LAYOUT) # This is an advanced option that most users won't care about.
 
 # Set default minimum C++ standard
 if(IPC_TOOLKIT_TOPLEVEL_PROJECT)
@@ -201,9 +223,6 @@ target_link_libraries(ipc_toolkit PRIVATE tight_inclusion::tight_inclusion)
 include(scalable_ccd)
 target_link_libraries(ipc_toolkit PRIVATE scalable_ccd::scalable_ccd)
 
-# SimpleBVH
-include(simple_bvh)
-target_link_libraries(ipc_toolkit PRIVATE simple_bvh::simple_bvh)
 
 # Logger
 include(spdlog)
@@ -258,6 +277,12 @@ if(IPC_TOOLKIT_WITH_PROFILER)
   target_link_libraries(ipc_toolkit PUBLIC nlohmann_json::nlohmann_json)
 endif()
 
+# Tracy profiler
+if(IPC_TOOLKIT_WITH_TRACY)
+  include(tracy)
+  target_link_libraries(ipc_toolkit PUBLIC Tracy::TracyClient)
+endif()
+
 # Extra warnings (link last for highest priority)
 include(ipc_toolkit_warnings)
 target_link_libraries(ipc_toolkit PRIVATE ipc::toolkit::warnings)
@@ -274,6 +299,10 @@ if(IPC_TOOLKIT_WITH_SIMD)
   # Link against cross-platform xsimd library
   include(xsimd)
   target_link_libraries(ipc_toolkit PRIVATE xsimd::xsimd)
+
+  # Disable vectorization in Eigen since I've found it to have alignment issues.
+  # NOTE: I don't know why this needs to be public, but it crashes if I make it private.
+  target_compile_definitions(ipc_toolkit PUBLIC EIGEN_DONT_VECTORIZE=1)
 endif()
 
 # For MSVC, do not use the min and max macros.

@@ -284,6 +284,9 @@ template class PointEdgeDistance<ADGrad<15>, 3>;
 template class PointEdgeDistance<ADHessian<15>, 3>;
 #endif
 
+template class PointEdgeDistance<ADGrad<Eigen::Dynamic>, 3>;
+template class PointEdgeDistance<ADHessian<Eigen::Dynamic>, 3>;
+
 template class PointEdgeDistanceDerivatives<2>;
 template class PointEdgeDistanceDerivatives<3>;
 } // namespace ipc

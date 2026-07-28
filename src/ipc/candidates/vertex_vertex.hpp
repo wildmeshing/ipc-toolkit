@@ -17,7 +17,7 @@ public:
     // ------------------------------------------------------------------------
     // CollisionStencil
 
-    int num_vertices() const override { return 2; };
+    int num_vertices() const override { return 2; }
 
     std::string name() const override { return "vv"; }
 

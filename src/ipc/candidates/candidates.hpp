@@ -4,6 +4,7 @@
 #include <ipc/candidates/edge_edge.hpp>
 #include <ipc/candidates/edge_vertex.hpp>
 #include <ipc/candidates/face_vertex.hpp>
+#include <ipc/candidates/plane_vertex.hpp>
 #include <ipc/candidates/vertex_vertex.hpp>
 #include <ipc/utils/unordered_map_and_set.hpp>
 
@@ -66,6 +67,31 @@ public:
     /// @param i The index of the collision stencil.
     /// @return A const reference to the collision stencil.
     const CollisionStencil& operator[](size_t i) const;
+
+    /// @brief Get if the collision at i is a vertex-vertex collision.
+    /// @param i The index of the collision.
+    /// @return If the collision at i is a vertex-vertex collision.
+    bool is_vertex_vertex(size_t i) const;
+
+    /// @brief Get if the collision at i is an edge-vertex collision.
+    /// @param i The index of the collision.
+    /// @return If the collision at i is an edge-vertex collision.
+    bool is_edge_vertex(size_t i) const;
+
+    /// @brief Get if the collision at i is an edge-edge collision.
+    /// @param i The index of the collision.
+    /// @return If the collision at i is an edge-edge collision.
+    bool is_edge_edge(size_t i) const;
+
+    /// @brief Get if the collision at i is a face-vertex collision.
+    /// @param i The index of the collision.
+    /// @return If the collision at i is a face-vertex collision.
+    bool is_face_vertex(size_t i) const;
+
+    /// @brief Get if the collision at i is a plane-vertex collision.
+    /// @param i The index of the collision.
+    /// @return If the collision at i is a plane-vertex collision.
+    bool is_plane_vertex(size_t i) const;
 
     /// @brief Determine if the step is collision free from the set of candidates.
     /// @note Assumes the trajectory is linear.
@@ -233,6 +259,7 @@ public:
     std::vector<EdgeVertexCandidate> ev_candidates;
     std::vector<EdgeEdgeCandidate> ee_candidates;
     std::vector<FaceVertexCandidate> fv_candidates;
+    std::vector<PlaneVertexCandidate> pv_candidates;
 
     std::vector<EdgeFaceCandidate> ef_candidates;
     std::vector<FaceFaceCandidate> ff_candidates;

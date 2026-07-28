@@ -36,10 +36,6 @@ These dependencies are all `permissively licensed <license.html>`_, and we list 
       - Provably conservative CCD
       - MIT
       - `github.com/Continuous-Collision-Detection/Tight-Inclusion <https://github.com/Continuous-Collision-Detection/Tight-Inclusion>`_
-    * - SimpleBVH
-      - Simple bounding volume hierarchy data structure
-      - MIT
-      - `github.com/geometryprocessing/SimpleBVH <https://github.com/geometryprocessing/SimpleBVH>`_
     * - Scalable-CCD
       - Scalable (GPU) CCD
       - Apache-2.0
@@ -97,6 +93,12 @@ Additionally, IPC Toolkit may optionally use the following libraries:
       - `github.com/nlohmann/json <https://github.com/nlohmann/json>`_
       - |:white_large_square:|
       - ``IPC_TOOLKIT_WITH_PROFILER``
+    * - Tracy
+      - Frame profiler
+      - BSD-3-Clause
+      - `github.com/wolfpld/tracy <https://github.com/wolfpld/tracy>`_
+      - |:white_large_square:|
+      - ``IPC_TOOLKIT_WITH_TRACY``
     * - rational-cpp
       - Rational arithmetic used for exact intersection checks (requires `GMP <https://gmplib.org>`_ to be installed at a system level)
       - MIT

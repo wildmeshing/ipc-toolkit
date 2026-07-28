@@ -3,9 +3,9 @@
 #include <ipc/high_order_contact/high_order_collisions.hpp>
 
 #include <ipc/collision_mesh.hpp>
-#include <ipc/utils/maybe_parallel_for.hpp>
 
 #include <Eigen/Core>
+#include <tbb/enumerable_thread_specific.h>
 
 #include <memory>
 
@@ -47,11 +47,11 @@ public:
     // -------------------------------------------------------------------------
 
     static void merge(
-        ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
+        tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>>& local_storage,
         HighOrderCollisions& merged_collisions);
 
     static void merge_ogc(
-        ParallelCacheType<HighOrderCollisionsBuilder<2>>& local_storage,
+        tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>>& local_storage,
         HighOrderCollisions& merged_collisions);
 
     // Per-edge QP collision dicts: each entry is {edge_id, [dict_qp0, ...]}.
@@ -139,7 +139,7 @@ public:
     /*/// -------------------------------------------------------------------------
 
     static void merge(
-        const ParallelCacheType<HighOrderCollisionsBuilder<3>>& local_storage,
+        const tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<3>>& local_storage,
         HighOrderCollisions& merged_collisions);
 
     // Constructed collisions
@@ -201,7 +201,7 @@ public:
         const size_t end_i);
 
     static void merge(
-        ParallelCacheType<QuadratureCollisionsBuilder>& local_storage,
+        tbb::enumerable_thread_specific<QuadratureCollisionsBuilder>& local_storage,
         HighOrderCollisions& merged_collisions);
 
     // Local storage

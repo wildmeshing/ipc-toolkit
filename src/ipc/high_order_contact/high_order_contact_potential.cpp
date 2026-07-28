@@ -1,7 +1,6 @@
 #include "high_order_contact_potential.hpp"
 
 #include <ipc/utils/local_to_global.hpp>
-#include <ipc/utils/maybe_parallel_for.hpp>
 #include <ipc/utils/profile_registry.hpp>
 
 #include <algorithm>
@@ -65,7 +64,7 @@ double HighOrderContactPotential::operator()(
     double result = 0;
 
     if (mesh.dim() == 2) {
-        auto potential_storage = create_thread_storage(0.0);
+        tbb::enumerable_thread_specific<double> potential_storage(0.0);
         const GaussLobatto::Rule& rule = GaussLobatto::get_rule(params.quad_order);
 
         // Collect active edge ids into a flat vector for parallel indexing.
@@ -75,11 +74,11 @@ double HighOrderContactPotential::operator()(
             active_edges.push_back(ei);
         }
 
-        maybe_parallel_for(
-            static_cast<int>(active_edges.size()),
-            [&](int start, int end, int thread_id) {
-                double& total = get_local_thread_storage(potential_storage, thread_id);
-                for (int k = start; k < end; ++k) {
+        tbb::parallel_for(
+            tbb::blocked_range<size_t>(0, active_edges.size()),
+            [&](const tbb::blocked_range<size_t>& r) {
+                double& total = potential_storage.local();
+                for (size_t k = r.begin(); k < r.end(); ++k) {
                     const index_t ei = active_edges[k];
                     const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
                     const double L = mesh.edge_area(ei);
@@ -114,12 +113,12 @@ double HighOrderContactPotential::operator()(
             for (const auto& [vi, _] : collisions.vertex_collisions_2d)
                 active_verts.push_back(vi);
 
-            auto v_storage = create_thread_storage(0.0);
-            maybe_parallel_for(
-                static_cast<int>(active_verts.size()),
-                [&](int start, int end, int thread_id) {
-                    double& total = get_local_thread_storage(v_storage, thread_id);
-                    for (int k = start; k < end; ++k) {
+            tbb::enumerable_thread_specific<double> v_storage(0.0);
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, active_verts.size()),
+                [&](const tbb::blocked_range<size_t>& r) {
+                    double& total = v_storage.local();
+                    for (size_t k = r.begin(); k < r.end(); ++k) {
                         const index_t vi = active_verts[k];
                         const auto& dict = *collisions.vertex_collisions_2d.at(vi);
                         const double w_vertex = params.area_weights ? (mesh.vertex_area(vi)) : 1.0;
@@ -132,9 +131,9 @@ double HighOrderContactPotential::operator()(
     }
     else if (mesh.dim() == 3) {
         {
-            auto potential_storage = create_thread_storage(0.0);
-            auto count_storage = create_thread_storage<CountMap>(CountMap());
-            auto fq_point_storage = create_thread_storage<size_t>(size_t(0));
+            tbb::enumerable_thread_specific<double> potential_storage(0.0);
+            tbb::enumerable_thread_specific<CountMap> count_storage{ CountMap() };
+            tbb::enumerable_thread_specific<size_t> fq_point_storage(size_t(0));
 
             // Disable near/far splitting for edge cases
             const double dbar_factor = params.dbar_factor();
@@ -146,11 +145,11 @@ double HighOrderContactPotential::operator()(
                 nf_barrier = std::make_unique<NearFarBarrier>(params.barrier, dbar_factor);
             }
 
-            auto loop_body = [&](int start, int end, int thread_id) {
-                double& total = get_local_thread_storage(potential_storage, thread_id);
-                CountMap& local_counts = get_local_thread_storage(count_storage, thread_id);
-                size_t& local_fq_points = get_local_thread_storage(fq_point_storage, thread_id);
-                for (index_t f = start; f < end; f++) {
+            auto loop_body = [&](const tbb::blocked_range<index_t>& r) {
+                double& total = potential_storage.local();
+                CountMap& local_counts = count_storage.local();
+                size_t& local_fq_points = fq_point_storage.local();
+                for (index_t f = r.begin(); f < r.end(); f++) {
                     const double area = mesh.face_areas()(f);
                     const double w = params.area_weights ? (area / 9.) : 1.;
 
@@ -303,7 +302,8 @@ double HighOrderContactPotential::operator()(
                 }
             };
 
-            maybe_parallel_for(mesh.num_faces(), loop_body);
+            tbb::parallel_for(
+                tbb::blocked_range<index_t>(0, mesh.num_faces()), loop_body);
 
             for (const auto& local_potential : potential_storage) {
                 result += local_potential;
@@ -340,8 +340,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
 
     const int dim = X.cols();
 
-    auto storage =
-        create_thread_storage<Eigen::VectorXd>(Eigen::VectorXd::Zero(X.size()));
+    tbb::enumerable_thread_specific<Eigen::VectorXd> storage(
+        Eigen::VectorXd::Zero(X.size()));
 
     if (mesh.dim() == 2) {
         const GaussLobatto::Rule& rule = GaussLobatto::get_rule(params.quad_order);
@@ -351,13 +351,12 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
         for (const auto& [ei, _] : collisions.edge_collisions_2d)
             active_edges.push_back(ei);
 
-        maybe_parallel_for(
-            static_cast<int>(active_edges.size()),
-            [&](int start, int end, int thread_id) {
-                Eigen::VectorXd& global_grad =
-                    get_local_thread_storage(storage, thread_id);
+        tbb::parallel_for(
+            tbb::blocked_range<size_t>(0, active_edges.size()),
+            [&](const tbb::blocked_range<size_t>& r) {
+                Eigen::VectorXd& global_grad = storage.local();
 
-                for (int k = start; k < end; ++k) {
+                for (size_t k = r.begin(); k < r.end(); ++k) {
                     const index_t ei = active_edges[k];
                     const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
                     const double L = mesh.edge_area(ei);
@@ -392,11 +391,11 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
             for (const auto& [vi, _] : collisions.vertex_collisions_2d)
                 active_verts.push_back(vi);
 
-            maybe_parallel_for(
-                static_cast<int>(active_verts.size()),
-                [&](int start, int end, int thread_id) {
-                    Eigen::VectorXd& global_grad = get_local_thread_storage(storage, thread_id);
-                    for (int k = start; k < end; ++k) {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, active_verts.size()),
+                [&](const tbb::blocked_range<size_t>& r) {
+                    Eigen::VectorXd& global_grad = storage.local();
+                    for (size_t k = r.begin(); k < r.end(); ++k) {
                         const index_t vi = active_verts[k];
                         const auto& dict = *collisions.vertex_collisions_2d.at(vi);
                         const double w_vertex = params.area_weights ? (mesh.vertex_area(vi)) : 1.0;
@@ -417,9 +416,9 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
             const bool use_nf_grad = use_near_far && dbar_factor > 0 && dbar_factor < 1;
             const bool skip_ee_grad = (dbar_factor == 0);
 
-            auto loop_body = [&](int start, int end, int thread_id) {
-                Eigen::VectorXd& grad = get_local_thread_storage(storage, thread_id);
-                for (index_t f = start; f < end; f++) {
+            auto loop_body = [&](const tbb::blocked_range<index_t>& r) {
+                Eigen::VectorXd& grad = storage.local();
+                for (index_t f = r.begin(); f < r.end(); f++) {
                     const double area = mesh.face_areas()(f);
                     const double w = params.area_weights ? (area / 9.) : 1.;
                     // Pass 1: collect all quadrature contributions for this face
@@ -679,7 +678,8 @@ Eigen::VectorXd HighOrderContactPotential::gradient(
                 }
             };
 
-            maybe_parallel_for(mesh.num_faces(), loop_body);
+            tbb::parallel_for(
+                tbb::blocked_range<index_t>(0, mesh.num_faces()), loop_body);
         }
     }
 
@@ -710,8 +710,8 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
 
     const int max_triplets_size = int(1e7);
     const int buffer_size = std::min(max_triplets_size, ndof);
-    auto storage =
-        create_thread_storage(LocalThreadMatStorage(buffer_size, ndof, ndof));
+    tbb::enumerable_thread_specific<LocalThreadMatStorage> storage(
+        LocalThreadMatStorage(buffer_size, ndof, ndof));
 
     if (mesh.dim() == 2) {
         const GaussLobatto::Rule& rule = GaussLobatto::get_rule(params.quad_order);
@@ -721,12 +721,12 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
         for (const auto& [ei, _] : collisions.edge_collisions_2d)
             active_edges.push_back(ei);
 
-        maybe_parallel_for(
-            static_cast<int>(active_edges.size()),
-            [&](int start, int end, int thread_id) {
-                auto& hess_triplets = get_local_thread_storage(storage, thread_id);
+        tbb::parallel_for(
+            tbb::blocked_range<size_t>(0, active_edges.size()),
+            [&](const tbb::blocked_range<size_t>& r) {
+                auto& hess_triplets = storage.local();
 
-                for (int k = start; k < end; ++k) {
+                for (size_t k = r.begin(); k < r.end(); ++k) {
                     const index_t ei = active_edges[k];
                     const auto& qp_dicts = collisions.edge_collisions_2d.at(ei);
                     const double L = mesh.edge_area(ei);
@@ -764,11 +764,11 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
             for (const auto& [vi, _] : collisions.vertex_collisions_2d)
                 active_verts.push_back(vi);
 
-            maybe_parallel_for(
-                static_cast<int>(active_verts.size()),
-                [&](int start, int end, int thread_id) {
-                    auto& hess_triplets = get_local_thread_storage(storage, thread_id);
-                    for (int k = start; k < end; ++k) {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, active_verts.size()),
+                [&](const tbb::blocked_range<size_t>& r) {
+                    auto& hess_triplets = storage.local();
+                    for (size_t k = r.begin(); k < r.end(); ++k) {
                         const index_t vi = active_verts[k];
                         const auto& dict = *collisions.vertex_collisions_2d.at(vi);
                         const double w_vertex = params.area_weights ? (mesh.vertex_area(vi)) : 1.0;
@@ -803,9 +803,9 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
         {
             using T = ADHessian<12>;
 
-            auto loop_body = [&](int start, int end, int thread_id) {
-                auto& hess_triplets = get_local_thread_storage(storage, thread_id);
-                for (index_t f = start; f < end; f++) {
+            auto loop_body = [&](const tbb::blocked_range<index_t>& r) {
+                auto& hess_triplets = storage.local();
+                for (index_t f = r.begin(); f < r.end(); f++) {
                     const double area = mesh.face_areas()(f);
                     const double w = params.area_weights ? (area / 9.) : 1.;
 
@@ -1364,7 +1364,8 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
                 }
             };
 
-            maybe_parallel_for(mesh.num_faces(), loop_body);
+            tbb::parallel_for(
+                tbb::blocked_range<index_t>(0, mesh.num_faces()), loop_body);
         }
     }
 
@@ -1380,8 +1381,9 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
         storages[index++] = &local_storage;
     }
 
-    maybe_parallel_for(
-        storages.size(), [&](int i) { storages[i]->cache->prune(); });
+    tbb::parallel_for(size_t(0), storages.size(), [&](size_t i) {
+        storages[i]->cache->prune();
+    });
 
     if (storage.empty()) {
         return Eigen::SparseMatrix<double>();
@@ -1416,7 +1418,7 @@ Eigen::SparseMatrix<double> HighOrderContactPotential::hessian(
         triplets.resize(triplet_count);
 
         // Parallel copy into triplets
-        maybe_parallel_for(storages.size(), [&](int i) {
+        tbb::parallel_for(size_t(0), storages.size(), [&](size_t i) {
             const SparseMatrixCache& cache =
                 dynamic_cast<const SparseMatrixCache&>(*storages[i]->cache);
             int offset = offsets[i];

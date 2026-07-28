@@ -16,6 +16,8 @@
 #include <ipc/tangent/closest_point.hpp>
 #include <ipc/utils/logger.hpp>
 #include <ipc/high_order_contact/high_order_contact_potential.hpp>
+#include <ipc/friction/smooth_mu.hpp>
+#include <ipc/utils/profiler.hpp>
 #include <atomic>
 
 #include <tbb/blocked_range.h>
@@ -23,21 +25,67 @@
 #include <tbb/parallel_for.h>
 
 #include <stdexcept> // std::out_of_range
+#include <tuple>
 
 namespace ipc {
+
+namespace {
+
+    void update_lagged_mu_collision(
+        TangentialCollision& collision,
+        const Eigen::MatrixXi& edges,
+        const Eigen::MatrixXi& faces,
+        Eigen::ConstRef<Eigen::MatrixXd> rest_positions,
+        Eigen::ConstRef<Eigen::MatrixXd> lagged_displacements,
+        Eigen::ConstRef<Eigen::MatrixXd> velocities)
+    {
+        const VectorMax12d rest_dof =
+            collision.dof(rest_positions, edges, faces);
+        const VectorMax12d lag_dof =
+            collision.dof(lagged_displacements, edges, faces);
+        const VectorMax12d vel_dof = collision.dof(velocities, edges, faces);
+        const VectorMax12d lagged_pos = rest_dof + lag_dof;
+
+        const MatrixMax<double, 3, 2> P =
+            collision.compute_tangent_basis(lagged_pos);
+        const VectorMax2d beta = collision.compute_closest_point(lagged_pos);
+        const MatrixMax<double, 3, 12> Gamma =
+            collision.relative_velocity_jacobian(beta);
+        const MatrixMax<double, 12, 2> T = Gamma.transpose() * P;
+        const VectorMax2d tau = T.transpose() * vel_dof;
+
+        const int tangent_dim = tau.size();
+        const VectorMax2d tau_aniso =
+            collision.mu_aniso.head(tangent_dim).cwiseProduct(tau);
+
+        if (tangent_dim <= 1 || collision.mu_s_aniso.squaredNorm() == 0) {
+            collision.mu_s_effective_lagged = collision.mu_s;
+            collision.mu_k_effective_lagged = collision.mu_k;
+            return;
+        }
+
+        const Eigen::Vector2d tau_aniso_2d = tau_aniso;
+        std::tie(
+            collision.mu_s_effective_lagged, collision.mu_k_effective_lagged) =
+            anisotropic_mu_eff_from_tau_aniso(
+                tau_aniso_2d, collision.mu_s_aniso, collision.mu_k_aniso,
+                collision.mu_s, collision.mu_k, false);
+    }
+
+} // namespace
 
 void TangentialCollisions::build(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> vertices,
     const NormalCollisions& collisions,
     const NormalPotential& normal_potential,
-    const double normal_stiffness,
     Eigen::ConstRef<Eigen::VectorXd> mu_s,
     Eigen::ConstRef<Eigen::VectorXd> mu_k,
     const std::function<double(double, double)>& blend_mu)
 {
     assert(mu_s.size() == vertices.rows());
     assert(mu_k.size() == vertices.rows());
+    IPC_TOOLKIT_PROFILE_BLOCK("TangentialCollisions::build");
 
     const Eigen::MatrixXi& edges = mesh.edges();
     const Eigen::MatrixXi& faces = mesh.faces();
@@ -48,13 +96,13 @@ void TangentialCollisions::build(
     const auto& C_ev = collisions.ev_collisions;
     const auto& C_ee = collisions.ee_collisions;
     const auto& C_fv = collisions.fv_collisions;
-    auto& [FC_vv, FC_ev, FC_ee, FC_fv] = *this;
+    const auto& C_pv = collisions.pv_collisions;
+    auto& [FC_vv, FC_ev, FC_ee, FC_fv, FC_pv] = *this;
 
     FC_vv.reserve(C_vv.size());
     for (const auto& c_vv : C_vv) {
         FC_vv.emplace_back(
-            c_vv, c_vv.dof(vertices, edges, faces), normal_potential,
-            normal_stiffness);
+            c_vv, c_vv.dof(vertices, edges, faces), normal_potential);
         const auto& [v0i, v1i, _, __] = FC_vv.back().vertex_ids(edges, faces);
 
         FC_vv.back().mu_s = blend_mu(mu_s(v0i), mu_s(v1i));
@@ -64,8 +112,7 @@ void TangentialCollisions::build(
     FC_ev.reserve(C_ev.size());
     for (const auto& c_ev : C_ev) {
         FC_ev.emplace_back(
-            c_ev, c_ev.dof(vertices, edges, faces), normal_potential,
-            normal_stiffness);
+            c_ev, c_ev.dof(vertices, edges, faces), normal_potential);
         const auto& [vi, e0i, e1i, _] = FC_ev.back().vertex_ids(edges, faces);
 
         const double edge_mu_s =
@@ -90,8 +137,7 @@ void TangentialCollisions::build(
         }
 
         FC_ee.emplace_back(
-            c_ee, c_ee.dof(vertices, edges, faces), normal_potential,
-            normal_stiffness);
+            c_ee, c_ee.dof(vertices, edges, faces), normal_potential);
 
         double ea_mu_s =
             (mu_s(ea1i) - mu_s(ea0i)) * FC_ee.back().closest_point[0]
@@ -113,8 +159,7 @@ void TangentialCollisions::build(
     FC_fv.reserve(C_fv.size());
     for (const auto& c_fv : C_fv) {
         FC_fv.emplace_back(
-            c_fv, c_fv.dof(vertices, edges, faces), normal_potential,
-            normal_stiffness);
+            c_fv, c_fv.dof(vertices, edges, faces), normal_potential);
         const auto& [vi, f0i, f1i, f2i] = FC_fv.back().vertex_ids(edges, faces);
 
         double face_mu_s = mu_s(f0i)
@@ -127,6 +172,17 @@ void TangentialCollisions::build(
             + FC_fv.back().closest_point[1] * (mu_k(f2i) - mu_k(f0i));
         FC_fv.back().mu_k = blend_mu(face_mu_k, mu_k(vi));
     }
+
+    FC_pv.reserve(C_pv.size());
+    for (const auto& c_pv : C_pv) {
+        FC_pv.emplace_back(
+            c_pv, c_pv.dof(vertices, edges, faces), normal_potential);
+        const auto& [vi, _0, _1, _2] = FC_pv.back().vertex_ids(edges, faces);
+        FC_pv.back().mu_s = mu_s(vi);
+        FC_pv.back().mu_k = mu_k(vi);
+    }
+
+    reset_lagged_anisotropic_friction_coefficients();
 }
 
 void TangentialCollisions::build(
@@ -141,13 +197,14 @@ void TangentialCollisions::build(
 {
     assert(mu_k.size() == vertices.rows());
     assert(mu_s.size() == vertices.rows());
+    IPC_TOOLKIT_PROFILE_BLOCK("TangentialCollisions::build(smooth)");
 
     const Eigen::MatrixXi& edges = mesh.edges();
     const Eigen::MatrixXi& faces = mesh.faces();
 
     clear();
 
-    auto& [FC_vv, FC_ev, FC_ee, FC_fv] = *this;
+    auto& [FC_vv, FC_ev, FC_ee, FC_fv, FC_pv] = *this;
 
     // FC_vv.reserve(C_vv.size());
     for (size_t i = 0; i < collisions.size(); i++) {
@@ -314,6 +371,68 @@ void TangentialCollisions::build(
             }
         }
     }
+
+    reset_lagged_anisotropic_friction_coefficients();
+}
+
+void TangentialCollisions::reset_lagged_anisotropic_friction_coefficients()
+{
+    for (auto& c : vv_collisions) {
+        c.mu_s_effective_lagged = c.mu_s;
+        c.mu_k_effective_lagged = c.mu_k;
+    }
+    for (auto& c : ev_collisions) {
+        c.mu_s_effective_lagged = c.mu_s;
+        c.mu_k_effective_lagged = c.mu_k;
+    }
+    for (auto& c : ee_collisions) {
+        c.mu_s_effective_lagged = c.mu_s;
+        c.mu_k_effective_lagged = c.mu_k;
+    }
+    for (auto& c : fv_collisions) {
+        c.mu_s_effective_lagged = c.mu_s;
+        c.mu_k_effective_lagged = c.mu_k;
+    }
+    for (auto& c : pv_collisions) {
+        c.mu_s_effective_lagged = c.mu_s;
+        c.mu_k_effective_lagged = c.mu_k;
+    }
+}
+
+void TangentialCollisions::update_lagged_anisotropic_friction_coefficients(
+    const CollisionMesh& mesh,
+    Eigen::ConstRef<Eigen::MatrixXd> rest_positions,
+    Eigen::ConstRef<Eigen::MatrixXd> lagged_displacements,
+    Eigen::ConstRef<Eigen::MatrixXd> velocities)
+{
+    assert(rest_positions.rows() == lagged_displacements.rows());
+    assert(rest_positions.rows() == velocities.rows());
+    assert(rest_positions.cols() == lagged_displacements.cols());
+    assert(rest_positions.cols() == velocities.cols());
+
+    const Eigen::MatrixXi& edges = mesh.edges();
+    const Eigen::MatrixXi& faces = mesh.faces();
+
+    for (auto& c : vv_collisions) {
+        update_lagged_mu_collision(
+            c, edges, faces, rest_positions, lagged_displacements, velocities);
+    }
+    for (auto& c : ev_collisions) {
+        update_lagged_mu_collision(
+            c, edges, faces, rest_positions, lagged_displacements, velocities);
+    }
+    for (auto& c : ee_collisions) {
+        update_lagged_mu_collision(
+            c, edges, faces, rest_positions, lagged_displacements, velocities);
+    }
+    for (auto& c : fv_collisions) {
+        update_lagged_mu_collision(
+            c, edges, faces, rest_positions, lagged_displacements, velocities);
+    }
+    for (auto& c : pv_collisions) {
+        update_lagged_mu_collision(
+            c, edges, faces, rest_positions, lagged_displacements, velocities);
+    }
 }
 
 void TangentialCollisions::build(
@@ -336,7 +455,7 @@ void TangentialCollisions::build(
 
     clear();
 
-    auto& [FC_vv, FC_ev, FC_ee, FC_fv] = *this;
+    auto& [FC_vv, FC_ev, FC_ee, FC_fv, FC_pv] = *this;
 
     auto assign_ev_mu = [&](EdgeVertexTangentialCollision& tc) {
         const auto& [vi, e0i, e1i, _] = tc.vertex_ids(edges, faces);
@@ -1083,13 +1202,14 @@ void TangentialCollisions::build(
 size_t TangentialCollisions::size() const
 {
     return vv_collisions.size() + ev_collisions.size() + ee_collisions.size()
-        + fv_collisions.size();
+        + fv_collisions.size() + pv_collisions.size();
 }
 
 bool TangentialCollisions::empty() const
 {
     return vv_collisions.empty() && ev_collisions.empty()
-        && ee_collisions.empty() && fv_collisions.empty();
+        && ee_collisions.empty() && fv_collisions.empty()
+        && pv_collisions.empty();
 }
 
 void TangentialCollisions::clear()
@@ -1098,6 +1218,7 @@ void TangentialCollisions::clear()
     ev_collisions.clear();
     ee_collisions.clear();
     fv_collisions.clear();
+    pv_collisions.clear();
 }
 
 TangentialCollision& TangentialCollisions::operator[](size_t i)
@@ -1116,6 +1237,10 @@ TangentialCollision& TangentialCollisions::operator[](size_t i)
     i -= ee_collisions.size();
     if (i < fv_collisions.size()) {
         return fv_collisions[i];
+    }
+    i -= fv_collisions.size();
+    if (i < pv_collisions.size()) {
+        return pv_collisions[i];
     }
     throw std::out_of_range("Friction collision index is out of range!");
 }
@@ -1136,6 +1261,10 @@ const TangentialCollision& TangentialCollisions::operator[](size_t i) const
     i -= ee_collisions.size();
     if (i < fv_collisions.size()) {
         return fv_collisions[i];
+    }
+    i -= fv_collisions.size();
+    if (i < pv_collisions.size()) {
+        return pv_collisions[i];
     }
     throw std::out_of_range("Friction collision index is out of range!");
 }
