@@ -4,16 +4,15 @@
 #include <ipc/utils/logger.hpp>
 
 #include <Eigen/Geometry>
-#include <geogram/numerics/exact_geometry.h>
-#include "fp_filters.h"
 
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
 #include <geogram/numerics/exact_geometry.h>
 #include "fp_filters.h"
 #endif
 
-#ifdef IPC_TOOLKIT_WITH_GEOGRAM
 namespace ipc {
+
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
 using ExReal = GEO::expansion_nt; // exact scalar type
 using ExVec3 = GEO::vec3E; // exact vector type
 
@@ -123,6 +122,8 @@ static PointEdgeDistanceType point_edge_distance_type_predicate(
     }
 }
 
+#endif // IPC_TOOLKIT_WITH_GEOGRAM
+
 // Standard analytic implementation.
 static PointEdgeDistanceType point_edge_distance_type_standard(
     Eigen::ConstRef<VectorMax3d> p,
@@ -155,12 +156,17 @@ PointEdgeDistanceType point_edge_distance_type(
     Eigen::ConstRef<VectorMax3d> e0,
     Eigen::ConstRef<VectorMax3d> e1)
 {
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
     return DistanceTypeConfig::instance().use_standard()
         ? point_edge_distance_type_standard(p, e0, e1)
         : point_edge_distance_type_predicate(p, e0, e1);
+#else
+    return point_edge_distance_type_standard(p, e0, e1);
+#endif
 }
 
 
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
 static PointTriangleDistanceType point_triangle_distance_type_predicate(
     Eigen::ConstRef<Eigen::Vector3d> p,
     Eigen::ConstRef<Eigen::Vector3d> t0,
@@ -193,6 +199,7 @@ static PointTriangleDistanceType point_triangle_distance_type_predicate(
 
     return PointTriangleDistanceType::P_T;
 }
+#endif // IPC_TOOLKIT_WITH_GEOGRAM
 
 // Standard analytic implementation.
 static PointTriangleDistanceType point_triangle_distance_type_standard(
@@ -243,9 +250,13 @@ PointTriangleDistanceType point_triangle_distance_type(
     Eigen::ConstRef<Eigen::Vector3d> t1,
     Eigen::ConstRef<Eigen::Vector3d> t2)
 {
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
     return DistanceTypeConfig::instance().use_standard()
         ? point_triangle_distance_type_standard(p, t0, t1, t2)
         : point_triangle_distance_type_predicate(p, t0, t1, t2);
+#else
+    return point_triangle_distance_type_standard(p, t0, t1, t2);
+#endif
 }
 
 
@@ -260,8 +271,9 @@ bool is_almost_parallel_edge_edge(
     const double cross_norm_sqr = u.cross(v).squaredNorm();
     const double a = u.squaredNorm();
     const double c = v.squaredNorm();
-    const double z = (a*c > 1.0) ? a*c : 1.0;
-    return cross_norm_sqr < z * PARALLEL_THRESHOLD;
+    // Relative sin² test: parallel when sin²(θ) < PARALLEL_THRESHOLD.
+    // Scaling by a*c (rather than max(1, a*c)) keeps this scale-invariant.
+    return cross_norm_sqr < a * c * PARALLEL_THRESHOLD;
 }
 
 bool is_parallel_edge_edge(
@@ -270,6 +282,7 @@ bool is_parallel_edge_edge(
     Eigen::ConstRef<Eigen::Vector3d> eb0_,
     Eigen::ConstRef<Eigen::Vector3d> eb1_)
 {
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
     if constexpr (PARALLEL_THRESHOLD == 0.0) {
         init_pck();
         // TODO use a zero filter?
@@ -283,9 +296,18 @@ bool is_parallel_edge_edge(
         return cross_norm_sqr == 0;
     }
     else return is_almost_parallel_edge_edge(ea0_, ea1_, eb0_, eb1_);
+#else
+    // Without geogram the exact test is unavailable; PARALLEL_THRESHOLD must
+    // be non-zero for the thresholded test to be meaningful.
+    static_assert(
+        PARALLEL_THRESHOLD != 0.0,
+        "PARALLEL_THRESHOLD == 0 requires the exact predicates (geogram).");
+    return is_almost_parallel_edge_edge(ea0_, ea1_, eb0_, eb1_);
+#endif
 }
 
 
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
 static EdgeEdgeDistanceType edge_edge_distance_type_predicate(
     Eigen::ConstRef<Eigen::Vector3d> ea0,
     Eigen::ConstRef<Eigen::Vector3d> ea1,
@@ -320,6 +342,7 @@ static EdgeEdgeDistanceType edge_edge_distance_type_predicate(
 
     return EdgeEdgeDistanceType::EA_EB;
 }
+#endif // IPC_TOOLKIT_WITH_GEOGRAM
 
 // Standard analytic implementation.
 // A more robust implementation of http://geomalgorithms.com/a07-_distance.html
@@ -329,13 +352,6 @@ static EdgeEdgeDistanceType edge_edge_distance_type_standard(
     Eigen::ConstRef<Eigen::Vector3d> eb0,
     Eigen::ConstRef<Eigen::Vector3d> eb1)
 {
-    // Relative sin² threshold for parallelism: treat edges as parallel when
-    // sin²(θ) < LEGACY_PARALLEL_THRESHOLD, scaled by a*c. This avoids
-    // misclassifying short nearly-collinear coplanar segments (which the old
-    // absolute threshold could not handle) and routes such cases to
-    // edge_edge_parallel_distance_type.
-    constexpr double LEGACY_PARALLEL_THRESHOLD = 2.5e-16;
-
     const Eigen::Vector3d u = ea1 - ea0;
     const Eigen::Vector3d v = eb1 - eb0;
     const Eigen::Vector3d w = ea0 - eb0;
@@ -355,8 +371,9 @@ static EdgeEdgeDistanceType edge_edge_distance_type_standard(
         return EdgeEdgeDistanceType::EA_EB0;
     }
 
-    // Special handling for parallel edges
-    const double parallel_tolerance = LEGACY_PARALLEL_THRESHOLD * a * c;
+    // Special handling for parallel edges: treat as parallel when
+    // sin²(θ) < PARALLEL_THRESHOLD (relative, scaled by a*c).
+    const double parallel_tolerance = PARALLEL_THRESHOLD * a * c;
     if (u.cross(v).squaredNorm() < parallel_tolerance) {
         return edge_edge_parallel_distance_type(ea0, ea1, eb0, eb1);
     }
@@ -417,9 +434,13 @@ EdgeEdgeDistanceType edge_edge_distance_type(
     Eigen::ConstRef<Eigen::Vector3d> eb0,
     Eigen::ConstRef<Eigen::Vector3d> eb1)
 {
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
     return DistanceTypeConfig::instance().use_standard()
         ? edge_edge_distance_type_standard(ea0, ea1, eb0, eb1)
         : edge_edge_distance_type_predicate(ea0, ea1, eb0, eb1);
+#else
+    return edge_edge_distance_type_standard(ea0, ea1, eb0, eb1);
+#endif
 }
 
 EdgeEdgeDistanceType edge_edge_parallel_distance_type(
@@ -448,11 +469,5 @@ EdgeEdgeDistanceType edge_edge_parallel_distance_type(
     assert(eac != 2 || ebc != 2);
     return EdgeEdgeDistanceType(ebc < 2 ? (eac << 1 | ebc) : (6 + eac));
 }
-
-#else
-
-#error "NOT IMPLEMENTED!"
-
-#endif
 
 } // namespace ipc

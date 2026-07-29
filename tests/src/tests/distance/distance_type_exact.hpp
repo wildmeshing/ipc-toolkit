@@ -110,8 +110,7 @@ bool is_parallel_edge_edge_exact(
     if constexpr (PARALLEL_THRESHOLD == 0.0) return cross_norm_sqr == 0;
     const ExReal a = u.length2();
     const ExReal c = v.length2();
-    const ExReal z = (a*c > 1.0) ? a*c : ExReal(1.0);
-    return cross_norm_sqr < z * PARALLEL_THRESHOLD;
+    return cross_norm_sqr < a * c * PARALLEL_THRESHOLD;
 }
 
 EdgeEdgeDistanceType edge_edge_parallel_distance_type_exact(
@@ -159,11 +158,20 @@ EdgeEdgeDistanceType edge_edge_parallel_distance_type_exact(
 }
 
 // A more robust implementation of http://geomalgorithms.com/a07-_distance.html
+/// @param parallel_threshold Relative sin² tolerance used to decide whether the
+///        edges are parallel. Pass 0 for a fully exact reference: only edges
+///        that are *exactly* parallel take the parallel branch. Any non-zero
+///        value makes this a hybrid (exact arithmetic, approximate parallelism
+///        test) which can misclassify near-parallel edges, since
+///        edge_edge_parallel_distance_type_exact is only valid for genuinely
+///        parallel edges. Defaults to the library's PARALLEL_THRESHOLD so the
+///        reference mirrors the shipped behaviour unless asked otherwise.
 EdgeEdgeDistanceType edge_edge_distance_type_exact(
     Eigen::ConstRef<Eigen::Vector3d> ea0_,
     Eigen::ConstRef<Eigen::Vector3d> ea1_,
     Eigen::ConstRef<Eigen::Vector3d> eb0_,
-    Eigen::ConstRef<Eigen::Vector3d> eb1_)
+    Eigen::ConstRef<Eigen::Vector3d> eb1_,
+    const double parallel_threshold = PARALLEL_THRESHOLD)
 {
     init_pck();
     const ExVec3 ea0 = make_exact(ea0_);
@@ -194,11 +202,10 @@ EdgeEdgeDistanceType edge_edge_distance_type_exact(
     // Special handling for parallel edges
     const ExReal cross_norm_sqr = cross(u, v).length2();
     bool is_parallel;
-    if constexpr (PARALLEL_THRESHOLD == 0.0) {
+    if (parallel_threshold == 0.0) {
         is_parallel = (cross_norm_sqr == 0);
     } else {
-        const ExReal z = (a*c > 1.0) ? a*c : ExReal(1.0);
-        is_parallel = cross_norm_sqr < z * PARALLEL_THRESHOLD;
+        is_parallel = cross_norm_sqr < a * c * parallel_threshold;
     }
     if (is_parallel) {
         return edge_edge_parallel_distance_type_exact(ea0_, ea1_, eb0_, eb1_);

@@ -1,9 +1,10 @@
 #pragma once
 
+#include <ipc/config.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
 namespace ipc {
-constexpr double PARALLEL_THRESHOLD {1e-16}; //TODO set to zero eventually
+constexpr double PARALLEL_THRESHOLD { 2.5e-16 }; // TODO set to zero eventually (requires geogram)
 
 /// @brief Runtime switch between the standard analytic distance-type routines
 /// and the predicate-based implementations. Controls

@@ -267,7 +267,6 @@ endif()
 # Geogram
 if(IPC_TOOLKIT_WITH_GEOGRAM)
   include(geogram)
-  target_compile_definitions(ipc_toolkit PRIVATE IPC_TOOLKIT_WITH_GEOGRAM=1)
   target_link_libraries(ipc_toolkit PUBLIC geogram::geogram)
 endif()
 

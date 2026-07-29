@@ -9,7 +9,9 @@
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_triangle.hpp>
 
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
 #include "distance_type_exact.hpp"
+#endif
 
 using namespace ipc;
 
@@ -57,6 +59,9 @@ TEST_CASE("Point-edge distance type", "[distance][distance-type][point-edge]")
     }
 }
 
+#ifdef IPC_TOOLKIT_WITH_GEOGRAM
+// These compare the shipped classifiers against an exact-arithmetic
+// reference, which is only available when geogram is enabled.
 TEST_CASE(
     "Point-edge distance type random",
     "[distance][distance-type][point-edge][exact]")
@@ -116,13 +121,16 @@ TEST_CASE(
     }
 }
 
-// Disabled: pre-existing numerical robustness failures comparing the fast
-// edge-edge distance-type classifier against the exact reference on nearly
-// parallel random edges. Tagged `[.]` so Catch2 skips it by default; run
-// explicitly with `[parallel]` to re-enable.
+// Nearly parallel random edges. The reference is called with a parallel
+// threshold of 0 so it is a *fully exact* reference: only exactly-parallel
+// edges take edge_edge_parallel_distance_type_exact, which is the only case
+// where that classifier is valid. With the default (thresholded) reference
+// this comparison fails on ~20% of samples, because the reference applies the
+// parallel classifier to edges that are merely near-parallel and then returns
+// a strictly larger distance than the true minimum.
 TEST_CASE(
     "Edge-edge distance type random parallel",
-    "[.][distance][distance-type][edge-edge][exact][parallel]")
+    "[distance][distance-type][edge-edge][exact][parallel]")
 {
     const int num_random_tests = 1000000;
 
@@ -141,12 +149,15 @@ TEST_CASE(
         if (i % 2 == 0) eb1 += Eigen::Vector3d::Random() * ((ea1 - ea0).norm() * 1e-20);
 
         const EdgeEdgeDistanceType dtype = edge_edge_distance_type(ea0, ea1, eb0, eb1);
-        const EdgeEdgeDistanceType dtype_exact = edge_edge_distance_type_exact(ea0, ea1, eb0, eb1);
+        const EdgeEdgeDistanceType dtype_exact = edge_edge_distance_type_exact(
+            ea0, ea1, eb0, eb1, /*parallel_threshold=*/0.0);
 
         CAPTURE(ea0.transpose(), ea1.transpose(), eb0.transpose(), eb1.transpose());
         CHECK(dtype == dtype_exact);
     }
 }
+
+#endif // IPC_TOOLKIT_WITH_GEOGRAM
 
 struct RandomBarycentricCoordGenerator
     : Catch::Generators::IGenerator<Eigen::Vector3d> {
