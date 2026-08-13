@@ -8,9 +8,9 @@
 #include <ipc/collisions/tangential/plane_vertex.hpp>
 #include <ipc/collisions/tangential/tangential_collision.hpp>
 #include <ipc/collisions/tangential/vertex_vertex.hpp>
-#include <ipc/smooth_contact/smooth_collisions.hpp>
 #include <ipc/high_order_contact/high_order_collisions.hpp>
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
+#include <ipc/smooth_contact/smooth_collisions.hpp>
 #include <ipc/utils/eigen_ext.hpp>
 
 #include <Eigen/Core>

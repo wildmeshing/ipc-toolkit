@@ -266,7 +266,8 @@ void CollisionMesh::init_adjacencies()
     remove_duplicates(m_vertex_vertex_adjacencies);
     remove_duplicates(m_vertex_edge_adjacencies);
 
-    m_edge_face_adjacencies.assign(num_edges(), std::array<int, 2>({{-1, -1}}));
+    m_edge_face_adjacencies.assign(
+        num_edges(), std::array<int, 2>({ { -1, -1 } }));
     m_vertex_face_adjacencies.resize(num_vertices());
     m_edge_vertex_adjacencies.resize(num_edges());
     assert(num_edges() == m_edges.rows());
@@ -279,11 +280,9 @@ void CollisionMesh::init_adjacencies()
             auto& face_ids = m_edge_face_adjacencies[m_faces_to_edges(i, j)];
             if (face_ids[0] >= 0 && face_ids[0] != i) {
                 face_ids[1] = i;
-            }
-            else if (face_ids[1] < 0) {
+            } else if (face_ids[1] < 0) {
                 face_ids[0] = i;
-            }
-            else {
+            } else {
                 log_and_throw_error("Non-manifold edge found!");
             }
         }
@@ -609,8 +608,7 @@ bool CollisionMesh::is_watertight() const
         }
 
         return true;
-    }
-    else {
+    } else {
         assert(dim() == 3);
 
         std::vector<int> face_appearance_count(num_edges(), 0);

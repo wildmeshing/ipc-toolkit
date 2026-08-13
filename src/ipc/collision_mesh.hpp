@@ -39,15 +39,15 @@ public:
         Eigen::ConstRef<Eigen::MatrixXi> edges = Eigen::MatrixXi(),
         Eigen::ConstRef<Eigen::MatrixXi> faces = Eigen::MatrixXi(),
         const Eigen::SparseMatrix<double>& displacement_map =
-            Eigen::SparseMatrix<double>()) :
-        CollisionMesh(
-            include_vertex,
-            orient_vertex,
-            std::vector<bool>(full_rest_positions.rows(), false),
-            full_rest_positions,
-            edges,
-            faces,
-            displacement_map)
+            Eigen::SparseMatrix<double>())
+        : CollisionMesh(
+              include_vertex,
+              orient_vertex,
+              std::vector<bool>(full_rest_positions.rows(), false),
+              full_rest_positions,
+              edges,
+              faces,
+              displacement_map)
     {
     }
 
@@ -154,7 +154,8 @@ public:
         const bool v1_is_obstacle = is_obstacle_vertex(edge_v_indices(1));
 
         if (v0_is_obstacle != v1_is_obstacle) {
-            throw std::runtime_error("Edge has a mix of obstacle and non-obstacle vertices.");
+            throw std::runtime_error(
+                "Edge has a mix of obstacle and non-obstacle vertices.");
         }
         return v0_is_obstacle;
     }
@@ -168,8 +169,10 @@ public:
         const bool v0_is_obstacle = is_obstacle_vertex(face_v_indices(0));
         const bool v1_is_obstacle = is_obstacle_vertex(face_v_indices(1));
         const bool v2_is_obstacle = is_obstacle_vertex(face_v_indices(2));
-        if ((v0_is_obstacle != v1_is_obstacle) || (v1_is_obstacle != v2_is_obstacle)) {
-            throw std::runtime_error("Face has a mix of obstacle and non-obstacle vertices.");
+        if ((v0_is_obstacle != v1_is_obstacle)
+            || (v1_is_obstacle != v2_is_obstacle)) {
+            throw std::runtime_error(
+                "Face has a mix of obstacle and non-obstacle vertices.");
         }
         return v0_is_obstacle;
     }
@@ -315,10 +318,11 @@ public:
         return m_edge_vertex_adjacencies;
     }
 
-    const std::vector<std::array<int, 2>> &edge_face_adjacencies() const
+    const std::vector<std::array<int, 2>>& edge_face_adjacencies() const
     {
         if (dim() != 3) {
-            log_and_throw_error("Edge-face adjacencies is only available in 3D.");
+            log_and_throw_error(
+                "Edge-face adjacencies is only available in 3D.");
         }
         if (m_edge_face_adjacencies.empty()) {
             log_and_throw_error("Call init_adjacencies() first.");
@@ -495,9 +499,9 @@ protected:
     /// @brief Vertices adjacent to vertices
     std::vector<std::vector<index_t>> m_vertex_vertex_adjacencies;
     /// @brief Edges adjacent to vertices
-    //std::vector<unordered_set<int>> m_vertex_edge_adjacencies;
+    // std::vector<unordered_set<int>> m_vertex_edge_adjacencies;
     /// @brief Vertices adjacent to edges
-    //std::vector<unordered_set<int>> m_edge_vertex_adjacencies;
+    // std::vector<unordered_set<int>> m_edge_vertex_adjacencies;
     /// @brief Faces adjacent to edges
     std::vector<std::array<int, 2>> m_edge_face_adjacencies;
 

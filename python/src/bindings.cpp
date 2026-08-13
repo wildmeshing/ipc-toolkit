@@ -93,7 +93,6 @@ PYBIND11_MODULE(ipctk, m)
 
     define_smooth_potential(m);
     define_high_order_potential(m);
-    
 
     // geometry
     define_angle(m);

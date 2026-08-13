@@ -445,8 +445,8 @@ private:
     ///   B(t) = 2/3 - t² + t³/2        for 0 ≤ t < 1
     ///   B(t) = (2-t)³ / 6             for 1 ≤ t < 2
     ///   B(t) = 0                       for t ≥ 2
-    static void h_and_derivs(
-        double d, double dhat, double& h, double& dh, double& ddh);
+    static void
+    h_and_derivs(double d, double dhat, double& h, double& dh, double& ddh);
 };
 
 /// @brief Near-Far barrier function.
@@ -457,7 +457,7 @@ public:
     /// @brief Construct a NearFarBarrier.
     /// @param base_barrier The base barrier function to use.
     /// @param alpha A double parameter.
-    NearFarBarrier(const Barrier *const base_barrier, const double alpha)
+    NearFarBarrier(const Barrier* const base_barrier, const double alpha)
         : m_base_barrier(base_barrier)
         , m_alpha(alpha)
     {
@@ -467,7 +467,8 @@ public:
     /// barrier. Prefer this over the raw-pointer overload whenever the caller
     /// already has a shared_ptr — it pins the base barrier for the lifetime of
     /// this object, eliminating dangling-pointer risk.
-    NearFarBarrier(std::shared_ptr<const Barrier> base_barrier, const double alpha)
+    NearFarBarrier(
+        std::shared_ptr<const Barrier> base_barrier, const double alpha)
         : m_base_barrier_owned(std::move(base_barrier))
         , m_base_barrier(m_base_barrier_owned.get())
         , m_alpha(alpha)
@@ -504,7 +505,10 @@ public:
     /// @brief Get the units of the barrier function.
     /// @param dhat The activation distance of the barrier.
     /// @return The units of the barrier function.
-    double units(const double dhat) const override { return m_base_barrier->units(dhat); }
+    double units(const double dhat) const override
+    {
+        return m_base_barrier->units(dhat);
+    }
 
     /// @brief Evaluate the near function.
     double near(const double d, const double dhat) const;
@@ -527,7 +531,7 @@ public:
 private:
     // Optional shared ownership; null when constructed from a raw pointer.
     const std::shared_ptr<const Barrier> m_base_barrier_owned;
-    const Barrier *const m_base_barrier;
+    const Barrier* const m_base_barrier;
     const double m_alpha;
 };
 

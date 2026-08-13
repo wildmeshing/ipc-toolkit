@@ -1,13 +1,14 @@
 #pragma once
 
-#include <map>
+#include "adaptive_support.hpp"
+#include "collisions/high_order_collision.hpp"
+#include "collisions/high_order_collision_dict.hpp"
 
 #include <ipc/collision_mesh.hpp>
 #include <ipc/candidates/candidates.hpp>
 #include <ipc/collisions/normal/edge_edge.hpp>
-#include "collisions/high_order_collision.hpp"
-#include "collisions/high_order_collision_dict.hpp"
-#include "adaptive_support.hpp"
+
+#include <map>
 
 namespace ipc {
 class HighOrderCollisions {
@@ -104,23 +105,42 @@ public:
     /// @brief Collision candidates
     Candidates m_candidates;
 
-
     /// @brief collision sets for 3D quadrature
 
     // vertex_collisions[vi] provides the contact set for vertex vi
-    unordered_map<index_t, std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>> vertex_collisions;
-    // edge_edge_collisions[(ei, ej)] provides the contact set for the closest point on ei, between edge ei and ej.
-    unordered_map<std::pair<index_t, index_t>, std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
-    // face_collisions[fi][qi] provides the contact set for quadrature point qi of face fi
-    unordered_map<index_t, std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>>> face_collisions;
+    unordered_map<
+        index_t,
+        std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>>
+        vertex_collisions;
+    // edge_edge_collisions[(ei, ej)] provides the contact set for the closest
+    // point on ei, between edge ei and ej.
+    unordered_map<
+        std::pair<index_t, index_t>,
+        std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>>
+        edge_edge_collisions;
+    // face_collisions[fi][qi] provides the contact set for quadrature point qi
+    // of face fi
+    unordered_map<
+        index_t,
+        std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>>>
+        face_collisions;
 
     /// @brief collision sets for 2D quadrature
-    // edge_collisions_2d[ei][qi] provides the contact set for Gauss-Lobatto QP qi on edge ei
-    unordered_map<index_t, std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>>> edge_collisions_2d;
-    // vertex_collisions_2d[vi] provides the contact set for vertex vi (OGC mode only)
-    unordered_map<index_t, std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX, 2>>> vertex_collisions_2d;
+    // edge_collisions_2d[ei][qi] provides the contact set for Gauss-Lobatto QP
+    // qi on edge ei
+    unordered_map<
+        index_t,
+        std::vector<
+            std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>>>
+        edge_collisions_2d;
+    // vertex_collisions_2d[vi] provides the contact set for vertex vi (OGC mode
+    // only)
+    unordered_map<
+        index_t,
+        std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX, 2>>>
+        vertex_collisions_2d;
 
     /// @brief Total number of collision pairs counted across all quadrature build functions
     size_t num_quadrature_collision_pairs = 0;
 };
-}
+} // namespace ipc

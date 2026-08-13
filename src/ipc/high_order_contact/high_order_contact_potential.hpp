@@ -15,7 +15,8 @@ public:
     HighOrderContactPotential(
         const HighOrderContactParameters& _params,
         const bool _use_near_far = true)
-        : params(_params), use_near_far(_use_near_far)
+        : params(_params)
+        , use_near_far(_use_near_far)
     {
     }
 
@@ -83,7 +84,6 @@ public:
         Eigen::ConstRef<Eigen::VectorXd> positions,
         const PSDProjectionMethod project_hessian_to_psd =
             PSDProjectionMethod::NONE) const;
-
 
     using CountMap = std::map<index_t, unsigned>;
     const CountMap& get_edge_evaluation_count() const

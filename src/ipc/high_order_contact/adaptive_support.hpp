@@ -1,21 +1,24 @@
 #pragma once
 
-#include <Eigen/Core>
-#include <ipc/collision_mesh.hpp>
 #include "high_order_contact_parameters.hpp"
+
+#include <ipc/collision_mesh.hpp>
+
+#include <Eigen/Core>
 
 namespace ipc {
 
 /// Manages per-vertex dhat values for adaptive barrier support sizing.
-/// dhat is defined only at vertices; edge/face values are linearly interpolated.
+/// dhat is defined only at vertices; edge/face values are linearly
+/// interpolated.
 class AdaptiveSupport {
 public:
-    /// Construct from rest mesh and positions. Computes and stores per-vertex dhat values.
+    /// Construct from rest mesh and positions. Computes and stores per-vertex
+    /// dhat values.
     AdaptiveSupport(
         const CollisionMesh& mesh,
         Eigen::ConstRef<Eigen::MatrixXd> rest_positions,
-        const HighOrderContactParameters& params
-    );
+        const HighOrderContactParameters& params);
 
     /// Get dhat value at a vertex.
     double vertex(index_t vertex_id) const;

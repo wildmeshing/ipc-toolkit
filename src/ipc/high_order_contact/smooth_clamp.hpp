@@ -8,12 +8,13 @@ namespace ipc {
 constexpr double kSmoothClampEps = 0.1;
 
 namespace detail {
-template <typename T>
-double smooth_clamp_scalar(const T& x)
-{
-    if constexpr (std::is_same_v<T, double>) return x;
-    else return x.val;
-}
+    template <typename T> double smooth_clamp_scalar(const T& x)
+    {
+        if constexpr (std::is_same_v<T, double>)
+            return x;
+        else
+            return x.val;
+    }
 } // namespace detail
 
 /// C^1 smooth saturation onto [0, 1].
@@ -24,13 +25,14 @@ double smooth_clamp_scalar(const T& x)
 ///   f(x) = 1                       for x >= 1
 /// Continuous and C^1 globally; monotone on (0, eps) since
 ///   f'(x) = (x/eps) * (4 - 3 x/eps) > 0 for x in (0, eps).
-template <typename T>
-T smooth_clamp01(const T& x)
+template <typename T> T smooth_clamp01(const T& x)
 {
     constexpr double eps = kSmoothClampEps;
     const double xv = detail::smooth_clamp_scalar(x);
-    if (xv <= 0.0) return T(0.0);
-    if (xv >= 1.0) return T(1.0);
+    if (xv <= 0.0)
+        return T(0.0);
+    if (xv >= 1.0)
+        return T(1.0);
     if (xv < eps) {
         return -x * x * x / (eps * eps) + 2.0 * x * x / eps;
     }
@@ -56,7 +58,7 @@ T smooth_clamp01(const T& x)
 template <typename T>
 void smooth_clamp_simplex(const T& u, const T& v, T& u_out, T& v_out)
 {
-    const T w   = 1.0 - u - v;
+    const T w = 1.0 - u - v;
     const T u_s = smooth_clamp01(u);
     const T v_s = smooth_clamp01(v);
     const T w_s = smooth_clamp01(w);

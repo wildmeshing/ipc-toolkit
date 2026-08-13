@@ -6,36 +6,42 @@
 #include <Eigen/Geometry>
 
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
-#include <geogram/numerics/exact_geometry.h>
 #include "fp_filters.h"
+
+#include <geogram/numerics/exact_geometry.h>
 #endif
 
 namespace ipc {
 
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
 using ExReal = GEO::expansion_nt; // exact scalar type
-using ExVec3 = GEO::vec3E; // exact vector type
+using ExVec3 = GEO::vec3E;        // exact vector type
 
-inline void init_pck() {
-    struct PckInit { PckInit() { GEO::PCK::initialize(); } };
+inline void init_pck()
+{
+    struct PckInit {
+        PckInit() { GEO::PCK::initialize(); }
+    };
     static PckInit _;
 }
 
-inline ExVec3 make_exact(Eigen::ConstRef<VectorMax3d> v) {
-    ExReal x{v.x()};
-    ExReal y{v.y()};
-    ExReal z{v.size() < 3 ? 0 : v.z()}; // compatibility with 2D vectors
+inline ExVec3 make_exact(Eigen::ConstRef<VectorMax3d> v)
+{
+    ExReal x { v.x() };
+    ExReal y { v.y() };
+    ExReal z { v.size() < 3 ? 0 : v.z() }; // compatibility with 2D vectors
     return ExVec3(std::move(x), std::move(y), std::move(z));
 }
 
 int dot3_3d(
     Eigen::ConstRef<VectorMax3d> p0_,
     Eigen::ConstRef<VectorMax3d> p1_,
-    Eigen::ConstRef<VectorMax3d> p2_
-) {
+    Eigen::ConstRef<VectorMax3d> p2_)
+{
     // Evaluates the sign of dot(p1-p0, p2-p0)
     const int s = dot3_3d_filter(p0_.data(), p1_.data(), p2_.data());
-    if (s != FPG_UNCERTAIN_VALUE) return s;
+    if (s != FPG_UNCERTAIN_VALUE)
+        return s;
     logger().trace("dot3_3d filter uncertain - fallback to exact arithmetic");
     const ExVec3 p0 = make_exact(p0_);
     const ExVec3 p1 = make_exact(p1_);
@@ -47,11 +53,12 @@ int dot3_3d(
 int dot3_2d(
     Eigen::ConstRef<VectorMax3d> p0_,
     Eigen::ConstRef<VectorMax3d> p1_,
-    Eigen::ConstRef<VectorMax3d> p2_
-) {
+    Eigen::ConstRef<VectorMax3d> p2_)
+{
     // Evaluates the sign of dot(p1-p0, p2-p0)
     const int s = dot3_2d_filter(p0_.data(), p1_.data(), p2_.data());
-    if (s != FPG_UNCERTAIN_VALUE) return s;
+    if (s != FPG_UNCERTAIN_VALUE)
+        return s;
     logger().trace("dot3_2d filter uncertain - fallback to exact arithmetic");
     const ExVec3 p0 = make_exact(p0_);
     const ExVec3 p1 = make_exact(p1_);
@@ -64,20 +71,24 @@ int cross_dot_cross_1(
     Eigen::ConstRef<VectorMax3d> p0_,
     Eigen::ConstRef<VectorMax3d> p1_,
     Eigen::ConstRef<VectorMax3d> p2_,
-    Eigen::ConstRef<VectorMax3d> p3_
-) {
+    Eigen::ConstRef<VectorMax3d> p3_)
+{
     /*
     Evaluates the sign of dot(cross(p1-p0, p2-p0), cross(p3-p0, p1-p0)) =
-    = dot(p1-p0, p3-p0) * dot(p1-p0, p2-p0) - dot(p1-p0, p1-p0) * dot(p2-p0, p3-p0)
+    = dot(p1-p0, p3-p0) * dot(p1-p0, p2-p0) - dot(p1-p0, p1-p0) * dot(p2-p0,
+    p3-p0)
     */
-    const int s = cross_dot_cross_1_3d_filter(p0_.data(), p1_.data(), p2_.data(), p3_.data());
-    if (s != FPG_UNCERTAIN_VALUE) return s;
-    logger().trace("cross_dot_cross_1 filter uncertain - fallback to exact arithmetic");
+    const int s = cross_dot_cross_1_3d_filter(
+        p0_.data(), p1_.data(), p2_.data(), p3_.data());
+    if (s != FPG_UNCERTAIN_VALUE)
+        return s;
+    logger().trace(
+        "cross_dot_cross_1 filter uncertain - fallback to exact arithmetic");
     const ExVec3 p0 = make_exact(p0_);
     const ExVec3 p1 = make_exact(p1_);
     const ExVec3 p2 = make_exact(p2_);
     const ExVec3 p3 = make_exact(p3_);
-    const ExReal ss = dot(cross(p1-p0, p2-p0), cross(p3-p0, p1-p0));
+    const ExReal ss = dot(cross(p1 - p0, p2 - p0), cross(p3 - p0, p1 - p0));
     return (ss > 0) ? 1 : ((ss < 0) ? -1 : 0);
 }
 
@@ -85,23 +96,26 @@ int cross_dot_cross_2(
     Eigen::ConstRef<VectorMax3d> p0_,
     Eigen::ConstRef<VectorMax3d> p1_,
     Eigen::ConstRef<VectorMax3d> p2_,
-    Eigen::ConstRef<VectorMax3d> p3_
-) {
+    Eigen::ConstRef<VectorMax3d> p3_)
+{
     /*
     Evaluates the sign of dot(cross(p1-p0, p2-p0), cross(p3-p0, p1-p2)) =
-    = dot(p1-p0, p3-p0) * dot(p1-p2, p2-p0) - dot(p1-p0, p1-p2) * dot(p2-p0, p3-p0)
+    = dot(p1-p0, p3-p0) * dot(p1-p2, p2-p0) - dot(p1-p0, p1-p2) * dot(p2-p0,
+    p3-p0)
     */
-    const int s = cross_dot_cross_2_3d_filter(p0_.data(), p1_.data(), p2_.data(), p3_.data());
-    if (s != FPG_UNCERTAIN_VALUE) return s;
-    logger().trace("cross_dot_cross_1 filter uncertain - fallback to exact arithmetic");
+    const int s = cross_dot_cross_2_3d_filter(
+        p0_.data(), p1_.data(), p2_.data(), p3_.data());
+    if (s != FPG_UNCERTAIN_VALUE)
+        return s;
+    logger().trace(
+        "cross_dot_cross_1 filter uncertain - fallback to exact arithmetic");
     const ExVec3 p0 = make_exact(p0_);
     const ExVec3 p1 = make_exact(p1_);
     const ExVec3 p2 = make_exact(p2_);
     const ExVec3 p3 = make_exact(p3_);
-    const ExReal ss = dot(cross(p1-p0, p2-p0), cross(p3-p0, p1-p2));
+    const ExReal ss = dot(cross(p1 - p0, p2 - p0), cross(p3 - p0, p1 - p2));
     return (ss > 0) ? 1 : ((ss < 0) ? -1 : 0);
 }
-
 
 static PointEdgeDistanceType point_edge_distance_type_predicate(
     Eigen::ConstRef<VectorMax3d> p,
@@ -111,14 +125,19 @@ static PointEdgeDistanceType point_edge_distance_type_predicate(
     init_pck();
     assert(p.size() == e0.size() && p.size() == e1.size());
     if (p.size() == 2) {
-        if (dot3_2d(e0, p, e1) <= 0) return PointEdgeDistanceType::P_E0;
-        else if (dot3_2d(e1, p, e0) <= 0) return PointEdgeDistanceType::P_E1;
-        else return PointEdgeDistanceType::P_E;
-    }
-    else {
-        if (dot3_3d(e0, p, e1) <= 0) return PointEdgeDistanceType::P_E0;
-        else if (dot3_3d(e1, p, e0) <= 0) return PointEdgeDistanceType::P_E1;
-        else return PointEdgeDistanceType::P_E;
+        if (dot3_2d(e0, p, e1) <= 0)
+            return PointEdgeDistanceType::P_E0;
+        else if (dot3_2d(e1, p, e0) <= 0)
+            return PointEdgeDistanceType::P_E1;
+        else
+            return PointEdgeDistanceType::P_E;
+    } else {
+        if (dot3_3d(e0, p, e1) <= 0)
+            return PointEdgeDistanceType::P_E0;
+        else if (dot3_3d(e1, p, e0) <= 0)
+            return PointEdgeDistanceType::P_E1;
+        else
+            return PointEdgeDistanceType::P_E;
     }
 }
 
@@ -164,7 +183,6 @@ PointEdgeDistanceType point_edge_distance_type(
     return point_edge_distance_type_standard(p, e0, e1);
 #endif
 }
-
 
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
 static PointTriangleDistanceType point_triangle_distance_type_predicate(
@@ -259,7 +277,6 @@ PointTriangleDistanceType point_triangle_distance_type(
 #endif
 }
 
-
 bool is_almost_parallel_edge_edge(
     Eigen::ConstRef<Eigen::Vector3d> ea0,
     Eigen::ConstRef<Eigen::Vector3d> ea1,
@@ -286,16 +303,18 @@ bool is_parallel_edge_edge(
     if constexpr (PARALLEL_THRESHOLD == 0.0) {
         init_pck();
         // TODO use a zero filter?
-        const int s = cross_null_3d_filter(ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data());
-        if (s != FPG_UNCERTAIN_VALUE) return false;
+        const int s = cross_null_3d_filter(
+            ea0_.data(), ea1_.data(), eb0_.data(), eb1_.data());
+        if (s != FPG_UNCERTAIN_VALUE)
+            return false;
         const ExVec3 ea0 = make_exact(ea0_);
         const ExVec3 ea1 = make_exact(ea1_);
         const ExVec3 eb0 = make_exact(eb0_);
         const ExVec3 eb1 = make_exact(eb1_);
-        const ExReal cross_norm_sqr = cross(ea1-ea0, eb1-eb0).length2();
+        const ExReal cross_norm_sqr = cross(ea1 - ea0, eb1 - eb0).length2();
         return cross_norm_sqr == 0;
-    }
-    else return is_almost_parallel_edge_edge(ea0_, ea1_, eb0_, eb1_);
+    } else
+        return is_almost_parallel_edge_edge(ea0_, ea1_, eb0_, eb1_);
 #else
     // Without geogram the exact test is unavailable; PARALLEL_THRESHOLD must
     // be non-zero for the thresholded test to be meaningful.
@@ -306,7 +325,6 @@ bool is_parallel_edge_edge(
 #endif
 }
 
-
 #ifdef IPC_TOOLKIT_WITH_GEOGRAM
 static EdgeEdgeDistanceType edge_edge_distance_type_predicate(
     Eigen::ConstRef<Eigen::Vector3d> ea0,
@@ -316,8 +334,10 @@ static EdgeEdgeDistanceType edge_edge_distance_type_predicate(
 {
     init_pck();
 
-    const PointEdgeDistanceType dt_ea0 = point_edge_distance_type(ea0, eb0, eb1);
-    const PointEdgeDistanceType dt_ea1 = point_edge_distance_type(ea1, eb0, eb1);
+    const PointEdgeDistanceType dt_ea0 =
+        point_edge_distance_type(ea0, eb0, eb1);
+    const PointEdgeDistanceType dt_ea1 =
+        point_edge_distance_type(ea1, eb0, eb1);
 
     if (dt_ea0 == PointEdgeDistanceType::P_E0 && dot3_3d(ea0, eb0, ea1) <= 0)
         return EdgeEdgeDistanceType::EA0_EB0;
@@ -328,16 +348,22 @@ static EdgeEdgeDistanceType edge_edge_distance_type_predicate(
     if (dt_ea1 == PointEdgeDistanceType::P_E1 && dot3_3d(ea1, eb1, ea0) <= 0)
         return EdgeEdgeDistanceType::EA1_EB1;
 
-    const PointEdgeDistanceType dt_eb0 = point_edge_distance_type(eb0, ea0, ea1);
-    const PointEdgeDistanceType dt_eb1 = point_edge_distance_type(eb1, ea0, ea1);
+    const PointEdgeDistanceType dt_eb0 =
+        point_edge_distance_type(eb0, ea0, ea1);
+    const PointEdgeDistanceType dt_eb1 =
+        point_edge_distance_type(eb1, ea0, ea1);
 
-    if (dt_eb0 == PointEdgeDistanceType::P_E && cross_dot_cross_2(eb0, ea0, ea1, eb1) >= 0)
+    if (dt_eb0 == PointEdgeDistanceType::P_E
+        && cross_dot_cross_2(eb0, ea0, ea1, eb1) >= 0)
         return EdgeEdgeDistanceType::EA_EB0;
-    if (dt_eb1 == PointEdgeDistanceType::P_E && cross_dot_cross_2(eb1, ea0, ea1, eb0) >= 0)
+    if (dt_eb1 == PointEdgeDistanceType::P_E
+        && cross_dot_cross_2(eb1, ea0, ea1, eb0) >= 0)
         return EdgeEdgeDistanceType::EA_EB1;
-    if (dt_ea0 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea0, eb0, eb1, ea1) >= 0)
+    if (dt_ea0 == PointEdgeDistanceType::P_E
+        && cross_dot_cross_2(ea0, eb0, eb1, ea1) >= 0)
         return EdgeEdgeDistanceType::EA0_EB;
-    if (dt_ea1 == PointEdgeDistanceType::P_E && cross_dot_cross_2(ea1, eb0, eb1, ea0) >= 0)
+    if (dt_ea1 == PointEdgeDistanceType::P_E
+        && cross_dot_cross_2(ea1, eb0, eb1, ea0) >= 0)
         return EdgeEdgeDistanceType::EA1_EB;
 
     return EdgeEdgeDistanceType::EA_EB;

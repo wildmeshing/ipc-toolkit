@@ -198,7 +198,8 @@ TEST_CASE("Edge-edge distance parallel", "[distance][edge-edge][parallel]")
             == Catch::Approx(0).margin(1e-14));
 
         const double distance = edge_edge_distance(ea0, ea1, eb0, eb1);
-        CAPTURE(ea0.transpose(), ea1.transpose(), eb0.transpose(), eb1.transpose());
+        CAPTURE(
+            ea0.transpose(), ea1.transpose(), eb0.transpose(), eb1.transpose());
         CHECK(distance == Catch::Approx(s * s).margin(1e-15));
 
         for (int dtype = 0; dtype < int(EdgeEdgeDistanceType::EA_EB); dtype++) {
@@ -261,12 +262,11 @@ TEST_CASE(
 
     EdgeEdgeDistanceType dtype = edge_edge_distance_type(e00, e01, e10, e11);
     CAPTURE(dtype);
-    REQUIRE((
-        (dtype == EdgeEdgeDistanceType::EA0_EB0) ||
-        (dtype == EdgeEdgeDistanceType::EA0_EB1) ||
-        (dtype == EdgeEdgeDistanceType::EA1_EB0) ||
-        (dtype == EdgeEdgeDistanceType::EA1_EB1)
-    ));
+    REQUIRE(
+        ((dtype == EdgeEdgeDistanceType::EA0_EB0)
+         || (dtype == EdgeEdgeDistanceType::EA0_EB1)
+         || (dtype == EdgeEdgeDistanceType::EA1_EB0)
+         || (dtype == EdgeEdgeDistanceType::EA1_EB1)));
 
     double distance = edge_edge_distance(e00, e01, e10, e11);
     double expected_distance = point_point_distance(

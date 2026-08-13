@@ -34,7 +34,8 @@ public:
     /// @param use_squared_distance If true (default), the barrier receives
     ///        squared distance d² as input (standard IPC convention). If false,
     ///        the barrier receives the actual Euclidean distance d, with chain-
-    ///        rule corrections applied internally so NormalPotential is unchanged.
+    ///        rule corrections applied internally so NormalPotential is
+    ///        unchanged.
     BarrierPotential(
         std::shared_ptr<Barrier> barrier,
         const double dhat,

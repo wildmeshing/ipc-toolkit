@@ -39,8 +39,9 @@ public:
     /// The output format is a flat object keyed by name:
     ///
     ///     {
-    ///       "ho.broad_phase": { "total": 100342.5, "count": 4437, "mean": 22.6 },
-    ///       "ho.collision_set.vertex_dicts": { "total": 10786200, "count": 4437, "mean": 2431.2 },
+    ///       "ho.broad_phase": { "total": 100342.5, "count": 4437, "mean": 22.6
+    ///       }, "ho.collision_set.vertex_dicts": { "total": 10786200, "count":
+    ///       4437, "mean": 2431.2 },
     ///       ...
     ///     }
     void dump_json(const std::string& path) const;

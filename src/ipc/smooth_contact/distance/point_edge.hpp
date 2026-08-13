@@ -33,7 +33,8 @@ public:
             return Math<T>::sqr(Math<T>::cross2(e0 - p, e1 - p))
                 / (e1 - e0).squaredNorm();
         } else {
-            return (e0 - p).cross(e1 - p).squaredNorm() / (e1 - e0).squaredNorm();
+            return (e0 - p).cross(e1 - p).squaredNorm()
+                / (e1 - e0).squaredNorm();
         }
     }
 
@@ -86,11 +87,12 @@ public:
     PointEdgeDistanceDerivatives&
     operator=(const PointEdgeDistanceDerivatives&) = delete;
 
-    static std::tuple<Eigen::Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
-    point_line_closest_point_direction_grad(
-        Eigen::ConstRef<Eigen::Vector<double, dim>> p,
-        Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
-        Eigen::ConstRef<Eigen::Vector<double, dim>> e1);
+    static std::
+        tuple<Eigen::Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
+        point_line_closest_point_direction_grad(
+            Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+            Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+            Eigen::ConstRef<Eigen::Vector<double, dim>> e1);
 
     static std::tuple<
         Eigen::Vector<double, dim>,
@@ -101,12 +103,13 @@ public:
         Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
         Eigen::ConstRef<Eigen::Vector<double, dim>> e1);
 
-    static std::tuple<Eigen::Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
-    point_edge_closest_point_direction_grad(
-        Eigen::ConstRef<Eigen::Vector<double, dim>> p,
-        Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
-        Eigen::ConstRef<Eigen::Vector<double, dim>> e1,
-        const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
+    static std::
+        tuple<Eigen::Vector<double, dim>, Eigen::Matrix<double, dim, 3 * dim>>
+        point_edge_closest_point_direction_grad(
+            Eigen::ConstRef<Eigen::Vector<double, dim>> p,
+            Eigen::ConstRef<Eigen::Vector<double, dim>> e0,
+            Eigen::ConstRef<Eigen::Vector<double, dim>> e1,
+            const PointEdgeDistanceType dtype = PointEdgeDistanceType::AUTO);
 
     static std::tuple<
         Eigen::Vector<double, dim>,

@@ -88,7 +88,8 @@ Eigen::VectorXd Potential<TCollisions>::gradient(
         return Eigen::VectorXd::Zero(X.size());
     }
 
-    ScopedProfileTimer _t(profile_prefix<TCollisions>() + ".potential_gradient");
+    ScopedProfileTimer _t(
+        profile_prefix<TCollisions>() + ".potential_gradient");
     const int dim = X.cols();
 
     tbb::combinable<Eigen::VectorXd> grad(Eigen::VectorXd::Zero(X.size()));

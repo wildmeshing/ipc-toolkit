@@ -57,9 +57,8 @@ void ProfileRegistry::dump_json(const std::string& path) const
         if (!first)
             out << ",\n";
         first = false;
-        const double mean = s.count > 0
-            ? s.total / static_cast<double>(s.count)
-            : 0.0;
+        const double mean =
+            s.count > 0 ? s.total / static_cast<double>(s.count) : 0.0;
         out << "  \"" << name << "\": {"
             << "\"total\": " << s.total << ", "
             << "\"count\": " << s.count << ", "

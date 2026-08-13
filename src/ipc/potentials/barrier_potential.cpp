@@ -103,8 +103,7 @@ double BarrierPotential::gradient(
 {
     if (!m_use_squared_distance) {
         const double d = std::sqrt(distance_squared);
-        double db =
-            barrier().first_derivative(d - dmin, dhat()) / (2.0 * d);
+        double db = barrier().first_derivative(d - dmin, dhat()) / (2.0 * d);
         if (use_physical_barrier()) {
             db *= dhat() / barrier().units(dhat());
         }
@@ -128,8 +127,8 @@ double BarrierPotential::hessian(
         const double d = std::sqrt(distance_squared);
         const double b1 = barrier().first_derivative(d - dmin, dhat());
         const double b2 = barrier().second_derivative(d - dmin, dhat());
-        double d2b = b2 / (4.0 * distance_squared)
-            - b1 / (4.0 * d * distance_squared);
+        double d2b =
+            b2 / (4.0 * distance_squared) - b1 / (4.0 * d * distance_squared);
         if (use_physical_barrier()) {
             d2b *= dhat() / barrier().units(dhat());
         }

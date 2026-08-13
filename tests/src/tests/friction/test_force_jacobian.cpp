@@ -461,9 +461,7 @@ void check_smooth_friction_force_jacobian(
         friction_collisions, mesh, X, Ut_mesh, velocities);
     const Eigen::VectorXd grad_D =
         D.gradient(friction_collisions, mesh, velocities);
-    CHECK(
-        (force + grad_D).norm()
-        <= 1e-8 * std::max(force.norm(), 1e-8));
+    CHECK((force + grad_D).norm() <= 1e-8 * std::max(force.norm(), 1e-8));
 
     ///////////////////////////////////////////////////////////////////////////
 
@@ -751,15 +749,15 @@ void check_high_order_friction_force_jacobian(
     const Eigen::MatrixXd& X = mesh.rest_positions();
     const Eigen::MatrixXd velocities = U - Ut;
 
-    CAPTURE(mu, epsv_times_h, params.dhat, normal_stiffness, collisions.size(),
-            normalize_weights, params.get_quad_rule().size());
+    CAPTURE(
+        mu, epsv_times_h, params.dhat, normal_stiffness, collisions.size(),
+        normalize_weights, params.get_quad_rule().size());
 
     TangentialCollisions friction_collisions;
     friction_collisions.build(
         mesh, X + Ut, collisions, params, normal_stiffness,
         Eigen::VectorXd::Ones(mesh.num_vertices()) * mu,
-        Eigen::VectorXd::Ones(mesh.num_vertices()) * mu,
-        normalize_weights);
+        Eigen::VectorXd::Ones(mesh.num_vertices()) * mu, normalize_weights);
     CHECK(!friction_collisions.empty());
 
     const FrictionPotential D(epsv_times_h);
@@ -787,8 +785,8 @@ void check_high_order_friction_force_jacobian(
         (hess_D.norm() == 0
          || (hess_D - fd_hessian).norm() <= 1e-7 * hess_D.norm()));
 
-    // NOTE: The direct smooth_contact_force_jacobian() path is intentionally not
-    // exercised for high-order 3D collisions here because some high-order
+    // NOTE: The direct smooth_contact_force_jacobian() path is intentionally
+    // not exercised for high-order 3D collisions here because some high-order
     // friction stencils include virtual vertices.
 }
 
@@ -807,28 +805,13 @@ TEST_CASE(
     // Two close 2D rectangles (gap ~0.2 < dhat=0.6)
     Eigen::MatrixXd V0(8, 2), V1;
     Eigen::MatrixXi E(8, 2), F;
-    V0 <<
-        -1., 1.,
-        -1., 0.,
-        -.1, 0. + BA,
-        -.1, 1. + BA,
-         .1, 1.,
-         .1, 0.,
-        1., 0.,
+    V0 << -1., 1., -1., 0., -.1, 0. + BA, -.1, 1. + BA, .1, 1., .1, 0., 1., 0.,
         1., 1.;
-    E <<
-        0, 1,
-        1, 2,
-        2, 3,
-        3, 0,
-        4, 5,
-        5, 6,
-        6, 7,
-        7, 4;
+    E << 0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4;
 
     CollisionMesh mesh(
-        std::vector<bool>(V0.rows(), true),
-        std::vector<bool>(V0.rows(), false), V0, E, F);
+        std::vector<bool>(V0.rows(), true), std::vector<bool>(V0.rows(), false),
+        V0, E, F);
 
     HighOrderCollisions collisions;
     collisions.build(mesh, V0, params);
@@ -850,9 +833,9 @@ TEST_CASE(
 static FaceQuadRule make_vertex_quad_rule()
 {
     return {
-        {{{1.0, 0.0, 0.0}}, 1.0 / 3.0},
-        {{{0.0, 1.0, 0.0}}, 1.0 / 3.0},
-        {{{0.0, 0.0, 1.0}}, 1.0 / 3.0},
+        { { { 1.0, 0.0, 0.0 } }, 1.0 / 3.0 },
+        { { { 0.0, 1.0, 0.0 } }, 1.0 / 3.0 },
+        { { { 0.0, 0.0, 1.0 } }, 1.0 / 3.0 },
     };
 }
 
@@ -860,10 +843,10 @@ static FaceQuadRule make_vertex_quad_rule()
 static FaceQuadRule make_vertex_plus_centroid_quad_rule()
 {
     return {
-        {{{1.0, 0.0, 0.0}}, 0.25},
-        {{{0.0, 1.0, 0.0}}, 0.25},
-        {{{0.0, 0.0, 1.0}}, 0.25},
-        {{{1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0}}, 0.25},
+        { { { 1.0, 0.0, 0.0 } }, 0.25 },
+        { { { 0.0, 1.0, 0.0 } }, 0.25 },
+        { { { 0.0, 0.0, 1.0 } }, 0.25 },
+        { { { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 } }, 0.25 },
     };
 }
 
@@ -903,8 +886,8 @@ TEST_CASE(
             mesh, Ut, V1 - X, collisions, mu, epsv_times_h, params,
             normal_stiffness, normalize_weights);
     };
-    run_check({0.05, 0, 0}); // slide_x
-    run_check({0, 0, 0.05}); // slide_z
+    run_check({ 0.05, 0, 0 }); // slide_x
+    run_check({ 0, 0, 0.05 }); // slide_z
 }
 TEST_CASE(
     "Smooth friction force no_mu and no_contact_force_multiplier",

@@ -2,28 +2,27 @@
 
 #include "high_order_collisions_builder.hpp"
 
-#include <algorithm>
-#include <numeric>
 #include <ipc/distance/edge_edge.hpp>
 #include <ipc/distance/point_edge.hpp>
 #include <ipc/distance/point_line.hpp>
 #include <ipc/distance/point_point.hpp>
-#include <ipc/utils/local_to_global.hpp>
-#include <ipc/utils/world_bbox_diagonal_length.hpp>
-#include <ipc/utils/profile_registry.hpp>
 #include <ipc/high_order_contact/quadrature_potential.hpp>
+#include <ipc/utils/local_to_global.hpp>
+#include <ipc/utils/profile_registry.hpp>
+#include <ipc/utils/world_bbox_diagonal_length.hpp>
 
 #include <tbb/blocked_range.h>
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
 
+#include <algorithm>
+#include <numeric>
 #include <stdexcept> // std::out_of_range
 #include <utility>
 
 namespace ipc {
-namespace
-{
+namespace {
     template <typename Candidate>
     std::vector<VertexVertexCandidate>
     element_vertex_to_vertex_vertex_candidates(
@@ -37,8 +36,9 @@ namespace
             for (int j = 0; j < elements.cols(); j++) {
                 const int vj = elements(ei, j);
                 if (is_active(point_point_distance(
-                    vertices.row(vi), vertices.row(vj)))) {
-                    vv_candidates.emplace_back(std::min(vi, vj), std::max(vi, vj));
+                        vertices.row(vi), vertices.row(vj)))) {
+                    vv_candidates.emplace_back(
+                        std::min(vi, vj), std::max(vi, vj));
                 }
             }
         }
@@ -74,8 +74,9 @@ namespace
                 const int ei = mesh.faces_to_edges()(fi, j);
                 const int vj = mesh.edges()(ei, 0);
                 const int vk = mesh.edges()(ei, 1);
-                if (is_active(point_edge_distance(vertices.row(vi), vertices.row(vj),
-                                                  vertices.row(vk)))) {
+                if (is_active(point_edge_distance(
+                        vertices.row(vi), vertices.row(vj),
+                        vertices.row(vk)))) {
                     ev_candidates.emplace_back(ei, vi);
                 }
             }
@@ -89,7 +90,7 @@ namespace
 
         return ev_candidates;
     }
-}
+} // namespace
 
 void HighOrderCollisions::build(
     const Candidates& candidates,
@@ -103,7 +104,8 @@ void HighOrderCollisions::build(
     clear();
 
     if (mesh.dim() == 2) {
-        // Ensure candidate sets are populated (ev_set/ee_set/vv_set lookups require them).
+        // Ensure candidate sets are populated (ev_set/ee_set/vv_set lookups
+        // require them).
         const_cast<Candidates&>(candidates).convert_candidates_to_sets();
 
         tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>> storage {
@@ -133,15 +135,16 @@ void HighOrderCollisions::build(
                 });
             HighOrderCollisionsBuilder<2>::merge(storage, *this);
         }
-    }
-    else {
+    } else {
         // Compute vertex mask: which vertices to process.
         std::vector<bool> vertex_mask(mesh.num_vertices(), false);
 
         if (params.ogc_collisions) {
             // OGC mode: process all vertices appearing in any candidate pair.
-            for (const auto& c : candidates.fv_candidates) vertex_mask[c.vertex_id] = true;
-            for (const auto& c : candidates.ev_candidates) vertex_mask[c.vertex_id] = true;
+            for (const auto& c : candidates.fv_candidates)
+                vertex_mask[c.vertex_id] = true;
+            for (const auto& c : candidates.ev_candidates)
+                vertex_mask[c.vertex_id] = true;
             for (const auto& c : candidates.vv_candidates) {
                 vertex_mask[c.vertex0_id] = true;
                 vertex_mask[c.vertex1_id] = true;
@@ -287,7 +290,8 @@ void HighOrderCollisions::build(
     const HighOrderContactParameters params,
     const AdaptiveSupport* adaptive)
 {
-    adaptive_dhat = adaptive ? std::make_unique<AdaptiveSupport>(*adaptive) : nullptr;
+    adaptive_dhat =
+        adaptive ? std::make_unique<AdaptiveSupport>(*adaptive) : nullptr;
     this->build(_candidates, mesh, vertices, params);
 }
 
@@ -299,7 +303,8 @@ void HighOrderCollisions::build(
 {
     assert(vertices.rows() == mesh.num_vertices());
 
-    double inflation_radius = params.dhat / 2;  //TODO use dbar for EE collisions broad phase
+    double inflation_radius =
+        params.dhat / 2; // TODO use dbar for EE collisions broad phase
 
     {
         IPC_PROFILE_SCOPE("ho.broad_phase");
@@ -361,7 +366,12 @@ size_t HighOrderCollisions::size() const
     }
     return size;
 }
-bool HighOrderCollisions::empty() const { return vertex_collisions.empty() && edge_edge_collisions.empty() && face_collisions.empty() && edge_collisions_2d.empty() && vertex_collisions_2d.empty(); }
+bool HighOrderCollisions::empty() const
+{
+    return vertex_collisions.empty() && edge_edge_collisions.empty()
+        && face_collisions.empty() && edge_collisions_2d.empty()
+        && vertex_collisions_2d.empty();
+}
 void HighOrderCollisions::clear()
 {
     vertex_collisions.clear();
@@ -384,10 +394,12 @@ std::string HighOrderCollisions::to_string(
             ss << "\n";
             {
                 ss << fmt::format(
-                    "vert [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
-                    cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
+                    "vert [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}",
+                    cc.name(), cc[0], cc[1], cc.weight,
+                    cc.compute_distance(vertices),
                     cc(cc.dof(vertices), params, adaptive_dhat.get()),
-                    cc.gradient(cc.dof(vertices), params, adaptive_dhat.get()).norm());
+                    cc.gradient(cc.dof(vertices), params, adaptive_dhat.get())
+                        .norm());
             }
         }
     }
@@ -398,8 +410,7 @@ std::string HighOrderCollisions::to_string(
             {
                 ss << fmt::format(
                     "edge [{}]: ({} {}) ({} {}) weight {}", cc.name(),
-                    ccs.first.first, ccs.first.second,
-                    cc[0], cc[1], cc.weight);
+                    ccs.first.first, ccs.first.second, cc[0], cc[1], cc.weight);
             }
         }
     }
@@ -410,10 +421,13 @@ std::string HighOrderCollisions::to_string(
                 ss << "\n";
                 {
                     ss << fmt::format(
-                        "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}", cc.name(),
-                        cc[0], cc[1], cc.weight, cc.compute_distance(vertices),
+                        "face [{}]: ({} {}) weight {} dist sqr {} potential {} grad {}",
+                        cc.name(), cc[0], cc[1], cc.weight,
+                        cc.compute_distance(vertices),
                         cc(cc.dof(vertices), params, adaptive_dhat.get()),
-                        cc.gradient(cc.dof(vertices), params, adaptive_dhat.get()).norm());
+                        cc.gradient(
+                              cc.dof(vertices), params, adaptive_dhat.get())
+                            .norm());
                 }
             }
         }
@@ -468,7 +482,8 @@ std::map<size_t, size_t> HighOrderCollisions::edge_id_count_distribution() const
     return distribution;
 }
 
-Eigen::VectorXd HighOrderCollisions::edge_collision_counts(size_t num_edges) const
+Eigen::VectorXd
+HighOrderCollisions::edge_collision_counts(size_t num_edges) const
 {
     Eigen::VectorXd counts = Eigen::VectorXd::Zero(num_edges);
     for (const auto& [key, _] : edge_edge_collisions) {

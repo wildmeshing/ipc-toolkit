@@ -10,8 +10,8 @@
 
 #include <Eigen/Core>
 
-#include <vector>
 #include <set>
+#include <vector>
 
 namespace ipc {
 
@@ -279,6 +279,7 @@ public:
     unordered_map<index_t, std::set<index_t>> m_fv_set;
     unordered_map<index_t, std::set<index_t>> m_fe_set;
     unordered_map<index_t, std::set<index_t>> m_ff_set;
+
 private:
     static bool default_is_active(double candidate) { return true; }
 };

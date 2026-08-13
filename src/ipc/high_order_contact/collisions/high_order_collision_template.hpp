@@ -1,6 +1,7 @@
 #pragma once
 #include "high_order_collision.hpp"
 #include "high_order_primitives.hpp"
+
 #include <ipc/barrier/barrier.hpp>
 
 namespace ipc {
@@ -19,9 +20,7 @@ public:
     static constexpr int ELEMENT_SIZE = Super::ELEMENT_SIZE;
 
     HighOrderCollisionTemplate(
-        index_t primitive0,
-        index_t primitive1,
-        const CollisionMesh& mesh);
+        index_t primitive0, index_t primitive1, const CollisionMesh& mesh);
 
     virtual ~HighOrderCollisionTemplate() = default;
 
@@ -40,7 +39,8 @@ public:
 
     std::array<index_t, 3> get_typed_hash() const override
     {
-        return {{static_cast<index_t>(type()), primitive_a.id(), primitive_b.id()}};
+        return { { static_cast<index_t>(type()), primitive_a.id(),
+                   primitive_b.id() } };
     }
 
     index_t operator[](int idx) const override
@@ -67,19 +67,20 @@ public:
     double operator()(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
-        const AdaptiveSupport *adaptive = nullptr) const override;
+        const AdaptiveSupport* adaptive = nullptr) const override;
 
     VectorMax<double, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
-        const AdaptiveSupport *adaptive = nullptr) const override;
+        const AdaptiveSupport* adaptive = nullptr) const override;
 
     MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
-        const AdaptiveSupport *adaptive = nullptr) const override;
+        const AdaptiveSupport* adaptive = nullptr) const override;
 
-    double compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
+    double
+    compute_distance(Eigen::ConstRef<Eigen::MatrixXd> vertices) const override;
 
     std::pair<double, double> operator_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
@@ -87,28 +88,34 @@ public:
         const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const override
     {
-        return {0.0, 0.0};
+        return { 0.0, 0.0 };
     }
 
-    std::pair<VectorMax<double, ELEMENT_SIZE>, VectorMax<double, ELEMENT_SIZE>> gradient_nearfar(
+    std::pair<VectorMax<double, ELEMENT_SIZE>, VectorMax<double, ELEMENT_SIZE>>
+    gradient_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
         const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const override
     {
-        VectorMax<double, ELEMENT_SIZE> zero = VectorMax<double, ELEMENT_SIZE>::Zero(positions.size());
-        return {zero, zero};
+        VectorMax<double, ELEMENT_SIZE> zero =
+            VectorMax<double, ELEMENT_SIZE>::Zero(positions.size());
+        return { zero, zero };
     }
 
-    std::pair<MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>, MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>> hessian_nearfar(
+    std::pair<
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>,
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>>
+    hessian_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters&,
         const AdaptiveSupport*,
         const NearFarBarrier*) const override
     {
         int n = positions.size();
-        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> zero = MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n, n);
-        return {zero, zero};
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> zero =
+            MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n, n);
+        return { zero, zero };
     }
 
 private:
@@ -118,10 +125,12 @@ private:
 
 // Keep old name as alias for backward compatibility within this codebase
 template <typename PrimitiveA, typename PrimitiveB>
-using HighOrderCollision3DTemplate = HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>;
+using HighOrderCollision3DTemplate =
+    HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>;
 
 // 2D alias (for use with 2D primitives)
 template <typename PrimitiveA, typename PrimitiveB>
-using HighOrderCollision2DTemplate = HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>;
+using HighOrderCollision2DTemplate =
+    HighOrderCollisionTemplate<PrimitiveA, PrimitiveB>;
 
-}
+} // namespace ipc

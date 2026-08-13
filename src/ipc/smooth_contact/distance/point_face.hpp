@@ -26,8 +26,7 @@ scalar point_triangle_sqr_distance(
     if (dtype == PointTriangleDistanceType::AUTO) {
         if constexpr (std::is_same<double, scalar>::value) {
             dtype = point_triangle_distance_type(p, t0, t1, t2);
-        }
-        else {
+        } else {
             Eigen::Vector3d p_, t0_, t1_, t2_;
             for (int d = 0; d < 3; d++) {
                 p_(d) = p(d).val;
@@ -41,36 +40,36 @@ scalar point_triangle_sqr_distance(
 
     switch (dtype) {
     case PointTriangleDistanceType::P_T0: {
-            return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(p, t0);
+        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(p, t0);
     }
 
     case PointTriangleDistanceType::P_T1: {
-            return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(p, t1);
+        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(p, t1);
     }
 
     case PointTriangleDistanceType::P_T2: {
-            return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(p, t2);
+        return PointEdgeDistance<scalar, 3>::point_point_sqr_distance(p, t2);
     }
 
     case PointTriangleDistanceType::P_E0: {
-            return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(p, t0, t1);
+        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(p, t0, t1);
     }
 
     case PointTriangleDistanceType::P_E1: {
-            return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(p, t1, t2);
+        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(p, t1, t2);
     }
 
     case PointTriangleDistanceType::P_E2: {
-            return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(p, t2, t0);
+        return PointEdgeDistance<scalar, 3>::point_line_sqr_distance(p, t2, t0);
     }
 
     case PointTriangleDistanceType::P_T: {
-            return point_plane_sqr_distance<scalar>(p, t0, t1, t2);
+        return point_plane_sqr_distance<scalar>(p, t0, t1, t2);
     }
 
     default: {
-            throw std::invalid_argument(
-                "Invalid distance type for point-triangle distance!");
+        throw std::invalid_argument(
+            "Invalid distance type for point-triangle distance!");
     }
     }
 }

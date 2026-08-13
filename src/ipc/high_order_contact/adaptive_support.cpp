@@ -1,10 +1,12 @@
 #include "adaptive_support.hpp"
-#include "high_order_collisions.hpp"
-#include "collisions/vertex_matrix_view.hpp"
+
 #include "collisions/high_order_quadrature.hpp"
+#include "collisions/vertex_matrix_view.hpp"
+#include "high_order_collisions.hpp"
+
 #include <ipc/candidates/candidates.hpp>
-#include <ipc/smooth_contact/distance/edge_edge.hpp>
 #include <ipc/distance/edge_edge.hpp>
+#include <ipc/smooth_contact/distance/edge_edge.hpp>
 #include <ipc/utils/logger.hpp>
 
 namespace ipc {
@@ -12,8 +14,7 @@ namespace ipc {
 AdaptiveSupport::AdaptiveSupport(
     const CollisionMesh& mesh,
     Eigen::ConstRef<Eigen::MatrixXd> rest_positions,
-    const HighOrderContactParameters& params
-)
+    const HighOrderContactParameters& params)
     : m_mesh(&mesh)
 {
     const int nv = mesh.num_vertices();
@@ -22,15 +23,15 @@ AdaptiveSupport::AdaptiveSupport(
     HighOrderCollisions collisions;
     collisions.build(mesh, rest_positions, params);
 
-    if (collisions.empty()) return;
+    if (collisions.empty())
+        return;
 
     // Returns the mesh vertex IDs in a collision pair that belong to the
     // PRIMITIVE (i.e., not the source quadrature point). Source vertices are
     // those listed in the dict's primary_vertex_ids. Virtual vertices
     // (id >= nv) are skipped.
-    auto get_primitive_vids = [&](
-        const HighOrderCollision& cc
-    ) -> std::vector<index_t> {
+    auto get_primitive_vids =
+        [&](const HighOrderCollision& cc) -> std::vector<index_t> {
         std::vector<index_t> pvids;
         for (int i = 0; i < cc.num_vertices(); i++) {
             const index_t vid = cc.vertex_id(i);
@@ -58,17 +59,22 @@ AdaptiveSupport::AdaptiveSupport(
                 auto fit = collisions.face_collisions.find(f);
                 if (fit != collisions.face_collisions.end()) {
                     for (size_t qi = 0; qi < face_quad_rule.size(); qi++) {
-                        if (qi >= fit->second.size()) continue;
+                        if (qi >= fit->second.size())
+                            continue;
                         const auto& qp = face_quad_rule[qi];
-                        const Eigen::RowVector3d q_pos =
-                            qp.lambda[0] * rest_positions.row(mesh.faces()(f, 0))
-                            + qp.lambda[1] * rest_positions.row(mesh.faces()(f, 1))
-                            + qp.lambda[2] * rest_positions.row(mesh.faces()(f, 2));
+                        const Eigen::RowVector3d q_pos = qp.lambda[0]
+                                * rest_positions.row(mesh.faces()(f, 0))
+                            + qp.lambda[1]
+                                * rest_positions.row(mesh.faces()(f, 1))
+                            + qp.lambda[2]
+                                * rest_positions.row(mesh.faces()(f, 2));
                         const auto& dict = *fit->second[qi];
                         for (int ci = 0; ci < dict.size(); ci++) {
                             auto pvids = get_primitive_vids(dict[ci]);
                             if (!pvids.empty()) {
-                                active_pairs.push_back({&dict[ci], true, q_pos, std::move(pvids)});
+                                active_pairs.push_back(
+                                    { &dict[ci], true, q_pos,
+                                      std::move(pvids) });
                             }
                         }
                     }
@@ -85,7 +91,8 @@ AdaptiveSupport::AdaptiveSupport(
                     for (int ci = 0; ci < dict.size(); ci++) {
                         auto pvids = get_primitive_vids(dict[ci]);
                         if (!pvids.empty()) {
-                            active_pairs.push_back({&dict[ci], false, {}, std::move(pvids)});
+                            active_pairs.push_back(
+                                { &dict[ci], false, {}, std::move(pvids) });
                         }
                     }
                 }
@@ -97,17 +104,21 @@ AdaptiveSupport::AdaptiveSupport(
                 const index_t ea = mesh.edges()(edge_id, 0);
                 const index_t eb = mesh.edges()(edge_id, 1);
 
-                for (index_t other_edge_id : collisions.m_candidates.ee_set(edge_id)) {
+                for (index_t other_edge_id :
+                     collisions.m_candidates.ee_set(edge_id)) {
                     const index_t ec = mesh.edges()(other_edge_id, 0);
                     const index_t ed = mesh.edges()(other_edge_id, 1);
-                    if (ea == ec || ea == ed || eb == ec || eb == ed) continue;
+                    if (ea == ec || ea == ed || eb == ec || eb == ed)
+                        continue;
 
                     auto eit = collisions.edge_edge_collisions.find(
                         std::make_pair(edge_id, other_edge_id));
-                    if (eit == collisions.edge_edge_collisions.end()) continue;
+                    if (eit == collisions.edge_edge_collisions.end())
+                        continue;
 
                     const auto& dict = *eit->second;
-                    if (dict.ee_dtype() != EdgeEdgeDistanceType::EA_EB) continue;
+                    if (dict.ee_dtype() != EdgeEdgeDistanceType::EA_EB)
+                        continue;
 
                     const double uv = closest_point_uv<double>(
                         rest_positions.row(ea), rest_positions.row(eb),
@@ -120,7 +131,8 @@ AdaptiveSupport::AdaptiveSupport(
                     for (int ci = 0; ci < dict.size(); ci++) {
                         auto pvids = get_primitive_vids(dict[ci]);
                         if (!pvids.empty()) {
-                            active_pairs.push_back({&dict[ci], true, ee_qp, std::move(pvids)});
+                            active_pairs.push_back(
+                                { &dict[ci], true, ee_qp, std::move(pvids) });
                         }
                     }
                 }
@@ -135,7 +147,8 @@ AdaptiveSupport::AdaptiveSupport(
             int num_remaining = 0;
 
             for (size_t i = 0; i < active_pairs.size(); i++) {
-                if (completed[i]) continue;
+                if (completed[i])
+                    continue;
                 auto& p = active_pairs[i];
                 const Eigen::VectorXd dofs = p.needs_extended
                     ? p.cc->dof(VertexMatrixView<3>(rest_positions, p.qp_pos))
@@ -166,14 +179,16 @@ AdaptiveSupport::AdaptiveSupport(
         };
 
         std::vector<ActivePair2D> active_pairs;
-        const GaussLobatto::Rule& rule = GaussLobatto::get_rule(params.quad_order);
+        const GaussLobatto::Rule& rule =
+            GaussLobatto::get_rule(params.quad_order);
 
         for (const auto& [ei, qp_dicts] : collisions.edge_collisions_2d) {
             const index_t e0 = mesh.edges()(ei, 0);
             const index_t e1 = mesh.edges()(ei, 1);
             for (size_t qi = 0; qi < qp_dicts.size(); qi++) {
                 const auto& dict = *qp_dicts[qi];
-                if (dict.size() == 0) continue;
+                if (dict.size() == 0)
+                    continue;
                 const auto& qp = rule[qi];
                 const Eigen::RowVector2d q_pos =
                     (1.0 - qp.xi) * rest_positions.row(e0)
@@ -181,7 +196,8 @@ AdaptiveSupport::AdaptiveSupport(
                 for (int ci = 0; ci < dict.size(); ci++) {
                     auto pvids = get_primitive_vids(dict[ci]);
                     if (!pvids.empty())
-                        active_pairs.push_back({&dict[ci], true, q_pos, std::move(pvids)});
+                        active_pairs.push_back(
+                            { &dict[ci], true, q_pos, std::move(pvids) });
                 }
             }
         }
@@ -191,7 +207,8 @@ AdaptiveSupport::AdaptiveSupport(
             for (int ci = 0; ci < dict.size(); ci++) {
                 auto pvids = get_primitive_vids(dict[ci]);
                 if (!pvids.empty())
-                    active_pairs.push_back({&dict[ci], false, {}, std::move(pvids)});
+                    active_pairs.push_back(
+                        { &dict[ci], false, {}, std::move(pvids) });
             }
         }
 
@@ -202,7 +219,8 @@ AdaptiveSupport::AdaptiveSupport(
             std::vector<bool> needs_reduction(nv, false);
 
             for (size_t i = 0; i < active_pairs.size(); i++) {
-                if (completed[i]) continue;
+                if (completed[i])
+                    continue;
                 auto& p = active_pairs[i];
                 const Eigen::VectorXd dofs = p.needs_extended
                     ? p.cc->dof(VertexMatrixView<2>(rest_positions, p.qp_pos))

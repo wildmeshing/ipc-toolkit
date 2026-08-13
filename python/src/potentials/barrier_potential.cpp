@@ -237,18 +237,21 @@ void define_smooth_potential(py::module_& m)
             "project_hessian_to_psd"_a = PSDProjectionMethod::NONE);
 }
 
-void define_high_order_potential(py::module &m)
+void define_high_order_potential(py::module& m)
 {
     py::enum_<HighOrderContactParameters::IntegrationType>(m, "IntegrationType")
-        .value("BRUTE_FORCE", HighOrderContactParameters::IntegrationType::BRUTE_FORCE)
+        .value(
+            "BRUTE_FORCE",
+            HighOrderContactParameters::IntegrationType::BRUTE_FORCE)
         .value("NORMAL", HighOrderContactParameters::IntegrationType::NORMAL)
         .value("NO_OBST", HighOrderContactParameters::IntegrationType::NO_OBST)
         .export_values();
 
     py::class_<HighOrderContactParameters>(m, "HighOrderContactParameters")
         .def(
-            py::init<const double, const double, const int,
-                     HighOrderContactParameters::IntegrationType>(),
+            py::init<
+                const double, const double, const int,
+                HighOrderContactParameters::IntegrationType>(),
             R"ipc_Qu8mg5v7(
             Construct parameter set for high-order contact.
 
@@ -257,12 +260,13 @@ void define_high_order_potential(py::module &m)
             )ipc_Qu8mg5v7",
             py::arg("dhat"), py::arg("dbar_factor") = 1.0,
             py::arg("quad_order") = 1,
-            py::arg("integration_type") = HighOrderContactParameters::IntegrationType::NO_OBST)
+            py::arg("integration_type") =
+                HighOrderContactParameters::IntegrationType::NO_OBST)
         .def_readonly("dhat", &HighOrderContactParameters::dhat)
         .def_readonly("dbar", &HighOrderContactParameters::dbar)
         .def_readonly("quad_order", &HighOrderContactParameters::quad_order)
-        .def_readonly("integration_type", &HighOrderContactParameters::integration_type);
-
+        .def_readonly(
+            "integration_type", &HighOrderContactParameters::integration_type);
 
     py::class_<HighOrderContactPotential>(m, "HighOrderContactPotential")
         .def(
@@ -331,12 +335,10 @@ void define_high_order_potential(py::module &m)
             py::arg("collisions"), py::arg("mesh"), py::arg("vertices"),
             py::arg("project_hessian_to_psd") = PSDProjectionMethod::NONE);
 
-
     py::class_<QuadraturePotential>(m, "QuadraturePotential")
         .def(
-            py::init<const CollisionMesh&,
-            const Eigen::MatrixXd&,
-            const double>(),
+            py::init<
+                const CollisionMesh&, const Eigen::MatrixXd&, const double>(),
             R"ipc_Qu8mg5v7(
             Construct a quadrature barrier potential.
 
@@ -346,8 +348,7 @@ void define_high_order_potential(py::module &m)
             py::arg("mesh"), py::arg("V"), py::arg("dhat"))
         .def(
             "evaluate_per_face",
-            py::overload_cast<
-                const Eigen::MatrixXd&, const int>(
+            py::overload_cast<const Eigen::MatrixXd&, const int>(
                 &ipc::QuadraturePotential::evaluate_per_face, py::const_),
             R"ipc_Qu8mg5v7(
             Compute the barrier potential for a face.
@@ -358,9 +359,9 @@ void define_high_order_potential(py::module &m)
             py::arg("V"), py::arg("face_id"))
         .def(
             "evaluate_per_face_gradient",
-            py::overload_cast<
-            const Eigen::MatrixXd&, const int>(
-                &ipc::QuadraturePotential::evaluate_per_face_gradient, py::const_),
+            py::overload_cast<const Eigen::MatrixXd&, const int>(
+                &ipc::QuadraturePotential::evaluate_per_face_gradient,
+                py::const_),
             R"ipc_Qu8mg5v7(
             Compute the barrier potential gradient for a face.
 

@@ -194,17 +194,15 @@ TEST_CASE("Pointers vs instances", "[!benchmark][eigen]")
     Eigen::MatrixXi F(1, 3);
     F << t0i, t1i, t2i;
 
-    auto barrier = [](const double d) {
-        return -(1 - d) * (1 - d) * log(d);
-    };
+    auto barrier = [](const double d) { return -(1 - d) * (1 - d) * log(d); };
 
     BENCHMARK("Vector of pointers")
     {
         std::vector<std::unique_ptr<ipc::FaceVertexCandidate>> collisions;
 
         for (int i = 0; i < N; ++i) {
-            collisions.emplace_back(std::make_unique<ipc::FaceVertexCandidate>(
-                0, vi));
+            collisions.emplace_back(
+                std::make_unique<ipc::FaceVertexCandidate>(0, vi));
         }
 
         double total = 0.;
@@ -219,11 +217,11 @@ TEST_CASE("Pointers vs instances", "[!benchmark][eigen]")
 
     BENCHMARK("Unordered map of pointers")
     {
-        std::unordered_map<int, std::unique_ptr<ipc::FaceVertexCandidate>> collisions;
+        std::unordered_map<int, std::unique_ptr<ipc::FaceVertexCandidate>>
+            collisions;
 
         for (int i = 0; i < N; ++i) {
-            collisions[i] = std::make_unique<ipc::FaceVertexCandidate>(
-                0, vi);
+            collisions[i] = std::make_unique<ipc::FaceVertexCandidate>(0, vi);
         }
 
         double total = 0.;
@@ -241,8 +239,7 @@ TEST_CASE("Pointers vs instances", "[!benchmark][eigen]")
         std::vector<ipc::FaceVertexCandidate> collisions;
 
         for (int i = 0; i < N; ++i) {
-            collisions.emplace_back(ipc::FaceVertexCandidate(
-                0, vi));
+            collisions.emplace_back(ipc::FaceVertexCandidate(0, vi));
         }
 
         // simulate deep copy

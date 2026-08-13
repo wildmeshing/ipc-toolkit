@@ -19,7 +19,8 @@ namespace {
     {
         assert(pair != nullptr);
         if (pair->is_active()
-            && cc_to_id.find(pair->get_hash()) == cc_to_id.end()) { // filters dupes
+            && cc_to_id.find(pair->get_hash())
+                == cc_to_id.end()) { // filters dupes
             // New collision, so add it to the end of collisions
             cc_to_id.emplace(pair->get_hash(), pair);
             collisions.push_back(pair);
@@ -63,7 +64,7 @@ void SmoothCollisionsBuilder<2>::add_edge_vertex_collisions(
                 vert_edge_2_to_id, collisions);
         }
 
-		// loops over endpoints
+        // loops over endpoints
         for (int j : { 0, 1 }) {
             const auto& vj = mesh.edges()(ei, j);
             const double dhat = std::min(vert_dhat(vi), vert_dhat(vj));

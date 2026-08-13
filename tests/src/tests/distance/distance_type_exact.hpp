@@ -6,19 +6,21 @@
 
 using namespace ipc;
 using ExReal = GEO::expansion_nt; // exact scalar type
-using ExVec3 = GEO::vec3E; // exact vector
+using ExVec3 = GEO::vec3E;        // exact vector
 
-inline void init_pck() { // TODO init once in main
+inline void init_pck()
+{ // TODO init once in main
     static bool initialized = false;
     if (!initialized) {
         GEO::PCK::initialize();
         initialized = true;
     }
 }
-inline ExVec3 make_exact(Eigen::ConstRef<VectorMax3d> v) {
-    ExReal x{v.x()};
-    ExReal y{v.y()};
-    ExReal z{v.size() < 3 ? 0 : v.z()}; // compatibility with 2D vectors
+inline ExVec3 make_exact(Eigen::ConstRef<VectorMax3d> v)
+{
+    ExReal x { v.x() };
+    ExReal y { v.y() };
+    ExReal z { v.size() < 3 ? 0 : v.z() }; // compatibility with 2D vectors
     return ExVec3(std::move(x), std::move(y), std::move(z));
 }
 PointEdgeDistanceType point_edge_distance_type_exact(
@@ -40,7 +42,6 @@ PointEdgeDistanceType point_edge_distance_type_exact(
         return PointEdgeDistanceType::P_E; // PE
     }
 }
-
 
 PointTriangleDistanceType point_triangle_distance_type_exact(
     Eigen::ConstRef<Eigen::Vector3d> p_,
@@ -87,9 +88,6 @@ PointTriangleDistanceType point_triangle_distance_type_exact(
     return PointTriangleDistanceType::P_T;
 }
 
-
-
-
 bool is_parallel_edge_edge_exact(
     Eigen::ConstRef<Eigen::Vector3d> ea0_,
     Eigen::ConstRef<Eigen::Vector3d> ea1_,
@@ -107,7 +105,8 @@ bool is_parallel_edge_edge_exact(
     const ExVec3 v = eb1 - eb0;
 
     const ExReal cross_norm_sqr = cross(u, v).length2();
-    if constexpr (PARALLEL_THRESHOLD == 0.0) return cross_norm_sqr == 0;
+    if constexpr (PARALLEL_THRESHOLD == 0.0)
+        return cross_norm_sqr == 0;
     const ExReal a = u.length2();
     const ExReal c = v.length2();
     return cross_norm_sqr < a * c * PARALLEL_THRESHOLD;
@@ -183,9 +182,9 @@ EdgeEdgeDistanceType edge_edge_distance_type_exact(
     const ExVec3 v = eb1 - eb0;
     const ExVec3 w = ea0 - eb0;
 
-    const ExReal a = u.length2();   // always ≥ 0
+    const ExReal a = u.length2(); // always ≥ 0
     const ExReal b = dot(u, v);
-    const ExReal c = v.length2();   // always ≥ 0
+    const ExReal c = v.length2(); // always ≥ 0
     const ExReal d = dot(u, w);
     const ExReal e = dot(v, w);
     const ExReal D = a * c - b * b; // always ≥ 0
@@ -215,7 +214,7 @@ EdgeEdgeDistanceType edge_edge_distance_type_exact(
 
     // compute the line parameters of the two closest points
     const ExReal sN = (b * e - c * d);
-    ExReal tN, tD;   // tc = tN / tD
+    ExReal tN, tD; // tc = tN / tD
     if (sN <= 0) { // sc < 0 ⟹ the s=0 edge is visible
         tN = e;
         tD = c;

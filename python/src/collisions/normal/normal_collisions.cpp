@@ -134,7 +134,8 @@ void define_high_order_collisions(py::module_& m)
             )ipc_Qu8mg5v7",
             py::arg("mesh"), py::arg("vertices"))
         .def(
-            "__len__", &HighOrderCollisions::size, "Get the number of collisions.")
+            "__len__", &HighOrderCollisions::size,
+            "Get the number of collisions.")
         .def(
             "empty", &HighOrderCollisions::empty,
             "Get if the collision set is empty.")

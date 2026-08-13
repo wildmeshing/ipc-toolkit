@@ -3,8 +3,9 @@
 #include "../adaptive_support.hpp"
 #include "high_order_primitives.hpp"
 #include "vertex_matrix_view.hpp"
-#include <ipc/high_order_contact/high_order_contact_parameters.hpp>
+
 #include <ipc/barrier/barrier.hpp>
+#include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 #include <ipc/math/math.hpp>
 #include <ipc/utils/autodiff_types.hpp>
 
@@ -75,7 +76,8 @@ public:
     Eigen::VectorXd dof(Eigen::ConstRef<Eigen::MatrixXd> X) const;
 
     /// @brief Select this stencil's DOF from the full matrix of DOF.
-    /// In 3D, some vertices may not be directly stored in the full matrix, e.g. face centers and edge-edge closest points.
+    /// In 3D, some vertices may not be directly stored in the full matrix, e.g.
+    /// face centers and edge-edge closest points.
     Eigen::VectorXd dof(VertexMatrixView<3> X_extended) const;
 
     /// @brief Select this stencil's DOF from the full 2D matrix of DOF (with a virtual vertex appended).
@@ -91,19 +93,19 @@ public:
     virtual double operator()(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
-        const AdaptiveSupport *adaptive = nullptr) const = 0;
+        const AdaptiveSupport* adaptive = nullptr) const = 0;
 
     /// @brief Compute the gradient of the GCP potential wrt. vertices involved
     virtual VectorMax<double, ELEMENT_SIZE> gradient(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
-        const AdaptiveSupport *adaptive = nullptr) const = 0;
+        const AdaptiveSupport* adaptive = nullptr) const = 0;
 
     /// @brief Compute the Hessian of the GCP potential wrt. vertices involved
     virtual MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> hessian(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
-        const AdaptiveSupport *adaptive = nullptr) const = 0;
+        const AdaptiveSupport* adaptive = nullptr) const = 0;
 
     bool operator==(const HighOrderCollision& other) const
     {
@@ -125,28 +127,35 @@ public:
         const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const
     {
-        return {0.0, 0.0};
+        return { 0.0, 0.0 };
     }
 
-    virtual std::pair<VectorMax<double, ELEMENT_SIZE>, VectorMax<double, ELEMENT_SIZE>> gradient_nearfar(
-        Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
-        const HighOrderContactParameters& params,
-        const AdaptiveSupport* adaptive,
-        const NearFarBarrier* nf_barrier) const
+    virtual std::
+        pair<VectorMax<double, ELEMENT_SIZE>, VectorMax<double, ELEMENT_SIZE>>
+        gradient_nearfar(
+            Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
+            const HighOrderContactParameters& params,
+            const AdaptiveSupport* adaptive,
+            const NearFarBarrier* nf_barrier) const
     {
-        VectorMax<double, ELEMENT_SIZE> zero = VectorMax<double, ELEMENT_SIZE>::Zero(positions.size());
-        return {zero, zero};
+        VectorMax<double, ELEMENT_SIZE> zero =
+            VectorMax<double, ELEMENT_SIZE>::Zero(positions.size());
+        return { zero, zero };
     }
 
-    virtual std::pair<MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>, MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>> hessian_nearfar(
+    virtual std::pair<
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>,
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>>
+    hessian_nearfar(
         Eigen::ConstRef<VectorMax<double, ELEMENT_SIZE>> positions,
         const HighOrderContactParameters& params,
         const AdaptiveSupport* adaptive,
         const NearFarBarrier* nf_barrier) const
     {
         int n = positions.size();
-        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> zero = MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n, n);
-        return {zero, zero};
+        MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE> zero =
+            MatrixMax<double, ELEMENT_SIZE, ELEMENT_SIZE>::Zero(n, n);
+        return { zero, zero };
     }
 
     double weight = 1;

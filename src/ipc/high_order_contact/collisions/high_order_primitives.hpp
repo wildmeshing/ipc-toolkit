@@ -2,8 +2,8 @@
 
 #include <ipc/collision_mesh.hpp>
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
-#include <ipc/utils/eigen_ext.hpp>
 #include <ipc/math/span.hpp>
+#include <ipc/utils/eigen_ext.hpp>
 
 namespace ipc {
 
@@ -17,10 +17,7 @@ namespace ipc {
 class HighOrderPrimitive {
 public:
     constexpr static int MAX_NUM_VERTS = 3;
-    HighOrderPrimitive(const index_t id)
-        : m_id(id)
-    {
-    }
+    HighOrderPrimitive(const index_t id) : m_id(id) { }
 
     virtual ~HighOrderPrimitive() = default;
 
@@ -39,24 +36,27 @@ public:
     virtual int n_dofs() const = 0;
 
     /// @brief Get the vertex IDs of the primitive's stencil.
-    span<const index_t> vertex_ids() const {
+    span<const index_t> vertex_ids() const
+    {
         assert(MAX_NUM_VERTS >= n_vertices());
         return span<const index_t>(m_vertex_ids.data(), n_vertices());
     }
 
 protected:
     /// @brief Vertex IDs of the stencil for this primitive.
-    std::array<index_t, MAX_NUM_VERTS> m_vertex_ids{{-1, -1, -1}};
+    std::array<index_t, MAX_NUM_VERTS> m_vertex_ids { { -1, -1, -1 } };
     /// @brief The ID of this primitive.
     index_t m_id;
 };
 
 namespace {
-    // Helper function to find the vertices adjacent to a given vertex in a 2D mesh.
-    std::vector<index_t> find_vertex_neighbors_2D(const CollisionMesh& mesh, const index_t v_id)
+    // Helper function to find the vertices adjacent to a given vertex in a 2D
+    // mesh.
+    std::vector<index_t>
+    find_vertex_neighbors_2D(const CollisionMesh& mesh, const index_t v_id)
     {
-        assert (mesh.dim() == 2);
-        std::array<index_t,2> neighbors;
+        assert(mesh.dim() == 2);
+        std::array<index_t, 2> neighbors;
         std::fill(neighbors.begin(), neighbors.end(), v_id);
         for (const auto& edge_id : mesh.vertex_edge_adjacencies()[v_id]) {
             const auto& edge = mesh.edges().row(edge_id);
@@ -68,11 +68,12 @@ namespace {
         }
         std::vector<index_t> neighbors_ordered;
         for (index_t n : neighbors) {
-            if (n != v_id) neighbors_ordered.push_back(n);
+            if (n != v_id)
+                neighbors_ordered.push_back(n);
         }
         return neighbors_ordered;
     }
-}
+} // namespace
 
 /// @brief 2D vertex primitive with neighbor storage, for OGC.
 class Vertex2ogc : public HighOrderPrimitive {
@@ -83,9 +84,7 @@ public:
     static constexpr int N_DOFS = N_POINTS * DIM;
 
     Vertex2ogc(
-        const index_t id,
-        const CollisionMesh& mesh,
-        const Eigen::MatrixXd& V)
+        const index_t id, const CollisionMesh& mesh, const Eigen::MatrixXd& V)
         : HighOrderPrimitive(id)
     {
         n_verts = 0;
@@ -146,9 +145,7 @@ public:
     static constexpr int DIM = 3;
     static constexpr int N_DOFS = N_POINTS * DIM;
 
-    Vertex3(
-        const index_t id,
-        const CollisionMesh& mesh)
+    Vertex3(const index_t id, const CollisionMesh& mesh)
         : HighOrderPrimitive(id)
     {
         m_vertex_ids[0] = id;
@@ -165,9 +162,7 @@ public:
     static constexpr int DIM = 3;
     static constexpr int N_DOFS = N_POINTS * DIM;
 
-    Edge3P1(
-        const index_t id,
-        const CollisionMesh& mesh)
+    Edge3P1(const index_t id, const CollisionMesh& mesh)
         : HighOrderPrimitive(id)
     {
         m_vertex_ids[0] = mesh.edges()(id, 0);
@@ -185,9 +180,7 @@ public:
     static constexpr int DIM = 3;
     static constexpr int N_DOFS = N_POINTS * DIM;
 
-    Face3P1(
-        const index_t id,
-        const CollisionMesh& mesh)
+    Face3P1(const index_t id, const CollisionMesh& mesh)
         : HighOrderPrimitive(id)
     {
         m_vertex_ids[0] = mesh.faces()(id, 0);

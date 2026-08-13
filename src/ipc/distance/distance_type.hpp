@@ -4,7 +4,9 @@
 #include <ipc/utils/eigen_ext.hpp>
 
 namespace ipc {
-constexpr double PARALLEL_THRESHOLD { 2.5e-16 }; // TODO set to zero eventually (requires geogram)
+constexpr double PARALLEL_THRESHOLD {
+    2.5e-16
+}; // TODO set to zero eventually (requires geogram)
 
 /// @brief Runtime switch between the standard analytic distance-type routines
 /// and the predicate-based implementations. Controls
@@ -12,7 +14,8 @@ constexpr double PARALLEL_THRESHOLD { 2.5e-16 }; // TODO set to zero eventually 
 /// edge_edge_distance_type. Defaults to predicate.
 class DistanceTypeConfig {
 public:
-    static DistanceTypeConfig& instance() {
+    static DistanceTypeConfig& instance()
+    {
         static DistanceTypeConfig cfg;
         return cfg;
     }

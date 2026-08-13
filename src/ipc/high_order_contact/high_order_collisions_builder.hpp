@@ -1,8 +1,7 @@
 #pragma once
 
-#include <ipc/high_order_contact/high_order_collisions.hpp>
-
 #include <ipc/collision_mesh.hpp>
+#include <ipc/high_order_contact/high_order_collisions.hpp>
 
 #include <Eigen/Core>
 #include <tbb/enumerable_thread_specific.h>
@@ -19,7 +18,10 @@ template <> class HighOrderCollisionsBuilder<2> {
 public:
     HighOrderCollisionsBuilder() = default;
     // Copy creates an empty builder (used by tbb::enumerable_thread_specific).
-    HighOrderCollisionsBuilder(const HighOrderCollisionsBuilder&) : HighOrderCollisionsBuilder() {}
+    HighOrderCollisionsBuilder(const HighOrderCollisionsBuilder&)
+        : HighOrderCollisionsBuilder()
+    {
+    }
 
     /// @brief Build per-edge, per-QP collision dicts for the 2D quadrature path.
     /// For each edge ei in [start, end), places Gauss-Lobatto QPs on ei and
@@ -47,22 +49,29 @@ public:
     // -------------------------------------------------------------------------
 
     static void merge(
-        tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>>& local_storage,
+        tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>>&
+            local_storage,
         HighOrderCollisions& merged_collisions);
 
     static void merge_ogc(
-        tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>>& local_storage,
+        tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<2>>&
+            local_storage,
         HighOrderCollisions& merged_collisions);
 
     // Per-edge QP collision dicts: each entry is {edge_id, [dict_qp0, ...]}.
     // Stored as a vector of pairs (not a map) so structured-binding iteration
     // gives mutable references, enabling std::move in merge().
-    std::vector<std::pair<index_t,
-        std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>>>> edge_collisions_2d;
+    std::vector<std::pair<
+        index_t,
+        std::vector<
+            std::unique_ptr<HighOrderCollisionDict<PointType::EDGE, 2>>>>>
+        edge_collisions_2d;
 
     // Per-vertex collision dicts for OGC mode: each entry is {vertex_id, dict}.
-    std::vector<std::pair<index_t,
-        std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX, 2>>>> vertex_collisions_2d;
+    std::vector<std::pair<
+        index_t,
+        std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX, 2>>>>
+        vertex_collisions_2d;
 };
 
 template <> class HighOrderCollisionsBuilder<3> {
@@ -107,7 +116,8 @@ public:
         const size_t start_i,
         const size_t end_i);
 
-    /*/ -------------------------------------------------------------------------
+    /*/
+    -------------------------------------------------------------------------
 
     void add_negative_edge_edge_edge_collisions(
         const CollisionMesh& mesh,
@@ -139,7 +149,8 @@ public:
     /*/// -------------------------------------------------------------------------
 
     static void merge(
-        const tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<3>>& local_storage,
+        const tbb::enumerable_thread_specific<HighOrderCollisionsBuilder<3>>&
+            local_storage,
         HighOrderCollisions& merged_collisions);
 
     // Constructed collisions
@@ -164,26 +175,31 @@ public:
         const Candidates& candidates,
         const HighOrderContactParameters& params);
     QuadratureCollisionsBuilder(QuadratureCollisionsBuilder&&) = default;
-    QuadratureCollisionsBuilder& operator=(QuadratureCollisionsBuilder&&) = default;
+    QuadratureCollisionsBuilder&
+    operator=(QuadratureCollisionsBuilder&&) = default;
     QuadratureCollisionsBuilder(const QuadratureCollisionsBuilder& other);
-    QuadratureCollisionsBuilder& operator=(const QuadratureCollisionsBuilder& other);
+    QuadratureCollisionsBuilder&
+    operator=(const QuadratureCollisionsBuilder& other);
     ~QuadratureCollisionsBuilder();
 
     void build_vertex_collisions(
         const Eigen::MatrixXd& vertices,
         const std::vector<index_t>& vertex_indices,
-        size_t start, size_t end);
+        size_t start,
+        size_t end);
 
     /// @brief [OGC mode] Build per-vertex collision dicts for 3D using feasibility checks.
     void build_vertex_collisions_ogc(
         const Eigen::MatrixXd& vertices,
         const std::vector<index_t>& vertex_indices,
-        size_t start, size_t end);
+        size_t start,
+        size_t end);
 
     void build_face_collisions(
         const Eigen::MatrixXd& vertices,
         const std::vector<index_t>& face_indices,
-        size_t start, size_t end);
+        size_t start,
+        size_t end);
 
     void build_edge_edge_collisions(
         const Eigen::MatrixXd& vertices,
@@ -201,14 +217,20 @@ public:
         const size_t end_i);
 
     static void merge(
-        tbb::enumerable_thread_specific<QuadratureCollisionsBuilder>& local_storage,
+        tbb::enumerable_thread_specific<QuadratureCollisionsBuilder>&
+            local_storage,
         HighOrderCollisions& merged_collisions);
 
     // Local storage
-    std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>> vertex_collisions;
-    std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>> edge_edge_collisions;
+    std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>>
+        vertex_collisions;
+    std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::EDGE>>>
+        edge_edge_collisions;
     // face_collisions[i] = {fid, [dict_for_qp0, dict_for_qp1, ...]}
-    std::vector<std::pair<index_t, std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>>>> face_collisions;
+    std::vector<std::pair<
+        index_t,
+        std::vector<std::unique_ptr<HighOrderCollisionDict<PointType::FACE>>>>>
+        face_collisions;
 
     size_t num_collision_pairs = 0;
 
