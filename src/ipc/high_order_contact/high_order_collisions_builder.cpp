@@ -1,3 +1,4 @@
+#include <array>
 #include "high_order_collisions_builder.hpp"
 
 #include "collisions/high_order_quadrature.hpp"

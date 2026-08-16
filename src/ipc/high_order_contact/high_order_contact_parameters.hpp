@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <ipc/barrier/barrier.hpp>
 #include <ipc/utils/logger.hpp>
 

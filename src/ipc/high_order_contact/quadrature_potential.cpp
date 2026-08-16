@@ -1455,15 +1455,15 @@ std::pair<double, double> PointPotentialHelper::
         const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
 {
-    double near = 0, far = 0;
+    double near_sum = 0, far_sum = 0;
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
         auto [n, f] =
             cc.operator_nearfar(cc.dof(V), params, adaptive, &nf_barrier);
-        near += cc.weight * n;
-        far += cc.weight * f;
+        near_sum += cc.weight * n;
+        far_sum += cc.weight * f;
     }
-    return { near, far };
+    return { near_sum, far_sum };
 }
 
 std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::
@@ -1554,15 +1554,15 @@ double PointPotentialHelper::
         EdgeEdgeDistanceType dtype,
         const NearFarBarrier& nf_barrier)
 {
-    double near = 0;
+    double near_sum = 0;
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
-        near += cc.weight
+        near_sum += cc.weight
             * cc.operator_nearfar(
                     cc.dof(V_extended), params, adaptive, &nf_barrier)
                   .first;
     }
-    return near;
+    return near_sum;
 }
 
 template <>
@@ -1745,15 +1745,15 @@ std::pair<double, double> PointPotentialHelper::
         const AdaptiveSupport* adaptive,
         const NearFarBarrier& nf_barrier)
 {
-    double near = 0, far = 0;
+    double near_sum = 0, far_sum = 0;
     for (int ci = 0; ci < collisions.size(); ci++) {
         const auto& cc = collisions[ci];
         auto [n, f] = cc.operator_nearfar(
             cc.dof(V_extended), params, adaptive, &nf_barrier);
-        near += cc.weight * n;
-        far += cc.weight * f;
+        near_sum += cc.weight * n;
+        far_sum += cc.weight * f;
     }
-    return { near, far };
+    return { near_sum, far_sum };
 }
 
 std::pair<Eigen::VectorXd, Eigen::VectorXd> PointPotentialHelper::

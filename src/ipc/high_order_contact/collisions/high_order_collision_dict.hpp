@@ -1,4 +1,6 @@
 #pragma once
+#include <cstdint>
+#include <array>
 #include "high_order_collision_template.hpp"
 
 #include <ipc/distance/distance_type.hpp>

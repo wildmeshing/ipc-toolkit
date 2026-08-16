@@ -1,3 +1,4 @@
+#include <array>
 #include "high_order_collision_dict.hpp"
 
 namespace ipc {

@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include "high_order_collision.hpp"
 #include "high_order_primitives.hpp"
 

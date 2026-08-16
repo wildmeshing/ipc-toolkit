@@ -1,3 +1,4 @@
+#include <array>
 #include "high_order_contact_potential.hpp"
 
 #include "ipc/barrier/barrier.hpp"

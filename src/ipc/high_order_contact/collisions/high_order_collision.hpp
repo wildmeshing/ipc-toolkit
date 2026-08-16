@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include "../adaptive_support.hpp"
 #include "high_order_primitives.hpp"
 #include "vertex_matrix_view.hpp"
