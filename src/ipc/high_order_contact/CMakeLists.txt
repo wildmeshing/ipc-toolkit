@@ -1,6 +1,10 @@
 set(SOURCES
   adaptive_support.cpp
   adaptive_support.hpp
+  arbitrary_point_bvh.cpp
+  arbitrary_point_bvh.hpp
+  arbitrary_point_potential.cpp
+  arbitrary_point_potential.hpp
   high_order_collisions.cpp
   high_order_collisions.hpp
   high_order_collisions_builder.cpp

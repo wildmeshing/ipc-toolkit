@@ -1,0 +1,76 @@
+#pragma once
+
+#include <ipc/collision_mesh.hpp>
+#include <ipc/high_order_contact/arbitrary_point_bvh.hpp>
+#include <ipc/high_order_contact/collisions/high_order_collision_dict.hpp>
+#include <ipc/high_order_contact/high_order_contact_parameters.hpp>
+
+#include <memory>
+
+namespace ipc {
+
+/// @brief Evaluate the high-order contact potential (ESP) at an arbitrary
+/// point in space, not restricted to the mesh's own vertices/edges/faces.
+///
+/// Reuses the same collision-construction machinery as
+/// PointPotential::build_collisions_at_vertex (quadrature_potential.cpp):
+/// nearby primitives found by ArbitraryPointBVH are classified with exact
+/// point-primitive distance-type predicates -- which of a triangle's
+/// face/edge/vertex sub-features the query's closest point actually falls
+/// on -- and redundant contributions from different primitives resolving
+/// to the same feature (e.g. two adjacent faces and their shared edge) are
+/// merged and symbolically cancelled (integer weight accumulation, dropped
+/// exactly at zero) before any barrier value is computed. This avoids the
+/// catastrophic cancellation a naive "sum every found primitive
+/// independently with a fixed sign" approach suffers near shared features,
+/// where barrier derivatives blow up as distance -> 0.
+///
+/// Value/gradient/Hessian are computed by the same HighOrderCollision::
+/// operator()/gradient()/hessian() used by the production
+/// HighOrderContactPotential, just evaluated for a virtual point
+/// (id == V.rows()) instead of a real mesh vertex, via VertexMatrixView.
+///
+/// A single fixed params.dhat is used everywhere; AdaptiveSupport
+/// (per-primitive dhat) is not supported.
+class ArbitraryPointPotential {
+public:
+    ArbitraryPointPotential(
+        const CollisionMesh& mesh, HighOrderContactParameters params);
+
+    /// @brief Rebuild the underlying broad-phase index. O(n log n). Call
+    /// once per vertex configuration, before any operator()/gradient()/
+    /// hessian() calls against that configuration.
+    void update(Eigen::ConstRef<Eigen::MatrixXd> V);
+
+    /// @brief Evaluate the potential at q.
+    double operator()(
+        Eigen::ConstRef<Eigen::MatrixXd> V,
+        Eigen::ConstRef<Eigen::RowVector3d> q) const;
+
+    /// @brief Gradient of the potential with respect to q.
+    Eigen::Vector3d gradient(
+        Eigen::ConstRef<Eigen::MatrixXd> V,
+        Eigen::ConstRef<Eigen::RowVector3d> q) const;
+
+    /// @brief Hessian of the potential with respect to q.
+    Eigen::Matrix3d hessian(
+        Eigen::ConstRef<Eigen::MatrixXd> V,
+        Eigen::ConstRef<Eigen::RowVector3d> q) const;
+
+private:
+    /// @brief Build the (symbolically-cancelled) collision dict for q,
+    /// mirroring PointPotential::build_collisions_at_vertex with q as a
+    /// virtual vertex (id == V.rows()) instead of a real one, and
+    /// candidates sourced from point_bvh instead of
+    /// Candidates::vv_set/ve_set/vf_set.
+    std::unique_ptr<HighOrderCollisionDict<PointType::VERTEX>>
+    build_collisions_at_point(
+        Eigen::ConstRef<Eigen::MatrixXd> V,
+        Eigen::ConstRef<Eigen::RowVector3d> q) const;
+
+    const CollisionMesh& mesh;
+    HighOrderContactParameters params;
+    ArbitraryPointBVH point_bvh;
+};
+
+} // namespace ipc
