@@ -176,4 +176,45 @@ Eigen::Matrix3d ArbitraryPointPotential::hessian(
     return H.block<3, 3>(3 * q_local, 3 * q_local);
 }
 
+std::tuple<double, Eigen::Vector3d, Eigen::Matrix3d>
+ArbitraryPointPotential::evaluate(
+    Eigen::ConstRef<Eigen::MatrixXd> V,
+    Eigen::ConstRef<Eigen::RowVector3d> q) const
+{
+    const auto collisions = build_collisions_at_point(V, q);
+    const VertexMatrixView<3> V_view(V, q);
+    const index_t vid = static_cast<index_t>(V.rows());
+
+    double value = 0.0;
+    const int m = static_cast<int>(collisions->vertex_ids().size());
+    Eigen::VectorXd grad = Eigen::VectorXd::Zero(m * 3);
+    Eigen::MatrixXd H = Eigen::MatrixXd::Zero(m * 3, m * 3);
+
+    for (int ci = 0; ci < collisions->size(); ci++) {
+        const auto& cc = (*collisions)[ci];
+        const auto dof = cc.dof(V_view);
+
+        value += cc.weight * cc(dof, params, /*adaptive=*/nullptr);
+
+        const Eigen::VectorXd g =
+            cc.weight * cc.gradient(dof, params, /*adaptive=*/nullptr);
+        const Eigen::MatrixXd h =
+            cc.weight * cc.hessian(dof, params, /*adaptive=*/nullptr);
+
+        for (int i = 0; i < cc.num_vertices(); i++) {
+            const index_t gi = collisions->vertex_ids_inverse(cc.vertex_id(i));
+            grad.segment<3>(3 * gi) += g.segment<3>(3 * i);
+            for (int j = 0; j < cc.num_vertices(); j++) {
+                const index_t gj =
+                    collisions->vertex_ids_inverse(cc.vertex_id(j));
+                H.block<3, 3>(3 * gi, 3 * gj) += h.block<3, 3>(3 * i, 3 * j);
+            }
+        }
+    }
+
+    const index_t q_local = collisions->vertex_ids_inverse(vid);
+    return { value, grad.segment<3>(3 * q_local),
+             H.block<3, 3>(3 * q_local, 3 * q_local) };
+}
+
 } // namespace ipc

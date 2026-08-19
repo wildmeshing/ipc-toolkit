@@ -6,6 +6,7 @@
 #include <ipc/high_order_contact/high_order_contact_parameters.hpp>
 
 #include <memory>
+#include <tuple>
 
 namespace ipc {
 
@@ -54,6 +55,20 @@ public:
 
     /// @brief Hessian of the potential with respect to q.
     Eigen::Matrix3d hessian(
+        Eigen::ConstRef<Eigen::MatrixXd> V,
+        Eigen::ConstRef<Eigen::RowVector3d> q) const;
+
+    /// @brief Value, gradient, and Hessian at q, computed together.
+    ///
+    /// Equivalent to calling operator()/gradient()/hessian() separately, but
+    /// builds the (BVH-queried, exact-predicate-classified,
+    /// symbolically-cancelled) collision dict for q only once instead of
+    /// three times -- collision construction, not the final per-collision
+    /// barrier evaluation, dominates cost (see the profiling that motivated
+    /// this), so calling operator()/gradient()/hessian() separately at the
+    /// same point does ~3x the necessary work. Prefer this whenever you need
+    /// more than one of the three at the same q (e.g. a Newton step).
+    std::tuple<double, Eigen::Vector3d, Eigen::Matrix3d> evaluate(
         Eigen::ConstRef<Eigen::MatrixXd> V,
         Eigen::ConstRef<Eigen::RowVector3d> q) const;
 
