@@ -159,15 +159,15 @@ Eigen::Matrix3d ArbitraryPointPotential::hessian(
     Eigen::MatrixXd H = Eigen::MatrixXd::Zero(m * 3, m * 3);
     for (int ci = 0; ci < collisions->size(); ci++) {
         const auto& cc = (*collisions)[ci];
-        const Eigen::MatrixXd h
-            = cc.hessian(cc.dof(V_view), params, /*adaptive=*/nullptr)
+        const Eigen::MatrixXd h =
+            cc.hessian(cc.dof(V_view), params, /*adaptive=*/nullptr)
             * cc.weight;
         for (int i = 0; i < cc.num_vertices(); i++) {
             for (int j = 0; j < cc.num_vertices(); j++) {
                 H.block<3, 3>(
                     3 * collisions->vertex_ids_inverse(cc.vertex_id(i)),
-                    3 * collisions->vertex_ids_inverse(cc.vertex_id(j)))
-                    += h.block<3, 3>(3 * i, 3 * j);
+                    3 * collisions->vertex_ids_inverse(cc.vertex_id(j))) +=
+                    h.block<3, 3>(3 * i, 3 * j);
             }
         }
     }

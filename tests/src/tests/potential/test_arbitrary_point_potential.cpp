@@ -34,8 +34,7 @@ struct Fixture {
         const Eigen::RowVector3d v1 = V.row(F(0, 1));
         const Eigen::RowVector3d v2 = V.row(F(0, 2));
         const Eigen::RowVector3d centroid = (v0 + v1 + v2) / 3.0;
-        const Eigen::RowVector3d normal =
-            (v1 - v0).cross(v2 - v0).normalized();
+        const Eigen::RowVector3d normal = (v1 - v0).cross(v2 - v0).normalized();
         return centroid + frac * dhat * normal;
     }
 };
@@ -96,7 +95,8 @@ TEST_CASE(
         fd::finite_jacobian(
             Eigen::VectorXd(q.transpose()),
             [&](const Eigen::VectorXd& y) {
-                return potential.gradient(fx.V, Eigen::RowVector3d(y.transpose()));
+                return potential.gradient(
+                    fx.V, Eigen::RowVector3d(y.transpose()));
             },
             fh, fd::AccuracyOrder::SECOND, 1e-8);
 
